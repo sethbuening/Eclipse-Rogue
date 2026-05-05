@@ -21,9 +21,11 @@ Util="*uid://bqtv4egpchjgm"
 
 [display]
 
+window/size/viewport_width=4608
+window/size/viewport_height=2592
 window/size/mode=3
-window/stretch/scale=4.0
 window/stretch/scale_mode="integer"
+window/defaults/default_environment="uid://cery84ong0tvf"
 
 [input]
 
@@ -83,3 +85,5 @@ textures/canvas_textures/default_texture_filter=0
 rendering_device/driver.windows="d3d12"
 renderer/rendering_method="mobile"
 viewport/hdr_2d=true
+limits/size/viewport_height=2592
+limits/size/viewport_width=4608

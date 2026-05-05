@@ -1,7 +1,7 @@
 extends CharacterBody2D
 
 var movement_enabled: bool = true
-@export var speed: float = 100.0 * scale.x
+@onready var speed: float = 100.0 * get_parent().scale.x
 
 # Called every frame. 'delta' is the elapsed time since the previous frame.
 func _process(delta: float) -> void:

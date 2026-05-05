@@ -5,38 +5,37 @@
 [ext_resource type="Script" uid="uid://dnkle1hwxuime" path="res://scripts/TilemapManager.gd" id="4_lbhrr"]
 [ext_resource type="Texture2D" uid="uid://q2dnkkpl21ee" path="res://art/tempatlas.png" id="5_iywne"]
 [ext_resource type="PackedScene" uid="uid://cfpcxmav7qfv3" path="res://scenes/basalt_altar.tscn" id="5_p57ef"]
-[ext_resource type="Environment" uid="uid://cery84ong0tvf" path="res://environment.tres" id="6_p57ef"]
+
+[sub_resource type="Environment" id="Environment_iywne"]
+background_mode = 3
+tonemap_mode = 3
+glow_enabled = true
+glow_normalized = true
+glow_strength = 1.5
+glow_blend_mode = 0
 
 [node name="game" type="Node2D" unique_id=218660419]
 
-[node name="SubViewportContainer" type="SubViewportContainer" parent="." unique_id=1863322965]
-offset_right = 40.0
-offset_bottom = 40.0
-
-[node name="SubViewport" type="SubViewport" parent="SubViewportContainer" unique_id=2115058]
-size = Vector2i(1152, 648)
-
-[node name="Camera2D" type="Camera2D" parent="SubViewportContainer/SubViewport" unique_id=1754347079 node_paths=PackedStringArray("target")]
+[node name="Camera2D" type="Camera2D" parent="." unique_id=1754347079 node_paths=PackedStringArray("target")]
+zoom = Vector2(2, 2)
 script = ExtResource("3_lnu2h")
 target = NodePath("../Player")
 
-[node name="Player" parent="SubViewportContainer/SubViewport" unique_id=341096909 instance=ExtResource("1_uwrxv")]
+[node name="Player" parent="." unique_id=341096909 instance=ExtResource("1_uwrxv")]
 unique_name_in_owner = true
+modulate = Color(0.796243, 0.796243, 0.796243, 1)
 z_index = 2
-position = Vector2(33, 80)
+position = Vector2(21, 48)
 
-[node name="TilemapManager" type="Node" parent="SubViewportContainer/SubViewport" unique_id=248983693]
+[node name="TilemapManager" type="Node" parent="." unique_id=248983693]
 unique_name_in_owner = true
 script = ExtResource("4_lbhrr")
 tile_atlas = ExtResource("5_iywne")
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="SubViewportContainer/SubViewport" unique_id=744240700]
-environment = ExtResource("6_p57ef")
-
-[node name="CanvasLayer" type="CanvasLayer" parent="SubViewportContainer/SubViewport" unique_id=1395920423]
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=1395920423]
 layer = 2
 
-[node name="Control" type="Control" parent="SubViewportContainer/SubViewport/CanvasLayer" unique_id=888524823]
+[node name="Control" type="Control" parent="CanvasLayer" unique_id=888524823]
 layout_mode = 3
 anchors_preset = 1
 anchor_left = 1.0
@@ -44,7 +43,7 @@ anchor_right = 1.0
 grow_horizontal = 0
 metadata/_edit_use_anchors_ = true
 
-[node name="DebugInfo" type="Label" parent="SubViewportContainer/SubViewport/CanvasLayer/Control" unique_id=1416814218]
+[node name="DebugInfo" type="Label" parent="CanvasLayer/Control" unique_id=1416814218]
 unique_name_in_owner = true
 z_index = 1
 layout_mode = 0
@@ -54,8 +53,11 @@ offset_bottom = 36.0
 theme_override_font_sizes/font_size = 8
 metadata/_edit_use_anchors_ = true
 
-[node name="BasaltAltar" parent="SubViewportContainer/SubViewport" unique_id=1391256680 instance=ExtResource("5_p57ef")]
+[node name="BasaltAltar" parent="." unique_id=1391256680 instance=ExtResource("5_p57ef")]
 
-[node name="CanvasModulate" type="CanvasModulate" parent="SubViewportContainer/SubViewport" unique_id=1136346527]
+[node name="CanvasModulate" type="CanvasModulate" parent="." unique_id=1136346527]
 visible = false
-color = Color(0.30692267, 0.3069227, 0.3069227, 1)
+color = Color(0.47007585, 0.47007585, 0.47007585, 1)
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1316779093]
+environment = SubResource("Environment_iywne")

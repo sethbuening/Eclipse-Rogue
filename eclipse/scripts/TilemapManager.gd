@@ -128,6 +128,7 @@ func _setup_rendering() -> void:
 	static_body                 = StaticBody2D.new()
 	static_body.collision_layer = 1
 	static_body.collision_mask  = 0
+	static_body.scale = get_parent().scale
 	%TilemapManager.add_child(static_body)
 
 	multimesh                  = MultiMesh.new()
@@ -138,6 +139,7 @@ func _setup_rendering() -> void:
 	multimesh.instance_count   = tile_types.size()
 
 	multimesh_instance              = MultiMeshInstance2D.new()
+	multimesh_instance.scale = get_parent().scale
 	multimesh_instance.multimesh    = multimesh
 	multimesh_instance.texture      = tile_atlas
 	
@@ -215,8 +217,9 @@ func get_tile_max_health(t: Util.tile) -> int:
 		_:                 return 3
 
 func world_to_map(world_pos: Vector2) -> Vector2i:
+	var local_pos: Vector2 = world_pos / get_parent().scale
 	@warning_ignore("integer_division")
-	return Vector2i((world_pos / Vector2(TILE_SIZE)).floor()) + Vector2i(WIDTH / 2, HEIGHT / 2)
+	return Vector2i((local_pos / Vector2(TILE_SIZE)).floor()) + Vector2i(WIDTH / 2, HEIGHT / 2)
 
 func tile_exists(map_pos: Vector2i) -> bool:
 	return tile_types.has(map_pos)

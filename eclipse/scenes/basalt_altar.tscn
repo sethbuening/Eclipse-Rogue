@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://cfpcxmav7qfv3"]
 
 [ext_resource type="Texture2D" uid="uid://b8a8iec1l24x3" path="res://art/shrine.png" id="1_0qrt1"]
-[ext_resource type="Texture2D" uid="uid://b5seb58pkhqu7" path="res://art/lava.png" id="2_xmci6"]
+[ext_resource type="Texture2D" uid="uid://bbbnehjskb610" path="res://art/lava.png" id="2_xmci6"]
 
 [sub_resource type="Gradient" id="Gradient_xmci6"]
 offsets = PackedFloat32Array(1)
@@ -15,20 +15,11 @@ width = 1
 offsets = PackedFloat32Array(0, 0.2795699, 0.87096775, 1)
 colors = PackedColorArray(0.9019608, 0.101960786, 0, 1, 0.7647059, 0.40392157, 0, 1, 0.29411766, 0.2784314, 0.29411766, 0.5529412, 0.41568628, 0.41568628, 0.41568628, 0)
 
-[sub_resource type="Gradient" id="Gradient_4037l"]
-colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0)
-
-[sub_resource type="GradientTexture2D" id="GradientTexture2D_gejux"]
-gradient = SubResource("Gradient_4037l")
-fill = 1
-fill_from = Vector2(0.5, 0.5)
-fill_to = Vector2(0.866, 0.133)
-
 [node name="BasaltAltar" type="Node2D" unique_id=1391256680]
 
 [node name="lava" type="Sprite2D" parent="." unique_id=1819851708]
-modulate = Color(1.8247963, 1.1190649, 0.9723285, 1)
-position = Vector2(2, 14)
+modulate = Color(1.8247963, 1.8247963, 1.8247963, 1)
+position = Vector2(3, 9)
 texture = ExtResource("2_xmci6")
 
 [node name="everything else" type="Sprite2D" parent="." unique_id=556595878]
@@ -49,8 +40,3 @@ gravity = Vector2(0, -5)
 initial_velocity_min = 10.0
 initial_velocity_max = 20.0
 color_ramp = SubResource("Gradient_5kmrg")
-
-[node name="PointLight2D" type="PointLight2D" parent="." unique_id=1857170682]
-visible = false
-position = Vector2(-130, 8)
-texture = SubResource("GradientTexture2D_gejux")
