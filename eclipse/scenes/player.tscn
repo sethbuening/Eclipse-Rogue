@@ -1,0 +1,31 @@
+[gd_scene format=3 uid="uid://d0234wglvpyt3"]
+
+[ext_resource type="Texture2D" uid="uid://uctklljtcejf" path="res://art/player.png" id="1_3vyb7"]
+[ext_resource type="Script" uid="uid://dcm3xcviah1ya" path="res://scripts/player.gd" id="1_g2els"]
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_u8vuu"]
+
+[sub_resource type="Gradient" id="Gradient_g2els"]
+colors = PackedColorArray(1, 1, 1, 1, 0, 0, 0, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_qhqgy"]
+gradient = SubResource("Gradient_g2els")
+width = 512
+height = 512
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(0.833, 0.167)
+
+[node name="Player" type="CharacterBody2D" unique_id=341096909]
+script = ExtResource("1_g2els")
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=849848432]
+scale = Vector2(0.625, 0.9375)
+texture = ExtResource("1_3vyb7")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=166070350]
+shape = SubResource("CapsuleShape2D_u8vuu")
+
+[node name="PointLight2D" type="PointLight2D" parent="." unique_id=127126805]
+visible = false
+texture = SubResource("GradientTexture2D_qhqgy")

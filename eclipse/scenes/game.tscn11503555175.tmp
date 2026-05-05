@@ -1,0 +1,41 @@
+[gd_scene format=3 uid="uid://byg3fydbr4lwp"]
+
+[ext_resource type="PackedScene" uid="uid://d0234wglvpyt3" path="res://scenes/player.tscn" id="1_uwrxv"]
+[ext_resource type="Texture2D" uid="uid://b8a8iec1l24x3" path="res://art/shrine.png" id="2_yqjtg"]
+[ext_resource type="Script" uid="uid://wd1y18gjk5c1" path="res://scenes/subpixel_camera.gd" id="3_lnu2h"]
+[ext_resource type="Script" uid="uid://dnkle1hwxuime" path="res://scripts/TilemapManager.gd" id="4_lbhrr"]
+[ext_resource type="Texture2D" uid="uid://q2dnkkpl21ee" path="res://art/tempatlas.png" id="5_iywne"]
+
+[node name="game" type="Node2D" unique_id=218660419]
+
+[node name="Shrine" type="Sprite2D" parent="." unique_id=81293181]
+visible = false
+position = Vector2(137, -48)
+texture = ExtResource("2_yqjtg")
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=1754347079]
+script = ExtResource("3_lnu2h")
+
+[node name="Player" parent="." unique_id=341096909 instance=ExtResource("1_uwrxv")]
+unique_name_in_owner = true
+
+[node name="TilemapManager" type="Node" parent="." unique_id=248983693]
+unique_name_in_owner = true
+script = ExtResource("4_lbhrr")
+tile_atlas = ExtResource("5_iywne")
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=1395920423]
+
+[node name="Control" type="Control" parent="CanvasLayer" unique_id=888524823]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="DebugInfo" type="Label" parent="CanvasLayer/Control" unique_id=1416814218]
+unique_name_in_owner = true
+z_index = 1
+layout_mode = 0
+offset_left = 6.0
+offset_right = 370.0
+offset_bottom = 34.0

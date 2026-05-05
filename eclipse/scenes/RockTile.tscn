@@ -1,0 +1,15 @@
+[gd_scene format=3 uid="uid://bdh6l8vuret3g"]
+
+[ext_resource type="Script" uid="uid://cpxhiu2u1txb1" path="res://scenes/rock_tile.gd" id="1_wtbyj"]
+[ext_resource type="Texture2D" uid="uid://cly27sw1mlli5" path="res://art/temptile.png" id="2_ifi5i"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_ec7rw"]
+
+[node name="RockTile" type="StaticBody2D" unique_id=1272020120]
+script = ExtResource("1_wtbyj")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1022168368]
+shape = SubResource("RectangleShape2D_ec7rw")
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=960218337]
+texture = ExtResource("2_ifi5i")

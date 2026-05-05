@@ -1,0 +1,49 @@
+[gd_scene format=3 uid="uid://byg3fydbr4lwp"]
+
+[ext_resource type="PackedScene" uid="uid://d0234wglvpyt3" path="res://scenes/player.tscn" id="1_uwrxv"]
+[ext_resource type="Script" uid="uid://wd1y18gjk5c1" path="res://scenes/subpixel_camera.gd" id="3_lnu2h"]
+[ext_resource type="Script" uid="uid://dnkle1hwxuime" path="res://scripts/TilemapManager.gd" id="4_lbhrr"]
+[ext_resource type="Texture2D" uid="uid://q2dnkkpl21ee" path="res://art/tempatlas.png" id="5_iywne"]
+[ext_resource type="PackedScene" uid="uid://cfpcxmav7qfv3" path="res://scenes/basalt_altar.tscn" id="5_p57ef"]
+[ext_resource type="Environment" uid="uid://cery84ong0tvf" path="res://environment.tres" id="6_p57ef"]
+
+[node name="game" type="Node2D" unique_id=218660419]
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=1754347079]
+script = ExtResource("3_lnu2h")
+
+[node name="Player" parent="." unique_id=341096909 instance=ExtResource("1_uwrxv")]
+unique_name_in_owner = true
+z_index = 1
+position = Vector2(33, 80)
+
+[node name="TilemapManager" type="Node" parent="." unique_id=248983693]
+unique_name_in_owner = true
+script = ExtResource("4_lbhrr")
+tile_atlas = ExtResource("5_iywne")
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=1395920423]
+
+[node name="Control" type="Control" parent="CanvasLayer" unique_id=888524823]
+layout_mode = 3
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+grow_horizontal = 0
+
+[node name="DebugInfo" type="Label" parent="CanvasLayer/Control" unique_id=1416814218]
+unique_name_in_owner = true
+z_index = 1
+layout_mode = 0
+offset_left = -364.0
+offset_top = 2.0
+offset_bottom = 36.0
+theme_override_font_sizes/font_size = 8
+
+[node name="CanvasModulate" type="CanvasModulate" parent="." unique_id=1136346527]
+color = Color(0.9297146, 0.9297147, 0.9297146, 1)
+
+[node name="BasaltAltar" parent="." unique_id=1391256680 instance=ExtResource("5_p57ef")]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=482981889]
+environment = ExtResource("6_p57ef")
