@@ -47,7 +47,6 @@ var map_seed: int
 @export var atlas_pos_copper:  Vector2i = Vector2i(2, 0)
 @export var atlas_pos_crystal: Vector2i = Vector2i(3, 0)
 
-
 var chamber_noise:        FastNoiseLite = FastNoiseLite.new()
 var path_noise:           FastNoiseLite = FastNoiseLite.new()
 var rock_variation_noise: FastNoiseLite = FastNoiseLite.new()
@@ -61,8 +60,8 @@ var tile_shapes: Dictionary = {}
 var static_body: StaticBody2D
 
 # multimesh rendering
-var multimesh:          MultiMesh
-var multimesh_instance: MultiMeshInstance2D
+var multimesh:           MultiMesh
+var multimesh_instance:  MultiMeshInstance2D
 var tile_instance_index: Dictionary = {}  # Vector2i -> int
 
 var gold_tiles_added:   int = 0
@@ -87,7 +86,7 @@ func _ready() -> void:
 	tilemap = generate_faults(tilemap)
 	generate_chamber_noise(tilemap)
 	generate_path_noise(tilemap)
-	for i: int in range(10):
+	for i: int in range(6):
 		tilemap = cellular_step(tilemap)
 	place_starting_area(tilemap)
 
@@ -112,6 +111,7 @@ func _ready() -> void:
 
 	_setup_rendering()
 	_build_collision()
+	_setup_occluder()
 
 func _setup_noise(noise: FastNoiseLite, frequency: float) -> void:
 	noise.noise_type = FastNoiseLite.TYPE_PERLIN
@@ -128,7 +128,7 @@ func _setup_rendering() -> void:
 	static_body                 = StaticBody2D.new()
 	static_body.collision_layer = 1
 	static_body.collision_mask  = 0
-	static_body.scale = get_parent().scale
+	static_body.scale           = get_parent().scale
 	%TilemapManager.add_child(static_body)
 
 	multimesh                  = MultiMesh.new()
@@ -138,17 +138,20 @@ func _setup_rendering() -> void:
 	multimesh.mesh             = _make_quad_mesh()
 	multimesh.instance_count   = tile_types.size()
 
-	multimesh_instance              = MultiMeshInstance2D.new()
-	multimesh_instance.scale = get_parent().scale
-	multimesh_instance.multimesh    = multimesh
-	multimesh_instance.texture      = tile_atlas
-	
+	multimesh_instance           = MultiMeshInstance2D.new()
+	multimesh_instance.scale     = get_parent().scale
+	multimesh_instance.multimesh = multimesh
+	multimesh_instance.texture   = tile_atlas
+
 	var mat := ShaderMaterial.new()
 	mat.shader = preload("res://scripts/MultiMesh.gdshader")
 	mat.set_shader_parameter("atlas", tile_atlas)
 	mat.set_shader_parameter("tile_size", 32.0)
 	multimesh_instance.material = mat
 	
+	multimesh_instance.z_index = -1
+	multimesh_instance.z_as_relative = false
+
 	%TilemapManager.add_child(multimesh_instance)
 
 	var idx: int = 0
@@ -164,8 +167,6 @@ func _write_instance(idx: int, map_pos: Vector2i) -> void:
 	t.origin               = world_pos
 	multimesh.set_instance_transform_2d(idx, t)
 	multimesh.set_instance_color(idx, Color.WHITE)
-
-	# pack uv rect into custom data so the shader can sample the correct atlas region
 	var uv: Rect2 = get_tile_uv(tile_types[map_pos])
 	multimesh.set_instance_custom_data(idx, Color(uv.position.x, uv.position.y, uv.size.x, uv.size.y))
 
@@ -190,6 +191,68 @@ func get_tile_uv(t: Util.tile) -> Rect2:
 	var uv_origin: Vector2 = Vector2(atlas_pos * atlas_tile_size) / atlas_px
 	var uv_size: Vector2   = Vector2(atlas_tile_size) / atlas_px
 	return Rect2(uv_origin, uv_size)
+
+func _get_atlas_rect(t: Util.tile) -> Rect2:
+	var atlas_pos: Vector2i
+	match t:
+		Util.tile.STONE:   atlas_pos = atlas_pos_stone
+		Util.tile.ROCK:    atlas_pos = atlas_pos_rock
+		Util.tile.GOLD:    atlas_pos = atlas_pos_gold
+		Util.tile.COPPER:  atlas_pos = atlas_pos_copper
+		Util.tile.CRYSTAL: atlas_pos = atlas_pos_crystal
+		_:                 atlas_pos = atlas_pos_stone
+	return Rect2(Vector2(atlas_pos * atlas_tile_size), Vector2(atlas_tile_size))
+
+func set_tile_color(map_pos: Vector2i, color: Color) -> void:
+	if not tile_instance_index.has(map_pos):
+		return
+	multimesh.set_instance_color(tile_instance_index[map_pos], color)
+	if occluder_sprites.has(map_pos):
+		occluder_sprites[map_pos].modulate = color
+
+func get_tile_color(map_pos: Vector2i) -> Color:
+	if not tile_instance_index.has(map_pos):
+		return Color.WHITE
+	return multimesh.get_instance_color(tile_instance_index[map_pos])
+
+func redraw_tile(map_pos: Vector2i) -> void:
+	if not tile_instance_index.has(map_pos):
+		return
+	_write_instance(tile_instance_index[map_pos], map_pos)
+
+# ------------------------------------------------------------ occluder ----
+var occluder_sprites: Dictionary = {}  # Vector2i -> Sprite2D
+
+func _setup_occluder() -> void:
+	for map_pos: Vector2i in tile_types.keys():
+		var above: Vector2i = map_pos + Vector2i(0, -1)
+		if is_air(above):
+			_add_occluder_sprite(map_pos)
+
+func _add_occluder_sprite(map_pos: Vector2i) -> void:
+	if occluder_sprites.has(map_pos):
+		return
+
+	var world_center: Vector2 = map_to_world(map_pos)
+
+	var sprite             := Sprite2D.new()
+	sprite.texture          = tile_atlas
+	sprite.region_enabled   = true
+	sprite.region_rect      = _get_atlas_rect(tile_types[map_pos])
+	sprite.z_index          = 0
+	sprite.z_as_relative    = false
+
+	sprite.position = Vector2(world_center.x, world_center.y - TILE_SIZE.y / 2.0)
+	sprite.offset   = Vector2(0, TILE_SIZE.y / 2.0)
+
+	occluder_sprites[map_pos] = sprite
+	get_parent().add_child(sprite)
+
+func _remove_occluder_sprite(map_pos: Vector2i) -> void:
+	if not occluder_sprites.has(map_pos):
+		return
+	occluder_sprites[map_pos].queue_free()
+	occluder_sprites.erase(map_pos)
 
 # ------------------------------------------------------------ collision ----
 func _build_collision() -> void:
@@ -221,8 +284,16 @@ func world_to_map(world_pos: Vector2) -> Vector2i:
 	@warning_ignore("integer_division")
 	return Vector2i((local_pos / Vector2(TILE_SIZE)).floor()) + Vector2i(WIDTH / 2, HEIGHT / 2)
 
+func map_to_world(map_pos: Vector2i) -> Vector2:
+	@warning_ignore("integer_division")
+	var local_pos: Vector2 = Vector2((map_pos - Vector2i(WIDTH / 2, HEIGHT / 2)) * TILE_SIZE) + Vector2(TILE_SIZE) / 2.0
+	return local_pos * get_parent().scale
+
 func tile_exists(map_pos: Vector2i) -> bool:
 	return tile_types.has(map_pos)
+
+func is_air(map_pos: Vector2i) -> bool:
+	return not tile_types.has(map_pos)
 
 func damage_tile(map_pos: Vector2i, damage: int = 1) -> void:
 	if not tile_health.has(map_pos):
@@ -235,15 +306,14 @@ func remove_tile(map_pos: Vector2i) -> void:
 	if not tile_types.has(map_pos):
 		return
 	_hide_instance(map_pos)
+	_remove_occluder_sprite(map_pos)
 	tile_health.erase(map_pos)
 	tile_types.erase(map_pos)
 	tile_shapes[map_pos].disabled = true
 
-func mine_around(world_pos: Vector2, radius: int = 1) -> void:
-	var center: Vector2i = world_to_map(world_pos)
-	for x: int in range(-radius, radius + 1):
-		for y: int in range(-radius, radius + 1):
-			remove_tile(center + Vector2i(x, y))
+	var below: Vector2i = map_pos + Vector2i(0, 1)
+	if tile_types.has(below) and not occluder_sprites.has(below):
+		_add_occluder_sprite(below)
 
 func in_bounds(loc: Vector2i) -> bool:
 	return loc.x >= 0 and loc.x < WIDTH and loc.y >= 0 and loc.y < HEIGHT

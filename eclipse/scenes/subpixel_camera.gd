@@ -16,5 +16,5 @@ func _physics_process(delta: float) -> void:
 		return
 	var t := 1.0 - exp(-follow_speed * delta)
 	global_position = global_position.lerp(target.global_position, t)
-	if global_position.distance_to(target.global_position) < 0.5:
+	if global_position.distance_to(target.global_position) < 0.25:
 		global_position = target.global_position
