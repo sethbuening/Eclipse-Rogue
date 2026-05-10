@@ -114,6 +114,8 @@ func _process(delta: float) -> void:
 	if Input.is_action_just_pressed("zoom_out"):
 		$"../Camera2D".zoom *= 0.5
 
+	%TilemapManager.update_occluder_depths(self)
+
 func _physics_process(_delta: float) -> void:
 	var input_vector: Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	if input_vector != Vector2.ZERO:

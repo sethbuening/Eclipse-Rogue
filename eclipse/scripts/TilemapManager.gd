@@ -40,7 +40,9 @@ var map_seed: int
 
 @export_group("Rendering")
 @export var tile_atlas: Texture2D
-@export var atlas_tile_size: Vector2i = Vector2i(32, 32)
+@export var ATLAS_TILE_SIZE: Vector2i = Vector2i(32, 48)
+var SPRITE_OFFSET_Y: float = 0
+
 @export var atlas_pos_stone:   Vector2i = Vector2i(0, 0)
 @export var atlas_pos_rock:    Vector2i = Vector2i(0, 1)
 @export var atlas_pos_gold:    Vector2i = Vector2i(1, 0)
@@ -69,6 +71,7 @@ var copper_tiles_added: int = 0
 
 # ----------------------------------------------------------------- ready ----
 func _ready() -> void:
+	SPRITE_OFFSET_Y = (ATLAS_TILE_SIZE.y - TILE_SIZE.y) / 2.0
 	map_seed = randi()
 
 	_setup_noise(chamber_noise,        PERLIN_CHAMBER_FREQUENCY)
@@ -121,7 +124,8 @@ func _setup_noise(noise: FastNoiseLite, frequency: float) -> void:
 # ------------------------------------------------------------ rendering ----
 func _make_quad_mesh() -> QuadMesh:
 	var quad: QuadMesh = QuadMesh.new()
-	quad.size          = Vector2(TILE_SIZE)
+	@warning_ignore("integer_division")
+	quad.size          = Vector2(TILE_SIZE) + Vector2(0, TILE_SIZE.y / 2)
 	return quad
 
 func _setup_rendering() -> void:
@@ -146,16 +150,19 @@ func _setup_rendering() -> void:
 	var mat := ShaderMaterial.new()
 	mat.shader = preload("res://scripts/MultiMesh.gdshader")
 	mat.set_shader_parameter("atlas", tile_atlas)
-	mat.set_shader_parameter("tile_size", 32.0)
+	mat.set_shader_parameter("sprite_size", Vector2(ATLAS_TILE_SIZE))
 	multimesh_instance.material = mat
-	
-	multimesh_instance.z_index = -1
+
+	multimesh_instance.z_index       = -1
 	multimesh_instance.z_as_relative = false
 
 	%TilemapManager.add_child(multimesh_instance)
 
+	var sorted_tiles: Array = tile_types.keys()
+	sorted_tiles.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y < b.y)
+
 	var idx: int = 0
-	for map_pos: Vector2i in tile_types.keys():
+	for map_pos: Vector2i in sorted_tiles:
 		tile_instance_index[map_pos] = idx
 		_write_instance(idx, map_pos)
 		idx += 1
@@ -163,6 +170,7 @@ func _setup_rendering() -> void:
 func _write_instance(idx: int, map_pos: Vector2i) -> void:
 	@warning_ignore("integer_division")
 	var world_pos: Vector2 = Vector2((map_pos - Vector2i(WIDTH / 2, HEIGHT / 2)) * TILE_SIZE) + Vector2(TILE_SIZE) / 2.0
+	world_pos.y           -= SPRITE_OFFSET_Y
 	var t: Transform2D     = Transform2D.IDENTITY
 	t.origin               = world_pos
 	multimesh.set_instance_transform_2d(idx, t)
@@ -187,9 +195,9 @@ func get_tile_uv(t: Util.tile) -> Rect2:
 		Util.tile.COPPER:  atlas_pos = atlas_pos_copper
 		Util.tile.CRYSTAL: atlas_pos = atlas_pos_crystal
 		_:                 atlas_pos = atlas_pos_stone
-	var atlas_px: Vector2  = Vector2(tile_atlas.get_size()) if tile_atlas else Vector2(128.0, 128.0)
-	var uv_origin: Vector2 = Vector2(atlas_pos * atlas_tile_size) / atlas_px
-	var uv_size: Vector2   = Vector2(atlas_tile_size) / atlas_px
+	var atlas_px: Vector2  = Vector2(tile_atlas.get_size()) if tile_atlas else Vector2(128.0, 192.0)
+	var uv_origin: Vector2 = Vector2(atlas_pos * ATLAS_TILE_SIZE) / atlas_px
+	var uv_size: Vector2   = Vector2(ATLAS_TILE_SIZE) / atlas_px
 	return Rect2(uv_origin, uv_size)
 
 func _get_atlas_rect(t: Util.tile) -> Rect2:
@@ -201,7 +209,7 @@ func _get_atlas_rect(t: Util.tile) -> Rect2:
 		Util.tile.COPPER:  atlas_pos = atlas_pos_copper
 		Util.tile.CRYSTAL: atlas_pos = atlas_pos_crystal
 		_:                 atlas_pos = atlas_pos_stone
-	return Rect2(Vector2(atlas_pos * atlas_tile_size), Vector2(atlas_tile_size))
+	return Rect2(Vector2(atlas_pos * ATLAS_TILE_SIZE), Vector2(ATLAS_TILE_SIZE))
 
 func set_tile_color(map_pos: Vector2i, color: Color) -> void:
 	if not tile_instance_index.has(map_pos):
@@ -234,25 +242,34 @@ func _add_occluder_sprite(map_pos: Vector2i) -> void:
 		return
 
 	var world_center: Vector2 = map_to_world(map_pos)
-
 	var sprite             := Sprite2D.new()
 	sprite.texture          = tile_atlas
 	sprite.region_enabled   = true
 	sprite.region_rect      = _get_atlas_rect(tile_types[map_pos])
-	sprite.z_index          = 0
 	sprite.z_as_relative    = false
-
-	sprite.position = Vector2(world_center.x, world_center.y - TILE_SIZE.y / 2.0)
-	sprite.offset   = Vector2(0, TILE_SIZE.y / 2.0)
+	sprite.position = Vector2(world_center.x, world_center.y - SPRITE_OFFSET_Y - ATLAS_TILE_SIZE.y / 2.0)
+	sprite.offset   = Vector2(0, ATLAS_TILE_SIZE.y / 2.0)
 
 	occluder_sprites[map_pos] = sprite
-	get_parent().add_child(sprite)
+	# Fix for the error: defer add_child during _ready
+	get_parent().add_child.call_deferred(sprite)
 
 func _remove_occluder_sprite(map_pos: Vector2i) -> void:
 	if not occluder_sprites.has(map_pos):
 		return
 	occluder_sprites[map_pos].queue_free()
 	occluder_sprites.erase(map_pos)
+
+func update_occluder_depths(player: Node2D) -> void:
+	var player_map := world_to_map(player.global_position)
+	for map_pos: Vector2i in occluder_sprites:
+		var sprite: Sprite2D = occluder_sprites[map_pos]
+		# If the player's feet are on the same row or below this tile,
+		# the tile face should occlude the player (z in front of player)
+		if player_map.y <= map_pos.y:
+			sprite.z_index = 1   # draw in front of player
+		else:
+			sprite.z_index = -1  # draw behind player
 
 # ------------------------------------------------------------ collision ----
 func _build_collision() -> void:

@@ -33,6 +33,7 @@ visible = false
 
 [node name="Player" parent="." unique_id=341096909 instance=ExtResource("1_uwrxv")]
 unique_name_in_owner = true
+z_as_relative = false
 
 [node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=1395920423]
 layer = 2
