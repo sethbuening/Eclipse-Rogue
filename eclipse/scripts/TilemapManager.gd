@@ -43,11 +43,11 @@ var map_seed: int
 @export var ATLAS_TILE_SIZE: Vector2i = Vector2i(32, 48)
 var SPRITE_OFFSET_Y: float = 0
 
-@export var atlas_pos_stone:   Vector2i = Vector2i(0, 0)
-@export var atlas_pos_rock:    Vector2i = Vector2i(0, 1)
-@export var atlas_pos_gold:    Vector2i = Vector2i(1, 0)
-@export var atlas_pos_copper:  Vector2i = Vector2i(2, 0)
-@export var atlas_pos_crystal: Vector2i = Vector2i(3, 0)
+@export var atlas_pos_stone:   Vector2i = Vector2i(1, 2)
+@export var atlas_pos_rock:    Vector2i = Vector2i(1, 5)
+@export var atlas_pos_gold:    Vector2i = Vector2i(4, 2)
+@export var atlas_pos_copper:  Vector2i = Vector2i(4, 5)
+@export var atlas_pos_crystal: Vector2i = Vector2i(7, 2)
 
 var chamber_noise:        FastNoiseLite = FastNoiseLite.new()
 var path_noise:           FastNoiseLite = FastNoiseLite.new()
