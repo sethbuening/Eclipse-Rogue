@@ -2,9 +2,8 @@
 
 [ext_resource type="Script" uid="uid://drjscvcd0uacw" path="res://scenes/game.gd" id="1_p57ef"]
 [ext_resource type="PackedScene" uid="uid://d0234wglvpyt3" path="res://scenes/player.tscn" id="1_uwrxv"]
+[ext_resource type="Script" uid="uid://dnkle1hwxuime" path="res://scripts/TilemapManager.gd" id="3_iywne"]
 [ext_resource type="Script" uid="uid://wd1y18gjk5c1" path="res://scenes/subpixel_camera.gd" id="3_lnu2h"]
-[ext_resource type="Script" uid="uid://dnkle1hwxuime" path="res://scripts/TilemapManager.gd" id="4_lbhrr"]
-[ext_resource type="Texture2D" uid="uid://q2dnkkpl21ee" path="res://art/tempatlas.png" id="5_iywne"]
 [ext_resource type="PackedScene" uid="uid://cfpcxmav7qfv3" path="res://scenes/basalt_altar.tscn" id="5_p57ef"]
 
 [sub_resource type="Environment" id="Environment_iywne"]
@@ -25,8 +24,7 @@ script = ExtResource("3_lnu2h")
 
 [node name="TilemapManager" type="Node" parent="." unique_id=248983693]
 unique_name_in_owner = true
-script = ExtResource("4_lbhrr")
-tile_atlas = ExtResource("5_iywne")
+script = ExtResource("3_iywne")
 
 [node name="BasaltAltar" parent="." unique_id=1391256680 instance=ExtResource("5_p57ef")]
 visible = false
