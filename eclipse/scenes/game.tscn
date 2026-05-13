@@ -6,6 +6,7 @@
 [ext_resource type="Script" uid="uid://dnkle1hwxuime" path="res://scripts/TilemapManager.gd" id="4_lbhrr"]
 [ext_resource type="Texture2D" uid="uid://q2dnkkpl21ee" path="res://art/tempatlas.png" id="5_iywne"]
 [ext_resource type="PackedScene" uid="uid://cfpcxmav7qfv3" path="res://scenes/basalt_altar.tscn" id="5_p57ef"]
+[ext_resource type="Texture2D" uid="uid://dk2dsiedhs7ns" path="res://art/tempatlasore.png" id="7_u5sy4"]
 
 [sub_resource type="Environment" id="Environment_iywne"]
 background_mode = 3
@@ -62,3 +63,6 @@ environment = SubResource("Environment_iywne")
 unique_name_in_owner = true
 script = ExtResource("4_lbhrr")
 tile_atlas = ExtResource("5_iywne")
+ore_atlas = ExtResource("7_u5sy4")
+atlas_variants_stone = 1
+atlas_variants_rock = 1
