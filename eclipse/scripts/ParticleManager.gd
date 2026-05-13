@@ -11,6 +11,7 @@ class Particle:
 	var gradient: Gradient
 	var cast_shadow: bool
 	var size: float
+	var use_gravity: bool
 
 const GRAVITY: float = 400.0
 var particles: Array[Particle] = []
@@ -19,7 +20,7 @@ var tilemap_manager: Node = null
 func _ready() -> void:
 	z_index = 1
 
-func spawn(pos: Vector2, vel: Vector2, z_vel: float, gradient: Gradient, lifetime: float, size: float = 3.0, bounce: float = 0.4, cast_shadow: bool = true) -> void:
+func spawn(pos: Vector2, vel: Vector2, z_vel: float, gradient: Gradient, lifetime: float, size: float = 3.0, bounce: float = 0.4, cast_shadow: bool = true, use_grav: bool = true) -> void:
 	var p := Particle.new()
 	p.pos         = pos
 	p.vel         = vel
@@ -31,6 +32,7 @@ func spawn(pos: Vector2, vel: Vector2, z_vel: float, gradient: Gradient, lifetim
 	p.gradient    = gradient
 	p.cast_shadow = cast_shadow
 	p.size        = size
+	p.use_gravity = use_grav
 	particles.append(p)
 
 func spawn_focus_spark(pos: Vector2) -> void:
@@ -45,9 +47,10 @@ func spawn_focus_spark(pos: Vector2) -> void:
 			randf_range(80, 200),
 			gradient,
 			randf_range(2, 2.3),
-			randf_range(2.0, 4.0),
+			randf_range(1.5, 2.0),
 			0.35,
-			false
+			false,
+			true
 		)
 
 func spawn_mine_chunk(pos: Vector2, tile_color: Color) -> void:
@@ -63,23 +66,32 @@ func spawn_mine_chunk(pos: Vector2, tile_color: Color) -> void:
 			randf_range(0.2, 0.5),
 			randf_range(3.0, 6.0),
 			0.5,
+			true,
 			true
 		)
 
-func spawn_footstep_dust(pos: Vector2) -> void:
+func spawn_focus_particles(pos: Vector2, charge_t: float) -> void:
+	# charge_t is focus_charge / FOCUS_CHARGE_TIME, 0.0 → 1.0
+	# More particles and faster rise as charge builds
+	var count: int   = int(lerp(1, 2, charge_t))
+
 	var gradient := Gradient.new()
-	gradient.set_color(0, Color(0.6, 0.55, 0.5, 0.6))
-	gradient.set_color(1, Color(0.6, 0.55, 0.5, 0.0))
-	for i: int in range(randi_range(1, 3)):
+	gradient.set_color(0, Color(1.0, 1.0, 1.0, 1.0))   # bright white (HDR)
+	gradient.set_color(1, Color(1.1, 1.1, 1.4, 0.0))   # slight blue tint, full fade
+
+	for i in range(count):
+		# Scatter within a small radius around the player
+		var offset := Vector2(randf_range(-20.0, 20.0), randf_range(-8.0, 8.0))
 		spawn(
-			pos,
-			Vector2(randf_range(-20, 20), randf_range(-10, 0)),
-			randf_range(10, 40),
+			pos + offset,
+			Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)),
+			randf_range(45.0, 65.0),       # rise
 			gradient,
-			randf_range(0.2, 0.4),
-			randf_range(1.5, 3.0),
-			0.1,
-			false
+			randf_range(0.5, 0.9),        # short lifetime = crisp, not lingering
+			randf_range(1.25, 2.25),                            # 2px × 2px — four pixels
+			0.0,                          # no bounce; they just float and fade
+			false,                        # no shadow
+			false                         # no gravity
 		)
 
 func _process(delta: float) -> void:
@@ -104,12 +116,15 @@ func _process(delta: float) -> void:
 		else:
 			p.pos = next_pos
 
-		p.z_vel -= GRAVITY * delta
-		p.z     += p.z_vel * delta
-		if p.z < 0.0:
-			p.z     = 0.0
-			p.z_vel = -p.z_vel * p.bounce
-			p.vel   *= 0.8
+		if p.use_gravity:
+			p.z_vel -= GRAVITY * delta
+			p.z     += p.z_vel * delta
+			if p.z < 0.0:
+				p.z     = 0.0
+				p.z_vel = -p.z_vel * p.bounce
+				p.vel   *= 0.8
+		else:
+			p.z += p.z_vel * delta
 
 	particles = particles.filter(func(p: Particle) -> bool: return p.age < p.lifetime)
 	queue_redraw()
@@ -124,4 +139,4 @@ func _draw() -> void:
 		if p.cast_shadow:
 			var shadow_alpha: float = alpha * 0.3 * (1.0 - clampf(p.z / 64.0, 0.0, 1.0))
 			draw_rect(Rect2(p.pos, Vector2.ONE), Color(0, 0, 0, shadow_alpha))
-		draw_rect(Rect2(draw_pos, Vector2.ONE * 2), color)
+		draw_rect(Rect2(draw_pos, Vector2.ONE * p.size), color)

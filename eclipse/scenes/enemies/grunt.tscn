@@ -1,0 +1,18 @@
+[gd_scene format=3 uid="uid://dnishawyjc46h"]
+
+[ext_resource type="Texture2D" uid="uid://bypeko2e87jpl" path="res://art/angel_minor.png" id="1_a6gui"]
+[ext_resource type="Script" uid="uid://d1i6frgffu2xc" path="res://scenes/enemies/grunt.gd" id="1_ave5w"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_uxy5n"]
+size = Vector2(34, 20)
+
+[node name="Grunt" type="CharacterBody2D" unique_id=678939723]
+script = ExtResource("1_ave5w")
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=214917348]
+position = Vector2(0, -31)
+texture = ExtResource("1_a6gui")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=828114756]
+position = Vector2(0, -5)
+shape = SubResource("RectangleShape2D_uxy5n")

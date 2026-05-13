@@ -1,5 +1,7 @@
 extends Node
 
+const ZSORT_EFFECTS: int = 0
+
 enum tile {
 	AIR,
 	STONE,
@@ -16,6 +18,15 @@ enum dir {
 	RIGHT,
 	LEFT,
 	DOWN
+}
+
+# ── wave modifiers ────────────────────────────────────────────────────────────
+enum Modifier {
+	NONE,
+	FAST,
+	ALERTED,
+	CLUSTERED,
+	TRICKLE
 }
 
 func nearest_direction(v: Vector2) -> Vector2i:

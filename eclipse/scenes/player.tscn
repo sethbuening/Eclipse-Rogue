@@ -9,7 +9,7 @@
 [ext_resource type="Texture2D" uid="uid://bxivst1kgarhf" path="res://art/player/foot_right.png" id="7_y4r1p"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_u8vuu"]
-radius = 7.0
+radius = 6.0
 height = 22.0
 
 [sub_resource type="Gradient" id="Gradient_g2els"]
@@ -26,41 +26,56 @@ fill_to = Vector2(0.833, 0.167)
 [node name="Player" type="CharacterBody2D" unique_id=341096909]
 y_sort_enabled = true
 script = ExtResource("1_g2els")
+hand_orbit_radius = 12.0
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=166070350]
-position = Vector2(0, -2)
 rotation = 1.5707964
 shape = SubResource("CapsuleShape2D_u8vuu")
 
 [node name="PointLight2D" type="PointLight2D" parent="." unique_id=127126805]
+position = Vector2(0, 3)
+range_z_min = -4096
+range_z_max = 4096
 texture = SubResource("GradientTexture2D_qhqgy")
 
 [node name="body" type="Sprite2D" parent="." unique_id=2050318150]
+unique_name_in_owner = true
 y_sort_enabled = true
+position = Vector2(-1, 7)
 texture = ExtResource("2_qhqgy")
 offset = Vector2(1, -15)
 
 [node name="hand_left" type="Sprite2D" parent="body" unique_id=352637717]
+unique_name_in_owner = true
 y_sort_enabled = true
-position = Vector2(17, -18)
+position = Vector2(16, 0)
 texture = ExtResource("3_fjrip")
+offset = Vector2(0, -16)
 
 [node name="hand_right" type="Sprite2D" parent="body" unique_id=1539048953]
+unique_name_in_owner = true
 y_sort_enabled = true
-position = Vector2(-16, -17)
+position = Vector2(-15, -1)
 texture = ExtResource("4_smehm")
+offset = Vector2(0, -16)
 
 [node name="head" type="Sprite2D" parent="." unique_id=1156694320]
+unique_name_in_owner = true
 y_sort_enabled = true
+position = Vector2(-1, 7)
 texture = ExtResource("3_dqkch")
 offset = Vector2(1, -28)
 
 [node name="foot_left" type="Sprite2D" parent="." unique_id=1558404198]
+unique_name_in_owner = true
+visible = false
 y_sort_enabled = true
 position = Vector2(7, -3)
 texture = ExtResource("6_ur7pv")
 
 [node name="foot_right" type="Sprite2D" parent="." unique_id=626060231]
+unique_name_in_owner = true
+visible = false
 y_sort_enabled = true
 position = Vector2(-7, -3)
 texture = ExtResource("7_y4r1p")

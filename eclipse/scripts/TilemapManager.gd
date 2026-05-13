@@ -133,7 +133,7 @@ func _setup_rendering() -> void:
 	static_body.collision_layer = 1
 	static_body.collision_mask  = 0
 	static_body.scale           = get_parent().scale
-	%TilemapManager.add_child(static_body)
+	self.add_child(static_body)
 
 	multimesh                  = MultiMesh.new()
 	multimesh.transform_format = MultiMesh.TRANSFORM_2D
@@ -156,7 +156,7 @@ func _setup_rendering() -> void:
 	multimesh_instance.z_index       = -1
 	multimesh_instance.z_as_relative = false
 
-	%TilemapManager.add_child(multimesh_instance)
+	self.add_child(multimesh_instance)
 
 	var sorted_tiles: Array = tile_types.keys()
 	sorted_tiles.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y < b.y)
@@ -240,6 +240,7 @@ func _setup_occluder() -> void:
 func _add_occluder_sprite(map_pos: Vector2i) -> void:
 	if occluder_sprites.has(map_pos):
 		return
+	_hide_instance(map_pos)  # hide the multimesh copy for this tile
 
 	var world_center: Vector2 = map_to_world(map_pos)
 	var sprite             := Sprite2D.new()
@@ -247,11 +248,11 @@ func _add_occluder_sprite(map_pos: Vector2i) -> void:
 	sprite.region_enabled   = true
 	sprite.region_rect      = _get_atlas_rect(tile_types[map_pos])
 	sprite.z_as_relative    = false
-	sprite.position = Vector2(world_center.x, world_center.y - SPRITE_OFFSET_Y - ATLAS_TILE_SIZE.y / 2.0)
-	sprite.offset   = Vector2(0, ATLAS_TILE_SIZE.y / 2.0)
-
+	sprite.z_index          = map_pos.y * 10
+	sprite.position         = Vector2(world_center.x, world_center.y - SPRITE_OFFSET_Y - ATLAS_TILE_SIZE.y / 2.0)
+	sprite.offset           = Vector2(0, ATLAS_TILE_SIZE.y / 2.0)
+	
 	occluder_sprites[map_pos] = sprite
-	# Fix for the error: defer add_child during _ready
 	get_parent().add_child.call_deferred(sprite)
 
 func _remove_occluder_sprite(map_pos: Vector2i) -> void:
@@ -260,16 +261,17 @@ func _remove_occluder_sprite(map_pos: Vector2i) -> void:
 	occluder_sprites[map_pos].queue_free()
 	occluder_sprites.erase(map_pos)
 
-func update_occluder_depths(player: Node2D) -> void:
-	var player_map := world_to_map(player.global_position)
-	for map_pos: Vector2i in occluder_sprites:
-		var sprite: Sprite2D = occluder_sprites[map_pos]
-		# If the player's feet are on the same row or below this tile,
-		# the tile face should occlude the player (z in front of player)
-		if player_map.y <= map_pos.y:
-			sprite.z_index = 1   # draw in front of player
-		else:
-			sprite.z_index = -1  # draw behind player
+	# Only restore the multimesh instance if the tile still exists.
+	# If we're called from remove_tile after tile_types was already erased,
+	# tile_instance_index still has the entry but we must not write a dead tile.
+	if tile_types.has(map_pos):
+		_write_instance(tile_instance_index[map_pos], map_pos)
+
+func get_z_for(world_pos: Vector2) -> int:
+	var tile_row: int    = world_to_map(world_pos).y
+	var tile_top: float  = map_to_world(Vector2i(0, tile_row)).y - TILE_SIZE.y / 2.0
+	var within_tile: int = int((world_pos.y - tile_top) / float(TILE_SIZE.y) * 8.0)
+	return tile_row * 10 + clampi(within_tile, 0, 9)
 
 # ------------------------------------------------------------ collision ----
 func _build_collision() -> void:
@@ -322,12 +324,20 @@ func damage_tile(map_pos: Vector2i, damage: int = 1) -> void:
 func remove_tile(map_pos: Vector2i) -> void:
 	if not tile_types.has(map_pos):
 		return
-	_hide_instance(map_pos)
-	_remove_occluder_sprite(map_pos)
+		
+	# Erase data first so _remove_occluder_sprite's _write_instance guard fires correctly
 	tile_health.erase(map_pos)
 	tile_types.erase(map_pos)
 	tile_shapes[map_pos].disabled = true
-
+	
+	# Now clean up visuals — tile_types no longer has map_pos so
+	# _remove_occluder_sprite won't try to restore the multimesh instance
+	if occluder_sprites.has(map_pos):
+		_remove_occluder_sprite(map_pos)
+	else:
+		_hide_instance(map_pos)
+		
+	# Promote the tile below to an occluder sprite if it's now exposed
 	var below: Vector2i = map_pos + Vector2i(0, 1)
 	if tile_types.has(below) and not occluder_sprites.has(below):
 		_add_occluder_sprite(below)
