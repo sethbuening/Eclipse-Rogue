@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="AbilityFocusMine" format=3 uid="uid://bqon3yj0asjp7"]
+
+[ext_resource type="Script" uid="uid://df7ru3quqk7rm" path="res://scripts/abilities/ability_focus_mine.gd" id="1_kqyj5"]
+[ext_resource type="Script" uid="uid://djuyt3y2iehml" path="res://scripts/abilities/ability_stats.gd" id="2_hlbru"]
+
+[sub_resource type="Resource" id="Resource_ca384"]
+script = ExtResource("2_hlbru")
+cooldown = 1.0
+light_cost = 15.0
+mining_power = 5
+metadata/_custom_type_script = "uid://djuyt3y2iehml"
+
+[resource]
+script = ExtResource("1_kqyj5")
+id = "0"
+display_name = "Focus Explosion"
+requires_hold = true
+stats = SubResource("Resource_ca384")
+metadata/_custom_type_script = "uid://df7ru3quqk7rm"

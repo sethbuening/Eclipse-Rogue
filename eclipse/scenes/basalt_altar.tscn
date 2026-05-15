@@ -18,7 +18,7 @@ colors = PackedColorArray(0.9019608, 0.101960786, 0, 1, 0.7647059, 0.40392157, 0
 [node name="BasaltAltar" type="Node2D" unique_id=1391256680]
 
 [node name="lava" type="Sprite2D" parent="." unique_id=1819851708]
-modulate = Color(3.2944162, 3.2944162, 3.2944162, 1)
+modulate = Color(2.454227, 2.454227, 2.454227, 1)
 position = Vector2(2, 9)
 texture = ExtResource("2_xmci6")
 

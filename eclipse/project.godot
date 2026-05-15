@@ -21,6 +21,7 @@ Util="*uid://bqtv4egpchjgm"
 ParticleManager="*uid://dsgx4d76etqud"
 EnemyManager="*uid://fcmsyn7h7a2m"
 WaveManager="*uid://ct3irpix2qrbu"
+ItemManager="*uid://ch60r00nky0hr"
 
 [display]
 
@@ -87,6 +88,7 @@ dev_call_wave={
 [physics]
 
 3d/physics_engine="Jolt Physics"
+common/physics_interpolation=true
 
 [rendering]
 

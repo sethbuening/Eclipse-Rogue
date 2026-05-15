@@ -70,6 +70,32 @@ func spawn_mine_chunk(pos: Vector2, tile_color: Color) -> void:
 			true
 		)
 
+func spawn_mine_dust(pos: Vector2, tile_type: Util.tile) -> void:
+	var color: Color = _tile_dust_color(tile_type)
+	var gradient     := Gradient.new()
+	gradient.set_color(0, Color(color.r, color.g, color.b, 0.7))
+	gradient.set_color(1, Color(color.r * 0.6, color.g * 0.6, color.b * 0.6, 0.0))
+	for i in range(randi_range(3, 6)):
+		spawn(
+			pos + Vector2(randf_range(-8, 8), randf_range(-8, 8)),
+			Vector2(randf_range(-30, 30), randf_range(-50, -10)),
+			randf_range(20, 60),
+			gradient,
+			randf_range(0.3, 0.6),
+			randf_range(2.0, 4.0),
+			0.1,
+			false
+		)
+
+func _tile_dust_color(tile_type: Util.tile) -> Color:
+	match tile_type:
+		Util.tile.STONE:   return Color(0.5, 0.45, 0.4)
+		Util.tile.ROCK:    return Color(0.35, 0.32, 0.3)
+		Util.tile.GOLD:    return Color(0.8, 0.65, 0.1)
+		Util.tile.COPPER:  return Color(0.7, 0.4, 0.2)
+		Util.tile.CRYSTAL: return Color(0.4, 0.6, 0.9)
+		_:                 return Color(0.5, 0.45, 0.4)
+
 func spawn_focus_particles(pos: Vector2, charge_t: float) -> void:
 	# charge_t is focus_charge / FOCUS_CHARGE_TIME, 0.0 → 1.0
 	# More particles and faster rise as charge builds
@@ -94,10 +120,118 @@ func spawn_focus_particles(pos: Vector2, charge_t: float) -> void:
 			false                         # no gravity
 		)
 
+# -------------------------------------------------------------------- Sprite Particles ------------
+
+class SpriteParticle:
+	var pos:        Vector2
+	var vel:        Vector2
+	var z:          float
+	var z_vel:      float
+	var bounce:     float
+	var lifetime:   float
+	var age:        float
+	var use_gravity: bool
+	var texture:    Texture2D
+	var overlay:    Texture2D   # null if no overlay (ore on rubble)
+	var size:       Vector2     # draw size in pixels
+	var rotation:   float
+	var rot_vel:    float       # rotational velocity
+	var fade_delay: float       # how long before it starts fading
+
+var sprite_particles: Array[SpriteParticle] = []
+
+func spawn_sprite(
+				pos:        Vector2,
+				vel:        Vector2,
+				z_vel:      float,
+				texture:    Texture2D,
+				size:       Vector2,
+				lifetime:   float,
+				fade_delay: float   = 0.5,
+				overlay:    Texture2D = null,
+				bounce:     float   = 0.3,
+				use_gravity: bool   = true,
+				rot_vel:    float   = 0.0) -> void:
+	var p          := SpriteParticle.new()
+	p.pos           = pos
+	p.vel           = vel
+	p.z             = 0.0
+	p.z_vel         = z_vel
+	p.bounce        = bounce
+	p.lifetime      = lifetime
+	p.fade_delay    = fade_delay
+	p.age           = 0.0
+	p.use_gravity   = use_gravity
+	p.texture       = texture
+	p.overlay       = overlay
+	p.size          = size
+	p.rotation      = randf_range(0, TAU)
+	p.rot_vel       = rot_vel
+	sprite_particles.append(p)
+
+# base_textures and overlay_textures set in inspector or loaded here
+@export var rubble_stone:  Array[Texture2D] = []  # 10 sprites
+@export var rubble_rock:   Array[Texture2D] = []  # 10 sprites
+@export var ore_overlay_gold:   Array[Texture2D] = []  # 2-4 sprites
+@export var ore_overlay_copper: Array[Texture2D] = []  # 2-4 sprites
+
+func spawn_debris(pos: Vector2, tile_type: Util.tile) -> void:
+	var base_set: Array[Texture2D] = _rubble_set_for(tile_type)
+	if base_set.is_empty():
+		return
+	var count: int = randi_range(2, 4)
+	for i in range(count):
+		var tex: Texture2D = base_set[randi() % base_set.size()]
+		spawn_sprite(
+			pos + Vector2(randf_range(-6, 6), randf_range(-4, 4)),
+			Vector2(randf_range(-40, 40), randf_range(-60, -10)),
+			randf_range(30, 90),
+			tex,
+			Vector2(8, 8),
+			randf_range(1.5, 2.5),
+			0.8,           # fade_delay — sits on ground before fading
+			null,          # no overlay
+			0.35,
+			true,
+			randf_range(-4.0, 4.0)
+		)
+
+func spawn_ore_rubble(pos: Vector2, tile_type: Util.tile, ore_type: Util.tile) -> void:
+	var base_set:    Array[Texture2D] = _rubble_set_for(tile_type)
+	var overlay_set: Array[Texture2D] = _ore_overlay_set_for(ore_type)
+	if base_set.is_empty():
+		return
+	var tex:     Texture2D = base_set[randi() % base_set.size()]
+	var overlay: Texture2D = overlay_set[randi() % overlay_set.size()] if not overlay_set.is_empty() else null
+	spawn_sprite(
+		pos + Vector2(randf_range(-4, 4), randf_range(-4, 4)),
+		Vector2(randf_range(-30, 30), randf_range(-50, -20)),
+		randf_range(40, 100),
+		tex,
+		Vector2(10, 10),
+		randf_range(2.0, 3.0),
+		1.0,
+		overlay,
+		0.4,
+		true,
+		randf_range(-3.0, 3.0)
+	)
+
+func _rubble_set_for(t: Util.tile) -> Array[Texture2D]:
+	match t:
+		Util.tile.STONE: return rubble_stone
+		Util.tile.ROCK:  return rubble_rock
+		_:               return rubble_stone
+
+func _ore_overlay_set_for(t: Util.tile) -> Array[Texture2D]:
+	match t:
+		Util.tile.GOLD:   return ore_overlay_gold
+		Util.tile.COPPER: return ore_overlay_copper
+		_:                return []
+
 func _process(delta: float) -> void:
 	for p: Particle in particles:
 		p.age += delta
-
 		var next_pos: Vector2 = p.pos + p.vel * delta
 		if tilemap_manager != null:
 			var map_pos: Vector2i = tilemap_manager.world_to_map(next_pos)
@@ -108,14 +242,12 @@ func _process(delta: float) -> void:
 					p.vel.x *= -p.bounce
 				else:
 					p.vel.y *= -p.bounce
-				# if on the ground, also kill some vertical energy on wall hit
 				if p.z <= 0.0:
-					p.vel   *= 0.7
+					p.vel *= 0.7
 			else:
 				p.pos = next_pos
 		else:
 			p.pos = next_pos
-
 		if p.use_gravity:
 			p.z_vel -= GRAVITY * delta
 			p.z     += p.z_vel * delta
@@ -126,7 +258,39 @@ func _process(delta: float) -> void:
 		else:
 			p.z += p.z_vel * delta
 
-	particles = particles.filter(func(p: Particle) -> bool: return p.age < p.lifetime)
+	for p: SpriteParticle in sprite_particles:
+		p.age      += delta
+		p.rotation += p.rot_vel * delta
+		var next_pos: Vector2 = p.pos + p.vel * delta
+		if tilemap_manager != null:
+			var map_pos: Vector2i = tilemap_manager.world_to_map(next_pos)
+			if tilemap_manager.tile_exists(map_pos):
+				var tile_center: Vector2 = tilemap_manager.map_to_world(map_pos)
+				var diff: Vector2 = p.pos - tile_center
+				if abs(diff.x) > abs(diff.y):
+					p.vel.x *= -p.bounce
+				else:
+					p.vel.y *= -p.bounce
+				if p.z <= 0.0:
+					p.vel    *= 0.7
+					p.rot_vel *= 0.4
+			else:
+				p.pos = next_pos
+		else:
+			p.pos = next_pos
+		if p.use_gravity:
+			p.z_vel -= GRAVITY * delta
+			p.z     += p.z_vel * delta
+			if p.z < 0.0:
+				p.z      = 0.0
+				p.z_vel  = -p.z_vel * p.bounce
+				p.vel   *= 0.8
+				p.rot_vel *= 0.4
+		else:
+			p.z += p.z_vel * delta
+
+	particles        = particles.filter(func(p: Particle) -> bool: return p.age < p.lifetime)
+	sprite_particles = sprite_particles.filter(func(p: SpriteParticle) -> bool: return p.age < p.lifetime)
 	queue_redraw()
 
 func _draw() -> void:
@@ -140,3 +304,17 @@ func _draw() -> void:
 			var shadow_alpha: float = alpha * 0.3 * (1.0 - clampf(p.z / 64.0, 0.0, 1.0))
 			draw_rect(Rect2(p.pos, Vector2.ONE), Color(0, 0, 0, shadow_alpha))
 		draw_rect(Rect2(draw_pos, Vector2.ONE * p.size), color)
+
+	for p: SpriteParticle in sprite_particles:
+		if p.texture == null:
+			continue
+		var alpha: float = 1.0
+		if p.age > p.fade_delay:
+			alpha = 1.0 - (p.age - p.fade_delay) / (p.lifetime - p.fade_delay)
+		alpha = clampf(alpha, 0.0, 1.0)
+		var half: Vector2 = p.size / 2.0
+		draw_set_transform(p.pos + Vector2(0, -p.z), p.rotation)
+		draw_texture_rect(p.texture, Rect2(-half, p.size), false, Color(1, 1, 1, alpha))
+		if p.overlay != null:
+			draw_texture_rect(p.overlay, Rect2(-half, p.size), false, Color(1, 1, 1, alpha))
+		draw_set_transform(Vector2.ZERO)

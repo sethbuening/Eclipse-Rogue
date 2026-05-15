@@ -4,6 +4,7 @@
 [ext_resource type="PackedScene" uid="uid://d0234wglvpyt3" path="res://scenes/player.tscn" id="1_uwrxv"]
 [ext_resource type="Script" uid="uid://wd1y18gjk5c1" path="res://scenes/subpixel_camera.gd" id="3_lnu2h"]
 [ext_resource type="Script" uid="uid://dnkle1hwxuime" path="res://scripts/TilemapManager.gd" id="4_lbhrr"]
+[ext_resource type="Script" uid="uid://bbajvvrye7i4c" path="res://scripts/inventory.gd" id="5_gee14"]
 [ext_resource type="Texture2D" uid="uid://q2dnkkpl21ee" path="res://art/tempatlas.png" id="5_iywne"]
 [ext_resource type="PackedScene" uid="uid://cfpcxmav7qfv3" path="res://scenes/basalt_altar.tscn" id="5_p57ef"]
 [ext_resource type="Texture2D" uid="uid://dk2dsiedhs7ns" path="res://art/tempatlasore.png" id="7_u5sy4"]
@@ -30,6 +31,9 @@ visible = false
 [node name="Player" parent="." unique_id=341096909 instance=ExtResource("1_uwrxv")]
 unique_name_in_owner = true
 z_as_relative = false
+
+[node name="Inventory" type="Node" parent="Player" unique_id=1698984047]
+script = ExtResource("5_gee14")
 
 [node name="DebugText" type="CanvasLayer" parent="." unique_id=1395920423]
 layer = 2

@@ -449,12 +449,24 @@ func tile_exists(map_pos: Vector2i) -> bool:
 
 func is_air(map_pos: Vector2i) -> bool:
 	return not tile_types.has(map_pos)
+	
+func _drop_ore(map_pos: Vector2i) -> void:
+	if not ore_types.has(map_pos):
+		return
+	ItemManager.spawn_dropped_item(map_to_world(map_pos), ore_types[map_pos])
 
 func damage_tile(map_pos: Vector2i, damage: int = 1) -> void:
 	if not tile_health.has(map_pos):
 		return
+	var world_pos: Vector2  = map_to_world(map_pos)
+	var base_type: Util.tile = tile_types[map_pos]
+	ParticleManager.spawn_mine_dust(world_pos, base_type)
+	ParticleManager.spawn_debris(world_pos, base_type)
 	tile_health[map_pos] -= damage
 	if tile_health[map_pos] <= 0:
+		if ore_types.has(map_pos):
+			ParticleManager.spawn_ore_rubble(world_pos, base_type, ore_types[map_pos])
+			_drop_ore(map_pos)
 		remove_tile(map_pos)
 
 func remove_tile(map_pos: Vector2i) -> void:
