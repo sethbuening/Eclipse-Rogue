@@ -1,0 +1,30 @@
+[gd_scene format=3 uid="uid://cwm5dxysbrho5"]
+
+[ext_resource type="Script" uid="uid://dutliqldvb8n" path="res://scripts/nodegraph/orb_graph_menu.gd" id="1_sxkmh"]
+
+[node name="OrbGraphMenu" type="CanvasLayer" unique_id=1800532869]
+script = ExtResource("1_sxkmh")
+
+[node name="GraphCanvas" type="Control" parent="." unique_id=1204750768]
+unique_name_in_owner = true
+layout_mode = 3
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -20.0
+offset_top = -20.0
+offset_right = 20.0
+offset_bottom = 20.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="OrbList" type="VBoxContainer" parent="." unique_id=1534087906]
+unique_name_in_owner = true
+anchors_preset = 11
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 0
+grow_vertical = 2

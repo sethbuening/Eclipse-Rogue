@@ -141,6 +141,7 @@ func _ready() -> void:
 	print("Generated %d copper tiles" % copper_tiles_added)
 
 	_setup_rendering()
+	_initial_df_bake()
 	_build_collision()
 	_setup_occluder()
 
@@ -295,7 +296,8 @@ func _write_base_instance(idx: int, map_pos: Vector2i) -> void:
 	var t: Transform2D = Transform2D.IDENTITY
 	t.origin = _world_origin(map_pos)
 	multimesh.set_instance_transform_2d(idx, t)
-	multimesh.set_instance_color(idx, Color.WHITE)
+	var has_side: bool = is_air(map_pos + Vector2i(0, 1))
+	multimesh.set_instance_color(idx, Color(1.0, 1.0, 1.0, 0.0 if has_side else 1.0))
 	var uv: Rect2 = _base_atlas_uv(map_pos)
 	multimesh.set_instance_custom_data(idx, Color(uv.position.x, uv.position.y, uv.size.x, uv.size.y))
 
@@ -303,7 +305,8 @@ func _write_ore_instance(idx: int, map_pos: Vector2i) -> void:
 	var t: Transform2D = Transform2D.IDENTITY
 	t.origin = _world_origin(map_pos)
 	ore_multimesh.set_instance_transform_2d(idx, t)
-	ore_multimesh.set_instance_color(idx, Color.WHITE)
+	var has_side: bool = is_air(map_pos + Vector2i(0, 1))
+	ore_multimesh.set_instance_color(idx, Color(1.0, 1.0, 1.0, 0.0 if has_side else 1.0))
 	var uv: Rect2 = _ore_atlas_uv(map_pos)
 	ore_multimesh.set_instance_custom_data(idx, Color(uv.position.x, uv.position.y, uv.size.x, uv.size.y))
 
@@ -496,6 +499,10 @@ func remove_tile(map_pos: Vector2i) -> void:
 
 	# Redraw neighbors so their bitmasks update
 	_redraw_neighbors(map_pos)
+	
+	# update the distance field for shadows created by the shader
+	_mark_chunk_dirty(map_pos)
+	_request_df_update()
 
 func in_bounds(loc: Vector2i) -> bool:
 	return loc.x >= 0 and loc.x < WIDTH and loc.y >= 0 and loc.y < HEIGHT
@@ -732,3 +739,119 @@ func place_copper(grid: Array) -> void:
 
 func is_replaceable(t: Variant) -> bool:
 	return t != null and t != Util.tile.AIR and t != Util.tile.CRYSTAL and t != Util.tile.COPPER
+
+# ── distance field shadow calculation ─────────────────────────────────────────
+var _df_texture:      ImageTexture     = ImageTexture.new()
+var _df_thread:       Thread           = Thread.new()
+var _df_pending:      Image            = null
+var _df_dirty_chunks: Array[Vector2i]  = []
+var _df_running:      bool             = false
+
+const DF_CHUNK_SIZE: int   = 16
+const DF_MAX_DEPTH:  float = 5.0
+
+func _initial_df_bake() -> void:
+	var img: Image = Image.create(WIDTH, HEIGHT, false, Image.FORMAT_RF)
+	var dist: Array = []
+	dist.resize(WIDTH * HEIGHT)
+	dist.fill(-1.0)
+	var queue: Array[Vector2i] = []
+	for x in range(WIDTH):
+		for y in range(HEIGHT):
+			if is_air(Vector2i(x, y)):
+				dist[y * WIDTH + x] = 0.0
+				queue.append(Vector2i(x, y))
+	var dirs: Array[Vector2i] = [Vector2i(1,0), Vector2i(-1,0), Vector2i(0,1), Vector2i(0,-1)]
+	var i: int = 0
+	while i < queue.size():
+		var cur: Vector2i = queue[i]; i += 1
+		for d in dirs:
+			var nb: Vector2i = cur + d
+			if nb.x < 0 or nb.y < 0 or nb.x >= WIDTH or nb.y >= HEIGHT:
+				continue
+			if dist[nb.y * WIDTH + nb.x] >= 0.0:
+				continue
+			dist[nb.y * WIDTH + nb.x] = dist[cur.y * WIDTH + cur.x] + 1.0
+			queue.append(nb)
+	for x in range(WIDTH):
+		for y in range(HEIGHT):
+			img.set_pixel(x, y, Color(clampf(dist[y * WIDTH + x] / DF_MAX_DEPTH, 0.0, 1.0), 0, 0, 1))
+	_df_texture.set_image(img)
+	_set_df_shader_params()
+
+func _set_df_shader_params() -> void:
+	var world_origin: Vector2 = map_to_world(Vector2i(0, 0)) - Vector2(TILE_SIZE) / 2.0
+	for mat: ShaderMaterial in [multimesh_instance.material, ore_multimesh_instance.material]:
+		mat.set_shader_parameter("distance_field",  _df_texture)
+		mat.set_shader_parameter("map_size",        Vector2(WIDTH, HEIGHT))
+		mat.set_shader_parameter("map_world_origin", world_origin)
+		mat.set_shader_parameter("tile_world_size", float(TILE_SIZE.x))
+		mat.set_shader_parameter("max_depth",       DF_MAX_DEPTH)
+		mat.set_shader_parameter("darkness_power",  1.0)
+
+func _mark_chunk_dirty(map_pos: Vector2i) -> void:
+	var chunk: Vector2i = Vector2i(map_pos.x / DF_CHUNK_SIZE, map_pos.y / DF_CHUNK_SIZE)
+	if not _df_dirty_chunks.has(chunk):
+		_df_dirty_chunks.append(chunk)
+
+func _request_df_update() -> void:
+	if _df_running or _df_dirty_chunks.is_empty():
+		return
+	_df_running = true
+	var dirty_copy: Array[Vector2i] = _df_dirty_chunks.duplicate()
+	_df_dirty_chunks.clear()
+	_df_thread.start(_compute_df_threaded.bind(dirty_copy, tile_types.duplicate()))
+
+func _compute_df_threaded(dirty_chunks: Array[Vector2i], snapshot: Dictionary) -> void:
+	var min_tile := Vector2i(WIDTH, HEIGHT)
+	var max_tile := Vector2i(0, 0)
+	for chunk in dirty_chunks:
+		var margin: int = int(DF_MAX_DEPTH) + 2
+		min_tile.x = mini(min_tile.x, chunk.x * DF_CHUNK_SIZE - margin)
+		min_tile.y = mini(min_tile.y, chunk.y * DF_CHUNK_SIZE - margin)
+		max_tile.x = maxi(max_tile.x, (chunk.x + 1) * DF_CHUNK_SIZE + margin)
+		max_tile.y = maxi(max_tile.y, (chunk.y + 1) * DF_CHUNK_SIZE + margin)
+	min_tile = min_tile.clamp(Vector2i.ZERO, Vector2i(WIDTH - 1, HEIGHT - 1))
+	max_tile = max_tile.clamp(Vector2i.ZERO, Vector2i(WIDTH - 1, HEIGHT - 1))
+
+	var rw: int = max_tile.x - min_tile.x + 1
+	var rh: int = max_tile.y - min_tile.y + 1
+	var dist: Array = []; dist.resize(rw * rh); dist.fill(-1.0)
+	var queue: Array[Vector2i] = []
+
+	for x in range(rw):
+		for y in range(rh):
+			if not snapshot.has(min_tile + Vector2i(x, y)):
+				dist[y * rw + x] = 0.0
+				queue.append(Vector2i(x, y))
+
+	var dirs: Array[Vector2i] = [Vector2i(1,0), Vector2i(-1,0), Vector2i(0,1), Vector2i(0,-1)]
+	var i: int = 0
+	while i < queue.size():
+		var cur: Vector2i = queue[i]; i += 1
+		for d in dirs:
+			var nb: Vector2i = cur + d
+			if nb.x < 0 or nb.y < 0 or nb.x >= rw or nb.y >= rh:
+				continue
+			if dist[nb.y * rw + nb.x] >= 0.0:
+				continue
+			dist[nb.y * rw + nb.x] = dist[cur.y * rw + cur.x] + 1.0
+			queue.append(nb)
+
+	var img: Image = _df_texture.get_image()
+	if img == null or img.get_width() != WIDTH or img.get_height() != HEIGHT:
+		img = Image.create(WIDTH, HEIGHT, false, Image.FORMAT_RF)
+	for x in range(rw):
+		for y in range(rh):
+			var d: float = dist[y * rw + x]
+			img.set_pixel(min_tile.x + x, min_tile.y + y, Color(clampf(d / DF_MAX_DEPTH, 0.0, 1.0) if d >= 0.0 else 0.0, 0, 0, 1))
+	_df_pending = img
+
+func _process(_delta: float) -> void:
+	if _df_pending != null and not _df_thread.is_alive():
+		_df_thread.wait_to_finish()
+		_df_texture.set_image(_df_pending)
+		_df_pending = null
+		_df_running = false
+		if not _df_dirty_chunks.is_empty():
+			_request_df_update()

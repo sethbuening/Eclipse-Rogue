@@ -1,5 +1,5 @@
-# forge_modifier.gd
-class_name ForgeModifier
+# orb_modifier.gd
+class_name OrbModifier
 extends Resource
 
 enum ModType { ADDITIVE, MULTIPLICATIVE }

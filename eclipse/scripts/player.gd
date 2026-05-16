@@ -1,15 +1,14 @@
-# player.gd
 extends CharacterBody2D
 
 var light: float = 100.0
 
 var movement_enabled: bool = true
-@onready var speed: float = 100.0 * get_parent().scale.x
+@onready var speed: float  = 100.0 * get_parent().scale.x
 
 @export_group("Procedural Animation")
-@export var head_offset:      Vector2 = Vector2(1, -28)
-@export var body_offset:      Vector2 = Vector2(1, -15)
-@export var bob_amount:       float   = 2.5
+@export var head_offset: Vector2 = Vector2(1, -28)
+@export var body_offset: Vector2 = Vector2(1, -15)
+@export var bob_amount:  float   = 2.5
 
 @export_group("Orb Orbit")
 @export var orb_orbit_center: Vector2 = Vector2(1, -15)
@@ -19,44 +18,37 @@ var movement_enabled: bool = true
 @export var orb_reform_flash: float   = 0.2
 
 @export_group("Focus Animation")
-@export var focus_orbit_speed: float = 4.0
+@export var focus_orbit_speed: float = 8.0
 
 @export_group("Starting Orbs")
 @export var starting_orb: Orb = preload("res://data/orbs/orb_focus_mine.tres")
 
-# ── directional textures ──────────────────────────────────────────────────────
+# ---------------------------------------------------------------- textures ---
 var head_up:    Texture2D = preload("res://art/player/head_up.png")
 var head_right: Texture2D = preload("res://art/player/head_right.png")
 var head_down:  Texture2D = preload("res://art/player/head_down.png")
 var head_left:  Texture2D = preload("res://art/player/head_left.png")
-
 var body_up:    Texture2D = preload("res://art/player/body_up.png")
 var body_right: Texture2D = preload("res://art/player/body_right.png")
 var body_down:  Texture2D = preload("res://art/player/body_down.png")
 var body_left:  Texture2D = preload("res://art/player/body_left.png")
 
-# ── focus constants ───────────────────────────────────────────────────────────
-const FOCUS_BLOOM_MIN: float = 0.0
-const FOCUS_BLOOM_MAX: float = 0.75
-const FOCUS_GLOW_MIN:  float = 0.3
-const FOCUS_GLOW_MAX:  float = 1.25
-const FOCUS_DECAY:     float = 4.0
+# --------------------------------------------------------------- constants ---
+const FOCUS_BLOOM_MIN:      float = 0.0
+const FOCUS_BLOOM_MAX:      float = 0.75
+const FOCUS_GLOW_MIN:       float = 0.3
+const FOCUS_GLOW_MAX:       float = 1.25
+const FOCUS_DECAY:          float = 4.0
+const CHANNEL_TIME:         float = 5.0
+const CHANNEL_LIGHT_COST:   float = 80.0
+const CHANNEL_POWER_BONUS:  float = 0.15
 
-# ── orb visuals ───────────────────────────────────────────────────────────────
-class OrbVisual:
-	var sprite:         Sprite2D
-	var shattered:      bool  = false
-	var cooldown_age:   float = 0.0
-	var cooldown:       float = 0.0
-	var reform_flash:   float = 0.0
-	var current_angle:  float = 0.0
-
-var orb_visuals: Array[OrbVisual] = []
-var orbit_time:  float            = 0.0
-
-# ── state ─────────────────────────────────────────────────────────────────────
-var env_t: float = 0.0
-var time:  float = 0.0
+# ------------------------------------------------------------------- state ---
+var time:                float = 0.0
+var env_t:               float = 0.0
+var channeling_orb_index: int  = -1
+var channel_charge:       float = 0.0
+var orbit_speed_mult:     float = 1.0   # ← add this
 
 var direction: Vector2i = Vector2i.DOWN:
 	set(value):
@@ -64,38 +56,47 @@ var direction: Vector2i = Vector2i.DOWN:
 			return
 		direction = value
 		match value:
-			Vector2i.UP:
-				$head.texture = head_up
-				$body.texture = body_up
-			Vector2i.RIGHT:
-				$head.texture = head_right
-				$body.texture = body_right
-			Vector2i.DOWN:
-				$head.texture = head_down
-				$body.texture = body_down
-			Vector2i.LEFT:
-				$head.texture = head_left
-				$body.texture = body_left
+			Vector2i.UP:    $head.texture = head_up;    $body.texture = body_up
+			Vector2i.RIGHT: $head.texture = head_right; $body.texture = body_right
+			Vector2i.DOWN:  $head.texture = head_down;  $body.texture = body_down
+			Vector2i.LEFT:  $head.texture = head_left;  $body.texture = body_left
 	get():
 		return direction
 
-# ── ready ─────────────────────────────────────────────────────────────────────
+# -------------------------------------------------------------- orb visuals --
+class OrbVisual:
+	var sprite:        Sprite2D
+	var shattered:     bool  = false
+	var skip_frame:    bool  = false
+	var cooldown_age:  float = 0.0
+	var cooldown:      float = 0.0
+	var reform_flash:  float = 0.0
+	var current_angle: float = 0.0
+	var glow:          float = 0.0
+
+var orb_visuals: Array[OrbVisual] = []
+var orbit_time:  float            = 0.0
+
+# ------------------------------------------------------------------- ready ---
 func _ready() -> void:
 	$Inventory.orb_added.connect(_on_orb_added)
 	$Inventory.orb_removed.connect(_on_orb_removed)
 	$Inventory.add_orb(starting_orb.duplicate(true))
 
-# ── orb visual management ─────────────────────────────────────────────────────
+# --------------------------------------------------------- orb management ---
 func _on_orb_added(orb: Orb) -> void:
-	var ov            := OrbVisual.new()
-	ov.sprite          = Sprite2D.new()
-	ov.sprite.texture  = orb.sprite_texture
-	ov.sprite.centered = true
+	var ov             := OrbVisual.new()
+	ov.sprite           = Sprite2D.new()
+	ov.sprite.texture   = orb.sprite_texture
+	ov.sprite.centered  = true
+	ov.sprite.visible   = false
+	ov.sprite.z_as_relative = false
+	ov.sprite.z_index       = 4096
 	add_child(ov.sprite)
-	var new_count: int = orb_visuals.size() + 1
-	var new_index: int = orb_visuals.size()
-	ov.current_angle   = orbit_time + (float(new_index) / float(new_count)) * TAU
 	orb_visuals.append(ov)
+	var new_count: int = orb_visuals.size()
+	for i in range(new_count):
+		orb_visuals[i].current_angle = orbit_time + (float(i) / float(new_count)) * TAU
 
 func _on_orb_removed(orb: Orb) -> void:
 	var idx: int = $Inventory.orbs.find(orb)
@@ -112,13 +113,12 @@ func shatter_orb(orb_index: int) -> void:
 	if ov.shattered:
 		return
 	ov.shattered      = true
+	ov.glow           = 0.0
 	ov.cooldown_age   = 0.0
 	ov.cooldown       = orb.primary_ability().stats.cooldown if orb.primary_ability() else 1.0
 	ov.sprite.visible = false
-	# freeze current_angle so the lerp has nothing to chase while shattered
-	var count: int        = orb_visuals.size()
-	var phase: float      = (float(orb_index) / float(count)) * TAU
-	ov.current_angle      = orbit_time + phase
+	var phase: float  = (float(orb_index) / float(orb_visuals.size())) * TAU
+	ov.current_angle  = orbit_time + phase
 	ParticleManager.spawn_focus_spark(global_position + ov.sprite.position)
 
 func store_light_in_orb(orb_index: int, amount: float) -> void:
@@ -127,103 +127,110 @@ func store_light_in_orb(orb_index: int, amount: float) -> void:
 	$Inventory.orbs[orb_index].store_light(amount)
 	ParticleManager.spawn_focus_particles(global_position, 1.0)
 
-# ── context helpers ───────────────────────────────────────────────────────────
+# -------------------------------------------------------------- context ---
 func _make_context(delta: float, pressed: bool, orb_index: int) -> Dictionary:
-	var ov: OrbVisual = orb_visuals[orb_index]
 	return {
 		"player":        self,
 		"tilemap":       %TilemapManager,
 		"delta":         delta,
 		"pressed":       pressed,
 		"lock_movement": false,
-		"env_target":    0.0,
 		"orb_t":         0.0,
 		"shatter":       false,
-		"orb_shattered": ov.shattered,
+		"orb_shattered": orb_visuals[orb_index].shattered,
 	}
 
-func _read_context(context: Dictionary, orb_index: int, max_env: float, max_t: float) -> Vector2:
+func _read_context(context: Dictionary, orb_index: int, max_t: float) -> float:
 	if context["shatter"]:
 		shatter_orb(orb_index)
+		_trigger_connections(orb_index, context["delta"])
 	if context["lock_movement"]:
 		movement_enabled = false
-	return Vector2(
-		maxf(max_env, context["env_target"]),
-		maxf(max_t,   context["orb_t"])
-	)
+	if orb_index < orb_visuals.size():
+		orb_visuals[orb_index].glow = context["orb_t"]
+	return maxf(max_t, context["orb_t"])
 
-# ── process ───────────────────────────────────────────────────────────────────
+# --------------------------------------------------------------- process ---
 func _process(delta: float) -> void:
-	time            += delta
-	z_index          = %TilemapManager.get_z_for(global_position)
-	movement_enabled = true
-	
-	# ── head/body bob ───────────────────────────────────────────────────────────
-	$head.offset = head_offset + Vector2(
-		0,
-		round(bob_amount * sin(time * 2.0))
-	)
-	$body.offset = body_offset + Vector2(
-		0,
-		round(bob_amount * sin(time * 2.0 + 0.5))
-	)
-	
-	_update_orb_visuals(delta, env_t)
+	time             += delta
+	z_index           = %TilemapManager.get_z_for(global_position)
+	movement_enabled  = true
 
-	var max_env_target: float = 0.0
-	var max_orb_t:      float = 0.0
-	var orbs: Array[Orb]      = $Inventory.orbs
+	$head.offset = head_offset + Vector2(0, round(bob_amount * sin(time * 2.0)))
+	$body.offset = body_offset + Vector2(0, round(bob_amount * sin(time * 2.0 + 0.5)))
 
+	_tick_channel(delta)
+	_update_orb_visuals(delta)
+	_tick_abilities(delta)
+	_tick_env(delta)
+	_tick_dev_input()
+
+func _tick_channel(delta: float) -> void:
+	var channel_held: bool = Input.is_action_pressed("channel_light")
+	if channeling_orb_index != -1:
+		if not channel_held:
+			_cancel_channel()
+			return
+		movement_enabled = false
+		channel_charge   += delta
+		var t: float      = minf(channel_charge / CHANNEL_TIME, 1.0)
+		env_t             = t
+		_set_env(t)
+		orb_visuals[channeling_orb_index].glow = t
+		orbit_speed_mult = lerpf(1.0, focus_orbit_speed, t)
+		ParticleManager.spawn_focus_particles(global_position, t)
+		if channel_charge >= CHANNEL_TIME:
+			_complete_channel()
+	elif channel_held:
+		ParticleManager.spawn_focus_particles(global_position, 0.02)
+		for i in range($Inventory.orbs.size()):
+			var orb: Orb = $Inventory.orbs[i]
+			if orb.input_action == "" or orb.node_index == -1 or orb_visuals[i].shattered:
+				continue
+			if Input.is_action_just_pressed(orb.input_action):
+				channeling_orb_index = i
+				channel_charge       = 0.0
+				break
+
+func _tick_abilities(delta: float) -> void:
+	if channeling_orb_index != -1:
+		return
+	var max_orb_t: float = 0.0
+	var orbs: Array[Orb] = $Inventory.orbs
 	for i in range(orbs.size()):
 		var orb:     Orb         = orbs[i]
 		var ability: AbilityData = orb.primary_ability()
-
-		# ── passive — fire every frame ────────────────────────────────────────
+		if orb.node_index == -1:
+			continue
 		var passive_ctx: Dictionary = _make_context(delta, false, i)
 		orb.activate_trigger(AbilityData.TriggerType.PASSIVE, passive_ctx)
-		var passive_out: Vector2 = _read_context(passive_ctx, i, max_env_target, max_orb_t)
-		max_env_target = passive_out.x
-		max_orb_t      = passive_out.y
-
-		# ── active — skip if no keybind or no active ability ──────────────────
+		max_orb_t = _read_context(passive_ctx, i, max_orb_t)
 		if orb.input_action == "" or ability == null or ability.trigger_type != AbilityData.TriggerType.ACTIVE:
 			continue
-
 		if ability.requires_hold:
-			# ── held ability — fire every frame while held, notify on release ─
 			if Input.is_action_pressed(orb.input_action):
 				var held_ctx: Dictionary = _make_context(delta, true, i)
 				orb.activate_trigger(AbilityData.TriggerType.ACTIVE, held_ctx)
-				var held_out: Vector2 = _read_context(held_ctx, i, max_env_target, max_orb_t)
-				max_env_target = held_out.x
-				max_orb_t      = held_out.y
+				max_orb_t = _read_context(held_ctx, i, max_orb_t)
 			elif Input.is_action_just_released(orb.input_action):
 				var released_ctx: Dictionary = _make_context(delta, false, i)
 				ability.activate(released_ctx)
-				var released_out: Vector2 = _read_context(released_ctx, i, max_env_target, max_orb_t)
-				max_env_target = released_out.x
-				max_orb_t      = released_out.y
+				max_orb_t = _read_context(released_ctx, i, max_orb_t)
 		else:
-			# ── instant ability — fire once on press ──────────────────────────
 			if Input.is_action_just_pressed(orb.input_action):
 				var instant_ctx: Dictionary = _make_context(delta, true, i)
 				orb.activate_trigger(AbilityData.TriggerType.ACTIVE, instant_ctx)
-				var instant_out: Vector2 = _read_context(instant_ctx, i, max_env_target, max_orb_t)
-				max_env_target = instant_out.x
-				max_orb_t      = instant_out.y
+				max_orb_t = _read_context(instant_ctx, i, max_orb_t)
+	var body_glow: Color = Color(lerpf(1.0, 2.0, max_orb_t), lerpf(1.0, 2.0, max_orb_t), lerpf(1.0, 2.0, max_orb_t))
+	%body.self_modulate = body_glow if max_orb_t > 0.0 else Color.WHITE
+	%head.self_modulate = body_glow if max_orb_t > 0.0 else Color.WHITE
 
-	# ── post-loop player effects ──────────────────────────────────────────────
-	env_t = lerpf(env_t, max_env_target, FOCUS_DECAY * delta)
-	_set_env(env_t)
+func _tick_env(delta: float) -> void:
+	if channeling_orb_index == -1 and env_t > 0.0:
+		env_t = maxf(0.0, env_t - delta * FOCUS_DECAY)
+		_set_env(env_t)
 
-	var t: float = max_orb_t
-	if t > 0.0:
-		%body.self_modulate = Color(lerpf(1.0, 2.0, t), lerpf(1.0, 2.0, t), lerpf(1.0, 2.0, t))
-		%head.self_modulate = Color(lerpf(1.0, 2.0, t), lerpf(1.0, 2.0, t), lerpf(1.0, 2.0, t))
-	else:
-		%body.self_modulate = Color.WHITE
-		%head.self_modulate = Color.WHITE
-
+func _tick_dev_input() -> void:
 	if Input.is_action_just_pressed("dev_mode"):
 		if $CollisionShape2D.disabled:
 			speed /= 10.0
@@ -231,100 +238,150 @@ func _process(delta: float) -> void:
 		else:
 			speed *= 10.0
 			$CollisionShape2D.disabled = true
-	if Input.is_action_just_pressed("zoom_in"):
-		$"../Camera2D".zoom *= 2.0
-	if Input.is_action_just_pressed("zoom_out"):
-		$"../Camera2D".zoom *= 0.5
+	if Input.is_action_just_pressed("zoom_in"):  $"../Camera2D".zoom *= 2.0
+	if Input.is_action_just_pressed("zoom_out"): $"../Camera2D".zoom *= 0.5
 	if Input.is_action_just_pressed("dev_call_wave"):
 		WaveManager.timer = 0.0
 		WaveManager._launch_wave()
 
-# ── orb visual update ─────────────────────────────────────────────────────────
-func _update_orb_visuals(delta: float, focus_t: float = 0.0) -> void:
-	var total: int = orb_visuals.size()
-	if total == 0:
-		return
-
-	var orbit_speed_mult: float = lerpf(1.0, focus_orbit_speed, focus_t) if focus_t > 0.0 else 1.0
-	orbit_time += delta * orb_orbit_speed * orbit_speed_mult
-
-	# build active index list — shattered orbs are excluded from the formation
-	var active_indices: Array[int] = []
-	for i in range(total):
-		if not orb_visuals[i].shattered:
-			active_indices.append(i)
-
-	var active_count: int = active_indices.size()
-
-	for i in range(total):
-		var ov:  OrbVisual = orb_visuals[i]
-		var orb: Orb       = $Inventory.orbs[i]
-
-		# ── shatter / cooldown ────────────────────────────────────────────────
-		if ov.shattered:
-			ov.cooldown_age  += delta
-			ov.sprite.visible = false
-			if ov.cooldown_age >= ov.cooldown:
-				ov.shattered     = false
-				ov.reform_flash  = orb_reform_flash
-				ov.sprite.visible  = true
-				for ability: AbilityData in orb.abilities:
-					if ability is AbilityFocusMine:
-						(ability as AbilityFocusMine).reset_exploded()
-			continue
-
-		# ── active: find this orb's slot in the active formation ──────────────
-		var slot:         int   = active_indices.find(i)
-		var target_angle: float = orbit_time + (float(slot) / float(active_count)) * TAU
-
-		# ── lerp angle toward target ──────────────────────────────────────────
-		var angle_diff:  float = wrapf(target_angle - ov.current_angle, -PI, PI)
-		ov.current_angle      += angle_diff * minf(10.0 * delta, 1.0)
-
-		# ── modulate ──────────────────────────────────────────────────────────
-		if ov.reform_flash > 0.0:
-			ov.reform_flash        -= delta
-			var flash_t: float      = ov.reform_flash / orb_reform_flash
-			ov.sprite.self_modulate = Color(lerpf(1.0, 4.0, flash_t), lerpf(1.0, 4.0, flash_t), lerpf(1.0, 4.0, flash_t))
-		elif focus_t > 0.0:
-			ov.sprite.self_modulate = Color(lerpf(1.0, 3.0, focus_t), lerpf(1.0, 3.0, focus_t), lerpf(1.0, 3.0, focus_t))
-		else:
-			ov.sprite.self_modulate = Color.WHITE
-
-		# ── position ──────────────────────────────────────────────────────────
-		ov.sprite.position = _angle_to_orbit_pos(ov.current_angle)
-		ov.sprite.scale    = Vector2.ONE
-
-func _angle_to_orbit_pos(angle: float) -> Vector2:
-	return Vector2(cos(angle), sin(angle)) * orb_orbit_radius + orb_orbit_center
-
-# ── physics process ───────────────────────────────────────────────────────────
+# --------------------------------------------------------- physics process ---
 func _physics_process(_delta: float) -> void:
 	var input_vector: Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
-
 	if input_vector != Vector2.ZERO:
 		input_vector = input_vector.normalized()
-
 	if movement_enabled:
 		if input_vector != Vector2.ZERO:
 			direction = Util.nearest_direction(input_vector)
 		velocity = input_vector * speed
 	else:
 		velocity = Vector2.ZERO
-
 	move_and_slide()
 
-# ── helpers ───────────────────────────────────────────────────────────────────
+# ----------------------------------------------------------- orb visuals ---
+func _update_orb_visuals(delta: float) -> void:
+	var total: int = orb_visuals.size()
+	if total == 0:
+		return
+	var max_glow: float = 0.0
+	for ov: OrbVisual in orb_visuals:
+		max_glow = maxf(max_glow, ov.glow)
+	orbit_time += delta * orb_orbit_speed * orbit_speed_mult
+
+	# pass 1 — resolve cooldowns
+	for i in range(total):
+		var ov: OrbVisual = orb_visuals[i]
+		if not ov.shattered:
+			continue
+		ov.cooldown_age += delta
+		if ov.cooldown_age < ov.cooldown:
+			continue
+		ov.shattered      = false
+		ov.reform_flash   = orb_reform_flash
+		ov.cooldown_age   = 0.0
+		ov.sprite.visible = false
+		ov.skip_frame     = true
+		for ability: AbilityData in $Inventory.orbs[i].abilities:
+			if ability is AbilityFocusMine:
+				(ability as AbilityFocusMine).reset_exploded()
+
+	# pass 2 — active slot assignments
+	var active_indices: Array[int] = []
+	for i in range(total):
+		if not orb_visuals[i].shattered and $Inventory.orbs[i].node_index != -1:
+			active_indices.append(i)
+	var active_count: int = active_indices.size()
+
+	# pass 3 — position and visibility
+	for i in range(total):
+		var ov:  OrbVisual = orb_visuals[i]
+		var orb: Orb       = $Inventory.orbs[i]
+		if orb.node_index == -1 or ov.shattered:
+			ov.sprite.visible = false
+			continue
+		if not ov.sprite.visible:
+			if ov.skip_frame:
+				ov.skip_frame      = false
+				ov.current_angle   = orbit_time
+				ov.sprite.position = _angle_to_orbit_pos(orbit_time)
+				continue
+			ov.current_angle   = orbit_time
+			ov.sprite.position = _angle_to_orbit_pos(orbit_time)
+			ov.sprite.visible  = true
+		var slot:         int   = active_indices.find(i)
+		var target_angle: float = orbit_time + (float(slot) / float(active_count)) * TAU
+		var angle_diff:   float = wrapf(target_angle - ov.current_angle, -PI, PI)
+		ov.current_angle       += angle_diff * minf(10.0 * delta, 1.0)
+		var brightness: float   = 1.0
+		if ov.reform_flash > 0.0:
+			ov.reform_flash -= delta
+			brightness       = lerpf(1.0, 4.0, ov.reform_flash / orb_reform_flash)
+		elif ov.glow > 0.0:
+			brightness       = lerpf(1.0, 3.0, ov.glow)
+		ov.sprite.self_modulate = Color(brightness, brightness, brightness)
+		ov.sprite.position      = _angle_to_orbit_pos(ov.current_angle)
+		ov.sprite.scale         = Vector2.ONE
+
+func _angle_to_orbit_pos(angle: float) -> Vector2:
+	return Vector2(cos(angle), sin(angle)) * orb_orbit_radius + orb_orbit_center
+
+# -------------------------------------------------------------- channeling ---
+func _cancel_channel() -> void:
+	if channeling_orb_index < orb_visuals.size():
+		orb_visuals[channeling_orb_index].glow = 0.0
+	channeling_orb_index = -1
+	channel_charge       = 0.0
+	env_t                = 0.0
+	orbit_speed_mult = 1.0
+	_set_env(0.0)
+
+func _complete_channel() -> void:
+	var orb: Orb    = $Inventory.orbs[channeling_orb_index]
+	var cost: float = (light - 5.0) * (CHANNEL_LIGHT_COST / 100.0)
+	light           = maxf(5.0, light - cost)
+	for ability: AbilityData in orb.abilities:
+		ability.stats.power *= (1.0 + CHANNEL_POWER_BONUS)
+	if channeling_orb_index < orb_visuals.size():
+		orb_visuals[channeling_orb_index].reform_flash = orb_reform_flash * 3.0
+		orb_visuals[channeling_orb_index].glow         = 0.0
+	channeling_orb_index = -1
+	channel_charge       = 0.0
+	env_t                = 0.0
+	orbit_speed_mult = 1.0
+	_set_env(0.0)
+
+# ----------------------------------------------------------------- helpers ---
 func _set_env(t: float) -> void:
 	var env: Environment = %Environment.environment
 	env.glow_bloom       = lerpf(FOCUS_BLOOM_MIN, FOCUS_BLOOM_MAX, t)
 	env.glow_intensity   = lerpf(FOCUS_GLOW_MIN,  FOCUS_GLOW_MAX,  t)
 
-func mine_around(world_pos: Vector2, radius: int = 1) -> void:
-	var center: Vector2i = %TilemapManager.world_to_map(world_pos)
-	for x: int in range(-radius, radius + 1):
-		for y: int in range(-radius, radius + 1):
-			%TilemapManager.damage_tile(center + Vector2i(x, y), 1)
+func _trigger_connections(orb_index: int, delta: float) -> void:
+	var graph:      GraphData = GraphManager.graph
+	var node_index: int       = $Inventory.orbs[orb_index].node_index
+	if node_index == -1:
+		return
+	for conn: GraphConnectionData in graph.get_connections_for(node_index):
+		var target_node_index: int = conn.to_node if conn.from_node == node_index else conn.from_node
+		var target_orb: Orb        = graph.nodes[target_node_index].placed_orb
+		if target_orb == null:
+			continue
+		match conn.connection_type:
+			GraphConnectionData.ConnectionType.CHARGES:
+				conn.charge_stacks += 1
+				target_orb.add_charge(conn.charge_stacks)
+			GraphConnectionData.ConnectionType.OVERHEATS:
+				conn.overheat_count += 1
+				for ability: AbilityData in target_orb.abilities:
+					ability.stats.cooldown = maxf(0.0, ability.stats.cooldown - (0.1 * conn.overheat_count))
+			GraphConnectionData.ConnectionType.RESONATOR:
+				for ability: AbilityData in target_orb.abilities:
+					ability.stats.power *= 1.1
+			GraphConnectionData.ConnectionType.DRAINS:
+				var drained: float = target_orb.drain_light(conn.drain_power)
+				$Inventory.orbs[orb_index].store_light(drained)
+			GraphConnectionData.ConnectionType.SILENCE:
+				conn.silence_age   = 0.0
+				target_orb.silenced = true
 
 func Log(msg: Variant) -> void:
 	print("[player.gd] " + str(msg))

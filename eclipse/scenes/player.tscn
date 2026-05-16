@@ -16,8 +16,8 @@ colors = PackedColorArray(1, 1, 1, 1, 0, 0, 0, 1)
 
 [sub_resource type="GradientTexture2D" id="GradientTexture2D_qhqgy"]
 gradient = SubResource("Gradient_g2els")
-width = 512
-height = 512
+width = 4096
+height = 4096
 fill = 1
 fill_from = Vector2(0.5, 0.5)
 fill_to = Vector2(0.833, 0.167)
@@ -32,6 +32,7 @@ shape = SubResource("CapsuleShape2D_u8vuu")
 
 [node name="PointLight2D" type="PointLight2D" parent="." unique_id=127126805]
 position = Vector2(0, 3)
+energy = 0.5
 range_z_min = -4096
 range_z_max = 4096
 texture = SubResource("GradientTexture2D_qhqgy")

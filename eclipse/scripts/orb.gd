@@ -13,6 +13,7 @@ enum OrbType { SIMPLE, ALLOY }
 @export var sprite_texture: Texture2D
 @export var input_action: String = ""  # e.g. "attack_interact", "orb_secondary"
 									   # leave empty for passive orbs
+var node_index: int = -1  # -1 = not on graph
 
 func _init() -> void:
 	# deep duplicate so each orb owns its own stat instances

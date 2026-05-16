@@ -26,23 +26,18 @@ func _spawn() -> void:
 func _find_spawn_position() -> Vector2:
 	if tilemap_manager == null:
 		return global_position
-
 	var player_tile: Vector2i = tilemap_manager.world_to_map(player.global_position)
 	var radius: int = 20
-
 	for _attempt in range(40):
 		var offset:    Vector2i = Vector2i(randi_range(-radius, radius), randi_range(-radius, radius))
 		var candidate: Vector2i = player_tile + offset
-
-		var tile_dist: int = abs(offset.x) + abs(offset.y)
-		if tile_dist < min_spawn_distance_tiles:
+		if not tilemap_manager._in_playable_bounds(candidate):
 			continue
-
+		if abs(offset.x) + abs(offset.y) < min_spawn_distance_tiles:
+			continue
 		if not _is_clear(candidate):
 			continue
-
 		return tilemap_manager.map_to_world(candidate)
-
 	return global_position
 
 func _is_clear(map_pos: Vector2i) -> bool:
@@ -57,6 +52,11 @@ func _is_clear(map_pos: Vector2i) -> bool:
 		if not tilemap_manager.is_air(neighbor):
 			return false
 	return true
+
+func _in_playable_bounds(candidate: Vector2i) -> bool:
+	var buf: int = tilemap_manager.BUFFER_TILES
+	return (candidate.x >= buf and candidate.x < tilemap_manager.WIDTH  - buf and
+			candidate.y >= buf and candidate.y < tilemap_manager.HEIGHT - buf)
 
 func _physics_process(delta: float) -> void:
 	if player == null:

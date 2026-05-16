@@ -1,17 +1,18 @@
 extends Node2D
 
 class Particle:
-	var pos: Vector2
-	var vel: Vector2
-	var z: float
-	var z_vel: float
-	var bounce: float
-	var lifetime: float
-	var age: float
-	var gradient: Gradient
+	var pos:        Vector2
+	var vel:        Vector2
+	var z:          float        # vertical height (arc/bounce), NOT world z-sort
+	var z_vel:      float
+	var bounce:     float
+	var lifetime:   float
+	var age:        float
+	var gradient:   Gradient
 	var cast_shadow: bool
-	var size: float
+	var size:       float
 	var use_gravity: bool
+	var canvas_item: RID        # own canvas item for z-sorting
 
 const GRAVITY: float = 400.0
 var particles: Array[Particle] = []
@@ -20,20 +21,30 @@ var tilemap_manager: Node = null
 func _ready() -> void:
 	z_index = 1
 
-func spawn(pos: Vector2, vel: Vector2, z_vel: float, gradient: Gradient, lifetime: float, size: float = 3.0, bounce: float = 0.4, cast_shadow: bool = true, use_grav: bool = true) -> void:
-	var p := Particle.new()
-	p.pos         = pos
-	p.vel         = vel
-	p.z           = 0.0
-	p.z_vel       = z_vel
-	p.bounce      = bounce
-	p.lifetime    = lifetime
-	p.age         = 0.0
-	p.gradient    = gradient
-	p.cast_shadow = cast_shadow
-	p.size        = size
-	p.use_gravity = use_grav
+func spawn(pos: Vector2, vel: Vector2, z_vel: float, gradient: Gradient, lifetime: float, size: float = 3.0, bounce: float = 0.4, cast_shadow: bool = true, use_grav: bool = true) -> Particle:
+	var p         := Particle.new()
+	p.pos          = pos
+	p.vel          = vel
+	p.z            = 0.0
+	p.z_vel        = z_vel
+	p.bounce       = bounce
+	p.lifetime     = lifetime
+	p.age          = 0.0
+	p.gradient     = gradient
+	p.cast_shadow  = cast_shadow
+	p.size         = size
+	p.use_gravity  = use_grav
+	p.canvas_item  = RenderingServer.canvas_item_create()
+	RenderingServer.canvas_item_set_parent(p.canvas_item, get_canvas())
+	RenderingServer.canvas_item_set_z_index(p.canvas_item, _sort_z_for(pos))
+	RenderingServer.canvas_item_set_z_as_relative_to_parent(p.canvas_item, false)
 	particles.append(p)
+	return p
+
+func _sort_z_for(world_pos: Vector2) -> int:
+	if tilemap_manager == null:
+		return 0
+	return clampi(tilemap_manager.get_z_for(world_pos), RenderingServer.CANVAS_ITEM_Z_MIN, RenderingServer.CANVAS_ITEM_Z_MAX)
 
 func spawn_focus_spark(pos: Vector2) -> void:
 	var gradient := Gradient.new()
@@ -97,27 +108,30 @@ func _tile_dust_color(tile_type: Util.tile) -> Color:
 		_:                 return Color(0.5, 0.45, 0.4)
 
 func spawn_focus_particles(pos: Vector2, charge_t: float) -> void:
-	# charge_t is focus_charge / FOCUS_CHARGE_TIME, 0.0 → 1.0
-	# More particles and faster rise as charge builds
-	var count: int   = int(lerp(1, 2, charge_t))
+	var count: int = 0
+	if charge_t <= 0.05:
+		count = 1 if randf() < charge_t * 4.0 else 0
+	else:
+		count = int(lerpf(1.0, 3.0, charge_t))
+	if count == 0:
+		return
 
 	var gradient := Gradient.new()
-	gradient.set_color(0, Color(1.0, 1.0, 1.0, 1.0))   # bright white (HDR)
-	gradient.set_color(1, Color(1.1, 1.1, 1.4, 0.0))   # slight blue tint, full fade
+	gradient.set_color(0, Color(1.0, 1.0, 1.0, 1.0))
+	gradient.set_color(1, Color(1.1, 1.1, 1.4, 0.0))
 
 	for i in range(count):
-		# Scatter within a small radius around the player
 		var offset := Vector2(randf_range(-20.0, 20.0), randf_range(-8.0, 8.0))
 		spawn(
 			pos + offset,
 			Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)),
-			randf_range(45.0, 65.0),       # rise
+			randf_range(45.0, 65.0),
 			gradient,
-			randf_range(0.5, 0.9),        # short lifetime = crisp, not lingering
-			randf_range(1.25, 2.25),                            # 2px × 2px — four pixels
-			0.0,                          # no bounce; they just float and fade
-			false,                        # no shadow
-			false                         # no gravity
+			randf_range(0.5, 0.9),
+			randf_range(1.25, 2.25),
+			0.0,
+			false,
+			false
 		)
 
 # -------------------------------------------------------------------- Sprite Particles ------------
@@ -230,14 +244,21 @@ func _ore_overlay_set_for(t: Util.tile) -> Array[Texture2D]:
 		_:                return []
 
 func _process(delta: float) -> void:
+	var alive: Array[Particle] = []
 	for p: Particle in particles:
 		p.age += delta
+		if p.age >= p.lifetime:
+			RenderingServer.free_rid(p.canvas_item)
+			continue
+		alive.append(p)
+
+		# physics
 		var next_pos: Vector2 = p.pos + p.vel * delta
 		if tilemap_manager != null:
 			var map_pos: Vector2i = tilemap_manager.world_to_map(next_pos)
 			if tilemap_manager.tile_exists(map_pos):
 				var tile_center: Vector2 = tilemap_manager.map_to_world(map_pos)
-				var diff: Vector2 = p.pos - tile_center
+				var diff: Vector2        = p.pos - tile_center
 				if abs(diff.x) > abs(diff.y):
 					p.vel.x *= -p.bounce
 				else:
@@ -257,6 +278,28 @@ func _process(delta: float) -> void:
 				p.vel   *= 0.8
 		else:
 			p.z += p.z_vel * delta
+
+		# draw
+		var t:        float   = p.age / p.lifetime
+		var color:    Color   = p.gradient.sample(t)
+		color.a               = 1.0 - t
+		var draw_pos: Vector2 = p.pos + Vector2(0, -p.z)
+		var sort_z:   int     = _sort_z_for(p.pos)
+		RenderingServer.canvas_item_set_z_index(p.canvas_item, sort_z)
+		RenderingServer.canvas_item_clear(p.canvas_item)
+		if p.cast_shadow:
+			var shadow_alpha: float = color.a * 0.3 * (1.0 - clampf(p.z / 64.0, 0.0, 1.0))
+			RenderingServer.canvas_item_add_rect(
+				p.canvas_item,
+				Rect2(p.pos, Vector2.ONE),
+				Color(0, 0, 0, shadow_alpha)
+			)
+		RenderingServer.canvas_item_add_rect(
+			p.canvas_item,
+			Rect2(draw_pos, Vector2.ONE * p.size),
+			color
+		)
+	particles = alive
 
 	for p: SpriteParticle in sprite_particles:
 		p.age      += delta
@@ -288,13 +331,11 @@ func _process(delta: float) -> void:
 				p.rot_vel *= 0.4
 		else:
 			p.z += p.z_vel * delta
-
-	particles        = particles.filter(func(p: Particle) -> bool: return p.age < p.lifetime)
-	sprite_particles = sprite_particles.filter(func(p: SpriteParticle) -> bool: return p.age < p.lifetime)
+			
 	queue_redraw()
 
 func _draw() -> void:
-	for p: Particle in particles:
+	'''for p: Particle in particles:
 		var t: float          = p.age / p.lifetime
 		var alpha: float      = 1.0 - t
 		var draw_pos: Vector2 = p.pos + Vector2(0, -p.z)
@@ -303,7 +344,7 @@ func _draw() -> void:
 		if p.cast_shadow:
 			var shadow_alpha: float = alpha * 0.3 * (1.0 - clampf(p.z / 64.0, 0.0, 1.0))
 			draw_rect(Rect2(p.pos, Vector2.ONE), Color(0, 0, 0, shadow_alpha))
-		draw_rect(Rect2(draw_pos, Vector2.ONE * p.size), color)
+		draw_rect(Rect2(draw_pos, Vector2.ONE * p.size), color)'''
 
 	for p: SpriteParticle in sprite_particles:
 		if p.texture == null:
@@ -318,3 +359,7 @@ func _draw() -> void:
 		if p.overlay != null:
 			draw_texture_rect(p.overlay, Rect2(-half, p.size), false, Color(1, 1, 1, alpha))
 		draw_set_transform(Vector2.ZERO)
+
+func _exit_tree() -> void:
+	for p: Particle in particles:
+		RenderingServer.free_rid(p.canvas_item)
