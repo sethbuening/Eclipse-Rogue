@@ -1,14 +1,20 @@
 [gd_scene format=3 uid="uid://byg3fydbr4lwp"]
 
-[ext_resource type="Script" uid="uid://drjscvcd0uacw" path="res://scenes/game.gd" id="1_p57ef"]
+[ext_resource type="Script" uid="uid://drjscvcd0uacw" path="res://scripts/game.gd" id="1_p57ef"]
 [ext_resource type="PackedScene" uid="uid://d0234wglvpyt3" path="res://scenes/player.tscn" id="1_uwrxv"]
-[ext_resource type="Script" uid="uid://wd1y18gjk5c1" path="res://scenes/subpixel_camera.gd" id="3_lnu2h"]
+[ext_resource type="Script" uid="uid://wd1y18gjk5c1" path="res://scripts/subpixel_camera.gd" id="3_lnu2h"]
 [ext_resource type="Script" uid="uid://dnkle1hwxuime" path="res://scripts/TilemapManager.gd" id="4_lbhrr"]
-[ext_resource type="Script" uid="uid://bbajvvrye7i4c" path="res://scripts/inventory.gd" id="5_gee14"]
+[ext_resource type="Script" uid="uid://bbajvvrye7i4c" path="res://scripts/player/inventory.gd" id="5_gee14"]
 [ext_resource type="Texture2D" uid="uid://q2dnkkpl21ee" path="res://art/tempatlas.png" id="5_iywne"]
 [ext_resource type="PackedScene" uid="uid://cfpcxmav7qfv3" path="res://scenes/basalt_altar.tscn" id="5_p57ef"]
 [ext_resource type="PackedScene" uid="uid://cwm5dxysbrho5" path="res://scenes/OrbGraphMenu.tscn" id="6_0tnpc"]
 [ext_resource type="Texture2D" uid="uid://dk2dsiedhs7ns" path="res://art/tempatlasore.png" id="7_u5sy4"]
+[ext_resource type="Script" uid="uid://dwdhweosf1n2y" path="res://scripts/player/health_bar.gd" id="10_vtaks"]
+[ext_resource type="Texture2D" uid="uid://ci6spge5ieckt" path="res://art/glass_container.png" id="11_dinhu"]
+[ext_resource type="Shader" uid="uid://cbu17c4fxjgja" path="res://scripts/liquid_body.gdshader" id="11_kvpfn"]
+[ext_resource type="Texture2D" uid="uid://bklt0ds8qdplu" path="res://art/swirl.png" id="12_trtic"]
+[ext_resource type="Shader" uid="uid://ct3iy23q2ae7x" path="res://scripts/liquid_swirl.gdshader" id="14_ca42v"]
+[ext_resource type="Texture2D" uid="uid://bg1lr7frs5kir" path="res://art/liquid_body.png" id="14_ir15t"]
 
 [sub_resource type="Environment" id="Environment_iywne"]
 background_mode = 3
@@ -17,6 +23,17 @@ glow_enabled = true
 glow_normalized = true
 glow_strength = 1.5
 glow_blend_mode = 0
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_dinhu"]
+shader = ExtResource("11_kvpfn")
+shader_parameter/frame_count = 4
+shader_parameter/fps = 8.0
+shader_parameter/fill_ratio = 1.0
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_rysoc"]
+shader = ExtResource("14_ca42v")
+shader_parameter/frame_count = 4
+shader_parameter/fps = 12.0
 
 [node name="game" type="Node2D" unique_id=218660419]
 y_sort_enabled = true
@@ -41,12 +58,22 @@ layer = 2
 
 [node name="Control" type="Control" parent="DebugText" unique_id=888524823]
 layout_mode = 3
-anchors_preset = 0
+anchors_preset = 6
+anchor_left = 1.0
+anchor_top = 0.5
+anchor_right = 1.0
+anchor_bottom = 0.5
+offset_left = -364.0
+offset_top = -17.0
+offset_bottom = 17.0
+grow_horizontal = 0
+grow_vertical = 2
 metadata/_edit_use_anchors_ = true
 
 [node name="DebugLabel" type="RichTextLabel" parent="DebugText/Control" unique_id=1330102525]
 unique_name_in_owner = true
 z_index = 1
+custom_minimum_size = Vector2(364, 34)
 layout_mode = 0
 offset_left = 10.0
 offset_top = 10.0
@@ -58,6 +85,7 @@ scroll_active = false
 metadata/_edit_use_anchors_ = true
 
 [node name="CanvasModulate" type="CanvasModulate" parent="." unique_id=1136346527]
+visible = false
 color = Color(0.446777, 0.44677705, 0.44677693, 1)
 
 [node name="Environment" type="WorldEnvironment" parent="." unique_id=1316779093]
@@ -74,3 +102,39 @@ atlas_variants_rock = 1
 
 [node name="OrbGraphMenu" parent="." unique_id=1800532869 instance=ExtResource("6_0tnpc")]
 unique_name_in_owner = true
+
+[node name="HUD" type="CanvasLayer" parent="." unique_id=1974184174]
+scale = Vector2(4, 4)
+transform = Transform2D(4, 0, 0, 4, 0, 0)
+
+[node name="health bar" type="Control" parent="HUD" unique_id=214386105]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 18.75
+offset_bottom = 325.25
+script = ExtResource("10_vtaks")
+bar_height = 300.0
+
+[node name="liquid_parent" type="Node2D" parent="HUD/health bar" unique_id=1855783539]
+position = Vector2(10, 15)
+
+[node name="body" type="TextureRect" parent="HUD/health bar/liquid_parent" unique_id=147391921]
+material = SubResource("ShaderMaterial_dinhu")
+offset_right = 11.0
+offset_bottom = 315.0
+texture = ExtResource("14_ir15t")
+
+[node name="swirl" type="TextureRect" parent="HUD/health bar/liquid_parent" unique_id=1453562710]
+material = SubResource("ShaderMaterial_rysoc")
+offset_top = -4.0
+offset_right = 11.0
+offset_bottom = 4.0
+texture = ExtResource("12_trtic")
+
+[node name="glass_frame" type="TextureRect" parent="HUD/health bar" unique_id=1633795521]
+layout_mode = 0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 40.0
+offset_bottom = 358.0
+texture = ExtResource("11_dinhu")

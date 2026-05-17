@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://dnishawyjc46h"]
 
 [ext_resource type="Texture2D" uid="uid://bypeko2e87jpl" path="res://art/angel_minor.png" id="1_a6gui"]
-[ext_resource type="Script" uid="uid://d1i6frgffu2xc" path="res://scenes/enemies/grunt.gd" id="1_ave5w"]
+[ext_resource type="Script" uid="uid://d1i6frgffu2xc" path="res://scripts/enemies/grunt.gd" id="1_ave5w"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_uxy5n"]
 size = Vector2(34, 20)

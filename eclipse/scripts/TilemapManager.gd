@@ -91,6 +91,7 @@ var copper_tiles_added: int = 0
 
 # ── occluder ──────────────────────────────────────────────────────────────────
 var occluder_sprites: Dictionary = {}
+var ore_occluder_sprites: Dictionary = {}  # Vector2i -> Sprite2D
 
 # ─────────────────────────────────────────────────────────────────── ready ───
 func _ready() -> void:
@@ -387,6 +388,7 @@ func _add_occluder_sprite(map_pos: Vector2i) -> void:
 	if occluder_sprites.has(map_pos):
 		return
 	_hide_instance(map_pos)
+	_hide_ore_instance(map_pos)  # hide ore multimesh too
 
 	var world_center: Vector2 = map_to_world(map_pos)
 	var sprite             := Sprite2D.new()
@@ -397,17 +399,37 @@ func _add_occluder_sprite(map_pos: Vector2i) -> void:
 	sprite.z_index          = map_pos.y * 10
 	sprite.position         = Vector2(world_center.x, world_center.y - SPRITE_OFFSET_Y - ATLAS_TILE_SIZE.y / 2.0)
 	sprite.offset           = Vector2(0, ATLAS_TILE_SIZE.y / 2.0)
-
 	occluder_sprites[map_pos] = sprite
 	get_parent().add_child.call_deferred(sprite)
+
+	# add ore overlay sprite on top if this tile has ore
+	if ore_types.has(map_pos):
+		var ore_sprite            := Sprite2D.new()
+		ore_sprite.texture         = ore_atlas
+		ore_sprite.region_enabled  = true
+		ore_sprite.region_rect     = Rect2(
+			_ore_atlas_uv(map_pos).position * Vector2(ore_atlas.get_size()),
+			Vector2(ATLAS_TILE_SIZE)
+		)
+		ore_sprite.z_as_relative   = false
+		ore_sprite.z_index         = map_pos.y * 10 + 1
+		ore_sprite.position        = sprite.position
+		ore_sprite.offset          = sprite.offset
+		ore_occluder_sprites[map_pos] = ore_sprite
+		get_parent().add_child.call_deferred(ore_sprite)
 
 func _remove_occluder_sprite(map_pos: Vector2i) -> void:
 	if not occluder_sprites.has(map_pos):
 		return
 	occluder_sprites[map_pos].queue_free()
 	occluder_sprites.erase(map_pos)
+	if ore_occluder_sprites.has(map_pos):
+		ore_occluder_sprites[map_pos].queue_free()
+		ore_occluder_sprites.erase(map_pos)
 	if tile_types.has(map_pos):
 		_write_base_instance(tile_instance_index[map_pos], map_pos)
+	if ore_types.has(map_pos):
+		_write_ore_instance(ore_instance_index[map_pos], map_pos)
 
 func update_occluder_depths(_player: Node2D) -> void:
 	pass
@@ -775,7 +797,7 @@ func _initial_df_bake() -> void:
 			queue.append(nb)
 	for x in range(WIDTH):
 		for y in range(HEIGHT):
-			img.set_pixel(x, y, Color(clampf(dist[y * WIDTH + x] / DF_MAX_DEPTH, 0.0, 1.0), 0, 0, 1))
+			img.set_pixel(x, y, Color(clampf((dist[y * WIDTH + x] - 1.0) / DF_MAX_DEPTH, 0.0, 1.0), 0, 0, 1))
 	_df_texture.set_image(img)
 	_set_df_shader_params()
 
@@ -844,7 +866,11 @@ func _compute_df_threaded(dirty_chunks: Array[Vector2i], snapshot: Dictionary) -
 	for x in range(rw):
 		for y in range(rh):
 			var d: float = dist[y * rw + x]
-			img.set_pixel(min_tile.x + x, min_tile.y + y, Color(clampf(d / DF_MAX_DEPTH, 0.0, 1.0) if d >= 0.0 else 0.0, 0, 0, 1))
+			var new_val: float = clampf((d - 1.0) / DF_MAX_DEPTH, 0.0, 1.0) if d >= 0.0 else 0.0
+			var old_val: float = img.get_pixel(min_tile.x + x, min_tile.y + y).r
+			# only write if new value is darker than current (tile was removed, so only brightening allowed)
+			if new_val < old_val:
+				img.set_pixel(min_tile.x + x, min_tile.y + y, Color(new_val, 0, 0, 1))
 	_df_pending = img
 
 func _process(_delta: float) -> void:

@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://d0234wglvpyt3"]
 
-[ext_resource type="Script" uid="uid://dcm3xcviah1ya" path="res://scripts/player.gd" id="1_g2els"]
+[ext_resource type="Script" uid="uid://dcm3xcviah1ya" path="res://scripts/player/player.gd" id="1_g2els"]
 [ext_resource type="Texture2D" uid="uid://cvg1ovknxiuid" path="res://art/body.png" id="2_qhqgy"]
 [ext_resource type="Texture2D" uid="uid://b6hvmtfby0k2n" path="res://art/player/head_down.png" id="3_dqkch"]
 [ext_resource type="Texture2D" uid="uid://bstdm7y0n3708" path="res://art/player/hand_left.png" id="3_fjrip"]
@@ -31,6 +31,7 @@ rotation = 1.5707964
 shape = SubResource("CapsuleShape2D_u8vuu")
 
 [node name="PointLight2D" type="PointLight2D" parent="." unique_id=127126805]
+visible = false
 position = Vector2(0, 3)
 energy = 0.5
 range_z_min = -4096

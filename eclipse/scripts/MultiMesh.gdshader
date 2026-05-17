@@ -7,7 +7,6 @@ uniform vec2 map_world_origin = vec2(0.0, 0.0);
 uniform float tile_world_size = 32.0;
 uniform float max_depth = 4.0;
 uniform float darkness_power = 2;
-
 varying vec2 world_uv;
 varying vec2 world_pos;
 varying vec4 custom_data;
@@ -27,11 +26,11 @@ void fragment() {
     vec2 atlas_uv  = uv_origin + local_uv * uv_size;
     vec4 tile_color = texture(atlas, atlas_uv) * vec4(instance_color.rgb, 1.0);
 
-    vec2 tile_coord = (world_pos - map_world_origin + vec2(0.0, -16.0)) / tile_world_size;
     vec2 texel = 1.0 / map_size;
+    vec2 tile_coord = (world_pos - map_world_origin + vec2(0.0, 16.0)) / tile_world_size;
     vec2 df_uv = (floor(tile_coord) + 0.5) * texel;
-    float darkness = pow(texture(distance_field, df_uv).r, darkness_power);
 
+    float darkness = pow(texture(distance_field, df_uv).r, darkness_power);
     tile_color.rgb *= 1.0 - darkness;
     COLOR = tile_color;
 }

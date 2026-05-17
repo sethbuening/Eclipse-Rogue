@@ -1,8 +1,8 @@
 extends Node
 
 const DROP_COUNTS: Dictionary = {
-	Util.tile.GOLD:   [1, 2],
-	Util.tile.COPPER: [2, 4],
+	Util.tile.GOLD:   [1, 1],
+	Util.tile.COPPER: [1, 1],
 }
 
 var dropped_items: Array[Node] = []
@@ -25,8 +25,8 @@ func _safe_spawn_pos(world_pos: Vector2, half_tile: float, radius: float) -> Vec
 		var map_pos: Vector2i = tilemap_manager.world_to_map(candidate)
 		if tilemap_manager.is_air(map_pos):
 			return candidate
-	# fallback to center of tile if all attempts land in solid
-	return world_pos
+	# fallback: spawn above the tile instead of at center
+	return world_pos + Vector2(0, -half_tile - radius)
 
 func spawn_dropped_item(world_pos: Vector2, type: Util.tile) -> void:
 	if dropped_item_scene == null:
@@ -47,9 +47,11 @@ func spawn_dropped_item(world_pos: Vector2, type: Util.tile) -> void:
 			(randf_range(-60.0, -10.0) + randf_range(-60.0, -10.0)) / 2.0
 		)
 		item.z_vel = (randf_range(40.0, 120.0) + randf_range(40.0, 120.0)) / 2.0
-		item.pos           = _safe_spawn_pos(world_pos, half_tile, item.RADIUS)
+		item.pos             = _safe_spawn_pos(world_pos, half_tile, item.RADIUS)
 		add_child(item)
 		item.global_position = item.pos
+		item.reset_physics_interpolation()
+		item.visible         = true
 		dropped_items.append(item)
 
 	Log("Spawned " + str(count) + "x " + Util.tile.keys()[type] + " at " + str(world_pos) + " | total: " + str(dropped_items.size()))

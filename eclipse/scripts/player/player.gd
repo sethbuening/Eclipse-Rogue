@@ -1,6 +1,12 @@
 extends CharacterBody2D
 
-var light: float = 100.0
+# ------------------------------------------------------ light (health) bar ---
+@onready var light_bar = $"../HUD/health bar"  # adjust path
+var light: float = 100.0:
+	set(value):
+		light = clampf(value, 0.0, 100.0)
+		if light_bar:
+			light_bar.set_light(light)
 
 var movement_enabled: bool = true
 @onready var speed: float  = 100.0 * get_parent().scale.x
@@ -40,7 +46,7 @@ const FOCUS_GLOW_MIN:       float = 0.3
 const FOCUS_GLOW_MAX:       float = 1.25
 const FOCUS_DECAY:          float = 4.0
 const CHANNEL_TIME:         float = 5.0
-const CHANNEL_LIGHT_COST:   float = 80.0
+const CHANNEL_LIGHT_COST:   float = 0.0 # temp 80.0
 const CHANNEL_POWER_BONUS:  float = 0.15
 
 # ------------------------------------------------------------------- state ---
@@ -67,7 +73,6 @@ var direction: Vector2i = Vector2i.DOWN:
 class OrbVisual:
 	var sprite:        Sprite2D
 	var shattered:     bool  = false
-	var skip_frame:    bool  = false
 	var cooldown_age:  float = 0.0
 	var cooldown:      float = 0.0
 	var reform_flash:  float = 0.0
@@ -198,29 +203,37 @@ func _tick_abilities(delta: float) -> void:
 	var max_orb_t: float = 0.0
 	var orbs: Array[Orb] = $Inventory.orbs
 	for i in range(orbs.size()):
-		var orb:     Orb         = orbs[i]
-		var ability: AbilityData = orb.primary_ability()
+		var orb: Orb = orbs[i]
 		if orb.node_index == -1:
 			continue
-		var passive_ctx: Dictionary = _make_context(delta, false, i)
-		orb.activate_trigger(AbilityData.TriggerType.PASSIVE, passive_ctx)
-		max_orb_t = _read_context(passive_ctx, i, max_orb_t)
-		if orb.input_action == "" or ability == null or ability.trigger_type != AbilityData.TriggerType.ACTIVE:
-			continue
-		if ability.requires_hold:
-			if Input.is_action_pressed(orb.input_action):
-				var held_ctx: Dictionary = _make_context(delta, true, i)
-				orb.activate_trigger(AbilityData.TriggerType.ACTIVE, held_ctx)
-				max_orb_t = _read_context(held_ctx, i, max_orb_t)
-			elif Input.is_action_just_released(orb.input_action):
-				var released_ctx: Dictionary = _make_context(delta, false, i)
-				ability.activate(released_ctx)
-				max_orb_t = _read_context(released_ctx, i, max_orb_t)
-		else:
-			if Input.is_action_just_pressed(orb.input_action):
-				var instant_ctx: Dictionary = _make_context(delta, true, i)
-				orb.activate_trigger(AbilityData.TriggerType.ACTIVE, instant_ctx)
-				max_orb_t = _read_context(instant_ctx, i, max_orb_t)
+		for ability: AbilityData in orb.abilities:
+			var cost:      float = ability.stats.light_cost if "light_cost" in ability.stats else 0.0
+			var can_afford: bool = light >= cost
+
+			match ability.trigger_type:
+				AbilityData.TriggerType.PASSIVE:
+					var passive_ctx: Dictionary = _make_context(delta, false, i)
+					ability.activate(passive_ctx)
+					max_orb_t = _read_context(passive_ctx, i, max_orb_t)
+
+				AbilityData.TriggerType.ACTIVE:
+					if orb.input_action == "":
+						continue
+					if ability.requires_hold:
+						if Input.is_action_pressed(orb.input_action) and can_afford:
+							var held_ctx: Dictionary = _make_context(delta, true, i)
+							ability.activate(held_ctx)
+							max_orb_t = _read_context(held_ctx, i, max_orb_t)
+						elif Input.is_action_just_released(orb.input_action):
+							var released_ctx: Dictionary = _make_context(delta, false, i)
+							ability.activate(released_ctx)
+							max_orb_t = _read_context(released_ctx, i, max_orb_t)
+					else:
+						if Input.is_action_just_pressed(orb.input_action) and can_afford:
+							var instant_ctx: Dictionary = _make_context(delta, true, i)
+							ability.activate(instant_ctx)
+							max_orb_t = _read_context(instant_ctx, i, max_orb_t)
+
 	var body_glow: Color = Color(lerpf(1.0, 2.0, max_orb_t), lerpf(1.0, 2.0, max_orb_t), lerpf(1.0, 2.0, max_orb_t))
 	%body.self_modulate = body_glow if max_orb_t > 0.0 else Color.WHITE
 	%head.self_modulate = body_glow if max_orb_t > 0.0 else Color.WHITE
@@ -238,8 +251,6 @@ func _tick_dev_input() -> void:
 		else:
 			speed *= 10.0
 			$CollisionShape2D.disabled = true
-	if Input.is_action_just_pressed("zoom_in"):  $"../Camera2D".zoom *= 2.0
-	if Input.is_action_just_pressed("zoom_out"): $"../Camera2D".zoom *= 0.5
 	if Input.is_action_just_pressed("dev_call_wave"):
 		WaveManager.timer = 0.0
 		WaveManager._launch_wave()
@@ -279,7 +290,6 @@ func _update_orb_visuals(delta: float) -> void:
 		ov.reform_flash   = orb_reform_flash
 		ov.cooldown_age   = 0.0
 		ov.sprite.visible = false
-		ov.skip_frame     = true
 		for ability: AbilityData in $Inventory.orbs[i].abilities:
 			if ability is AbilityFocusMine:
 				(ability as AbilityFocusMine).reset_exploded()
@@ -299,14 +309,10 @@ func _update_orb_visuals(delta: float) -> void:
 			ov.sprite.visible = false
 			continue
 		if not ov.sprite.visible:
-			if ov.skip_frame:
-				ov.skip_frame      = false
-				ov.current_angle   = orbit_time
-				ov.sprite.position = _angle_to_orbit_pos(orbit_time)
-				continue
 			ov.current_angle   = orbit_time
 			ov.sprite.position = _angle_to_orbit_pos(orbit_time)
 			ov.sprite.visible  = true
+			ov.sprite.reset_physics_interpolation()
 		var slot:         int   = active_indices.find(i)
 		var target_angle: float = orbit_time + (float(slot) / float(active_count)) * TAU
 		var angle_diff:   float = wrapf(target_angle - ov.current_angle, -PI, PI)
@@ -339,6 +345,8 @@ func _complete_channel() -> void:
 	var cost: float = (light - 5.0) * (CHANNEL_LIGHT_COST / 100.0)
 	light           = maxf(5.0, light - cost)
 	for ability: AbilityData in orb.abilities:
+		if ability == null or ability.stats == null:
+			continue
 		ability.stats.power *= (1.0 + CHANNEL_POWER_BONUS)
 	if channeling_orb_index < orb_visuals.size():
 		orb_visuals[channeling_orb_index].reform_flash = orb_reform_flash * 3.0
@@ -346,7 +354,7 @@ func _complete_channel() -> void:
 	channeling_orb_index = -1
 	channel_charge       = 0.0
 	env_t                = 0.0
-	orbit_speed_mult = 1.0
+	orbit_speed_mult     = 1.0
 	_set_env(0.0)
 
 # ----------------------------------------------------------------- helpers ---

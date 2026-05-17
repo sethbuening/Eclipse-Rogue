@@ -47,8 +47,8 @@ func reset_exploded() -> void:
 
 func _explode(player: Node, tilemap: Node, context: Dictionary) -> void:
 	var power: int = int(stats.mining_power * context.get("orb_power", 1.0))
+	player.light -= stats.light_cost
 	for tile: Vector2i in targeted_tiles:
-		player.light -= stats.light_cost
 		tilemap.damage_tile(tile, power)
 		ParticleManager.spawn_focus_spark(tilemap.map_to_world(tile))
 	targeted_tiles.clear()
@@ -60,7 +60,7 @@ func _clear_tiles(tilemap: Node) -> void:
 
 func _get_focus_tiles(player: Node, tilemap: Node) -> Array[Vector2i]:
 	var start: Vector2i = tilemap.world_to_map(player.global_position) + player.direction
-	var limit: int      = stats.mining_radius * 4 - 1
+	var limit: int      = stats.mining_radius * stats.power - 1
 	if tilemap.is_air(start):
 		return []
 	var visited: Dictionary      = { start: true }

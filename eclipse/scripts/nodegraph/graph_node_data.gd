@@ -9,4 +9,3 @@ enum NodeType { STAT, AOE, ECHO, STAT_CONVERTER, DECAYING }
 @export var position:   Vector2  = Vector2.ZERO
 
 var placed_orb:      Orb                    = null
-var baseline_stats:  Array[AbilityStats]    = []  # snapshot before node modifiers

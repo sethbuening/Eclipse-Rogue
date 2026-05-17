@@ -327,10 +327,6 @@ func _place_orb(node_index: int, orb: Orb) -> void:
 		_remove_orb(node_index)
 	node.placed_orb  = orb
 	orb.node_index   = node_index
-	# snapshot before applying
-	node.baseline_stats.clear()
-	for ability: AbilityData in orb.abilities:
-		node.baseline_stats.append(ability.stats.duplicate())
 	_apply_node_to_orb(node, orb)
 	_rebuild_orb_list()
 
@@ -338,11 +334,7 @@ func _remove_orb(node_index: int) -> void:
 	var node: GraphNodeData = GraphManager.graph.nodes[node_index]
 	if node.placed_orb == null:
 		return
-	# restore from snapshot
-	for i in range(node.placed_orb.abilities.size()):
-		if i < node.baseline_stats.size():
-			node.placed_orb.abilities[i].stats = node.baseline_stats[i]
-	node.baseline_stats.clear()
+	_unapply_node_from_orb(node, node.placed_orb)
 	node.placed_orb.node_index = -1
 	node.placed_orb            = null
 	_rebuild_orb_list()
@@ -367,6 +359,23 @@ func _apply_node_to_orb(node: GraphNodeData, orb: Orb) -> void:
 		GraphNodeData.NodeType.STAT_CONVERTER:
 			pass
 
+func _unapply_node_from_orb(node: GraphNodeData, orb: Orb) -> void:
+	match node.node_type:
+		GraphNodeData.NodeType.AOE:
+			for ability: AbilityData in orb.abilities:
+				ability.stats.aoe_radius   /= 2.0
+				ability.stats.mining_radius /= 2.0
+		GraphNodeData.NodeType.STAT:
+			var modifier       := OrbModifier.new()
+			modifier.stat_name  = node.stat_name
+			modifier.value      = node.stat_value
+			modifier.mod_type   = OrbModifier.ModType.ADDITIVE
+			modifier.unapply(orb)
+		GraphNodeData.NodeType.DECAYING:
+			pass  # cooldown changes are permanent by design
+		_:
+			pass
+
 # ── orb list ──────────────────────────────────────────────────────────────────
 func _rebuild_orb_list() -> void:
 	for child in orb_list.get_children():
@@ -380,28 +389,77 @@ func _rebuild_orb_list() -> void:
 		if node.placed_orb != null:
 			placed.append(node.placed_orb)
 
+	# build a map of which slot is already taken
+	var taken_slots: Dictionary = {}  # "orb_1" -> Orb
 	var inventory: Node = player.get_node("Inventory")
+	for orb: Orb in inventory.orbs:
+		if orb.input_action != "":
+			taken_slots[orb.input_action] = orb
+
 	for orb: Orb in inventory.orbs:
 		if placed.has(orb):
 			continue
 
-		var panel              := PanelContainer.new()
-		var vbox               := VBoxContainer.new()
-		var tex                := TextureRect.new()
-		var label              := Label.new()
+		var panel  := PanelContainer.new()
+		var hbox   := HBoxContainer.new()
+		var vbox   := VBoxContainer.new()
+		var tex    := TextureRect.new()
+		var label  := Label.new()
 
 		tex.texture             = orb.sprite_texture
 		tex.custom_minimum_size = Vector2(48, 48)
 		tex.expand_mode         = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
 		tex.stretch_mode        = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 
-		label.text              = orb.display_name
+		label.text                 = orb.display_name
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		label.add_theme_font_size_override("font_size", 10)
 
 		vbox.add_child(tex)
 		vbox.add_child(label)
-		panel.add_child(vbox)
+		hbox.add_child(vbox)
+
+		# slot picker — a row of buttons 1-7
+		var slot_vbox := VBoxContainer.new()
+		var slot_label := Label.new()
+		slot_label.text = "slot"
+		slot_label.add_theme_font_size_override("font_size", 9)
+		slot_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		slot_vbox.add_child(slot_label)
+
+		var slot_row := HBoxContainer.new()
+		for n in range(1, 8):
+			var action: String  = "orb_%d" % n
+			var btn            := Button.new()
+			btn.text            = str(n)
+			btn.toggle_mode     = true
+			btn.button_pressed  = (orb.input_action == action)
+			btn.custom_minimum_size = Vector2(22, 22)
+			btn.add_theme_font_size_override("font_size", 11)
+
+			# grey out if taken by a different orb
+			if taken_slots.has(action) and taken_slots[action] != orb:
+				btn.modulate = Color(0.5, 0.5, 0.5)
+
+			var orb_ref:    Orb    = orb
+			var action_ref: String = action
+			btn.toggled.connect(func(pressed: bool) -> void:
+				if pressed:
+					# unassign whoever had this slot before
+					for other: Orb in inventory.orbs:
+						if other != orb_ref and other.input_action == action_ref:
+							other.input_action = ""
+					orb_ref.input_action = action_ref
+				else:
+					if orb_ref.input_action == action_ref:
+						orb_ref.input_action = ""
+				_rebuild_orb_list()
+			)
+			slot_row.add_child(btn)
+
+		slot_vbox.add_child(slot_row)
+		hbox.add_child(slot_vbox)
+		panel.add_child(hbox)
 
 		if selected_orb == orb or dragging_orb == orb:
 			panel.add_theme_stylebox_override("panel",
@@ -409,6 +467,7 @@ func _rebuild_orb_list() -> void:
 			)
 
 		panel.mouse_filter = Control.MOUSE_FILTER_PASS
+		hbox.mouse_filter  = Control.MOUSE_FILTER_PASS
 		vbox.mouse_filter  = Control.MOUSE_FILTER_PASS
 		tex.mouse_filter   = Control.MOUSE_FILTER_PASS
 		label.mouse_filter = Control.MOUSE_FILTER_PASS
@@ -420,27 +479,26 @@ func _rebuild_orb_list() -> void:
 				if mb.button_index == MOUSE_BUTTON_LEFT:
 					if mb.pressed:
 						pressed_inventory_orb = orb_ref
-						inventory_press_pos = get_viewport().get_mouse_position()
-						selected_orb = orb_ref
+						inventory_press_pos   = get_viewport().get_mouse_position()
+						selected_orb          = orb_ref
 						_rebuild_orb_list()
 					else:
 						pressed_inventory_orb = null
 			elif ev is InputEventMouseMotion:
-				# only drag while left mouse is STILL held
 				if pressed_inventory_orb == orb_ref \
 				and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 					var dist := inventory_press_pos.distance_to(
 						get_viewport().get_mouse_position()
 					)
 					if dist >= DRAG_THRESHOLD:
-						dragging_orb = orb_ref
-						selected_orb = null
-						drag_origin_node = -1
-						drag_pos = get_viewport().get_mouse_position()
+						dragging_orb      = orb_ref
+						selected_orb      = null
+						drag_origin_node  = -1
+						drag_pos          = get_viewport().get_mouse_position()
 						pressed_inventory_orb = null
 						_rebuild_orb_list()
 		)
-		
+
 		orb_list.add_child(panel)
 
 func _make_highlight_style(color: Color) -> StyleBoxFlat:

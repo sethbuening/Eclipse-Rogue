@@ -31,7 +31,7 @@ func _find_spawn_position() -> Vector2:
 	for _attempt in range(40):
 		var offset:    Vector2i = Vector2i(randi_range(-radius, radius), randi_range(-radius, radius))
 		var candidate: Vector2i = player_tile + offset
-		if not tilemap_manager._in_playable_bounds(candidate):
+		if not _in_playable_bounds(candidate):
 			continue
 		if abs(offset.x) + abs(offset.y) < min_spawn_distance_tiles:
 			continue
