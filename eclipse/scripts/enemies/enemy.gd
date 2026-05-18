@@ -2,26 +2,38 @@
 class_name Enemy
 extends CharacterBody2D
 
-@export var data: EnemyData
+@export var data:                     EnemyData
 @export var min_spawn_distance_tiles: int = 15
 
-var health: int
-var player: CharacterBody2D
+var health:          int
+var player:          CharacterBody2D
 var tilemap_manager: Node = null
 
 signal died(enemy: Enemy)
 
+var _navigator: Node
+
+# ── lifecycle ─────────────────────────────────────────────────────────────────
+
 func _ready() -> void:
-	health = data.max_health
+	health             = data.max_health
+	_navigator         = load("res://scripts/pathfinding/enemy_navigator.gd").new()
+	_navigator.name    = "EnemyNavigator"
+	add_child(_navigator)
 
 func initialize(p: CharacterBody2D, modifier: Util.Modifier = Util.Modifier.NONE) -> void:
-	data   = data.duplicate()  # own copy, never mutates the asset
+	data   = data.duplicate()
 	player = p
 	_apply_modifier(modifier)
+	# set speed after modifier is applied
+	_navigator.move_speed = data.speed
 	_spawn()
+
+# ── spawning ──────────────────────────────────────────────────────────────────
 
 func _spawn() -> void:
 	global_position = _find_spawn_position()
+	reset_physics_interpolation()
 
 func _find_spawn_position() -> Vector2:
 	if tilemap_manager == null:
@@ -55,19 +67,24 @@ func _is_clear(map_pos: Vector2i) -> bool:
 
 func _in_playable_bounds(candidate: Vector2i) -> bool:
 	var buf: int = tilemap_manager.BUFFER_TILES
-	return (candidate.x >= buf and candidate.x < tilemap_manager.WIDTH  - buf and
-			candidate.y >= buf and candidate.y < tilemap_manager.HEIGHT - buf)
+	return (
+		candidate.x >= buf and candidate.x < tilemap_manager.WIDTH  - buf and
+		candidate.y >= buf and candidate.y < tilemap_manager.HEIGHT - buf
+	)
+
+# ── process ───────────────────────────────────────────────────────────────────
 
 func _physics_process(delta: float) -> void:
 	if player == null:
 		return
 	z_index = tilemap_manager.get_z_for(global_position)
-	_move(delta)
-
-func _move(delta: float) -> void:
-	var dir: Vector2 = (player.global_position - global_position).normalized()
-	velocity = dir * data.speed
+	if NavManager._built:
+		velocity = _navigator.navigate_toward(player.global_position, delta)
+	else:
+		velocity = (player.global_position - global_position).normalized() * data.speed
 	move_and_slide()
+
+# ── modifiers ─────────────────────────────────────────────────────────────────
 
 func _apply_modifier(modifier: Util.Modifier) -> void:
 	match modifier:
@@ -75,6 +92,8 @@ func _apply_modifier(modifier: Util.Modifier) -> void:
 			data.speed *= 1.6
 		_:
 			pass
+
+# ── combat ────────────────────────────────────────────────────────────────────
 
 func take_damage(amount: int) -> void:
 	health -= amount

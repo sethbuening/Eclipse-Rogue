@@ -3,9 +3,6 @@
 [ext_resource type="Script" uid="uid://dcm3xcviah1ya" path="res://scripts/player/player.gd" id="1_g2els"]
 [ext_resource type="Texture2D" uid="uid://cvg1ovknxiuid" path="res://art/body.png" id="2_qhqgy"]
 [ext_resource type="Texture2D" uid="uid://b6hvmtfby0k2n" path="res://art/player/head_down.png" id="3_dqkch"]
-[ext_resource type="Texture2D" uid="uid://bstdm7y0n3708" path="res://art/player/hand_left.png" id="3_fjrip"]
-[ext_resource type="Texture2D" uid="uid://c7cngqufslqfo" path="res://art/player/hand_right.png" id="4_smehm"]
-[ext_resource type="Texture2D" uid="uid://xai4dewrthn5" path="res://art/krita temp/player.png" id="6_fjrip"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_u8vuu"]
 radius = 6.0
@@ -16,8 +13,8 @@ colors = PackedColorArray(1, 1, 1, 1, 0, 0, 0, 1)
 
 [sub_resource type="GradientTexture2D" id="GradientTexture2D_qhqgy"]
 gradient = SubResource("Gradient_g2els")
-width = 4096
-height = 4096
+width = 512
+height = 512
 fill = 1
 fill_from = Vector2(0.5, 0.5)
 fill_to = Vector2(0.833, 0.167)
@@ -31,9 +28,7 @@ rotation = 1.5707964
 shape = SubResource("CapsuleShape2D_u8vuu")
 
 [node name="PointLight2D" type="PointLight2D" parent="." unique_id=127126805]
-visible = false
 position = Vector2(0, 3)
-energy = 0.5
 range_z_min = -4096
 range_z_max = 4096
 texture = SubResource("GradientTexture2D_qhqgy")
@@ -45,34 +40,9 @@ position = Vector2(-1, 7)
 texture = ExtResource("2_qhqgy")
 offset = Vector2(1, -15)
 
-[node name="hand_left" type="Sprite2D" parent="body" unique_id=352637717]
-unique_name_in_owner = true
-visible = false
-y_sort_enabled = true
-position = Vector2(16, 0)
-texture = ExtResource("3_fjrip")
-offset = Vector2(0, -16)
-
-[node name="hand_right" type="Sprite2D" parent="body" unique_id=1539048953]
-unique_name_in_owner = true
-visible = false
-y_sort_enabled = true
-position = Vector2(-15, -1)
-texture = ExtResource("4_smehm")
-offset = Vector2(0, -16)
-
 [node name="head" type="Sprite2D" parent="." unique_id=1156694320]
 unique_name_in_owner = true
 y_sort_enabled = true
 position = Vector2(-1, 7)
 texture = ExtResource("3_dqkch")
 offset = Vector2(1, -28)
-
-[node name="foot_left" type="Sprite2D" parent="." unique_id=1558404198]
-unique_name_in_owner = true
-visible = false
-modulate = Color(1.8247963, 1.8247963, 1.8247963, 1)
-y_sort_enabled = true
-position = Vector2(0, -38)
-scale = Vector2(0.04, 0.04)
-texture = ExtResource("6_fjrip")

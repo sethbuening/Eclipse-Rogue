@@ -19,6 +19,8 @@ func _ready() -> void:
 		"normal_font_size",
 		DisplayServer.window_get_size().y / 50
 	)
+	NavManager.build(%TilemapManager)
+	$Forge.init()
 
 func _process(delta: float) -> void:
 	_process_debug_messages(delta)
@@ -50,6 +52,8 @@ func _build_debug_text(fps: int, env: Environment, player: CharacterBody2D) -> S
 	var inventory: Node = %Player.get_node("Inventory")
 	for item_type: Util.tile in inventory.items:
 		lines.append(Util.tile.keys()[item_type] + " collected: " + str(inventory.get_quantity(item_type)))
+	for metal: MetalData in inventory.metals:
+		lines.append(metal.display_name + " collected: " + str(inventory.get_metal_quantity(metal)))
 
 	if debug_messages.size() > 0:
 		lines.append("")

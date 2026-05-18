@@ -1,0 +1,43 @@
+[gd_scene format=3 uid="uid://dnytw6xewr0j0"]
+
+[ext_resource type="Script" uid="uid://djpnnk51toyae" path="res://scripts/forging/forge.gd" id="1_huql2"]
+[ext_resource type="Texture2D" uid="uid://bk3wxelkjv5d3" path="res://art/statue.png" id="2_ebsuy"]
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_cc85a"]
+radius = 9.0
+height = 52.0
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_huql2"]
+radius = 48.0
+
+[node name="Forge" type="Node2D" unique_id=1243731680]
+script = ExtResource("1_huql2")
+
+[node name="StaticBody2D" type="StaticBody2D" parent="." unique_id=441977134]
+position = Vector2(0, -14)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="StaticBody2D" unique_id=386009770]
+position = Vector2(0, 14)
+rotation = 1.5707964
+shape = SubResource("CapsuleShape2D_cc85a")
+
+[node name="InteractArea" type="Area2D" parent="." unique_id=1782538907]
+position = Vector2(0, -14)
+collision_layer = 2
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="InteractArea" unique_id=872655660]
+position = Vector2(0, 14)
+shape = SubResource("CircleShape2D_huql2")
+
+[node name="ForgeSprite" type="Sprite2D" parent="." unique_id=2134381653]
+position = Vector2(0, -14)
+texture = ExtResource("2_ebsuy")
+
+[node name="InteractPrompt" type="Label" parent="." unique_id=365850337]
+visible = false
+offset_left = -35.0
+offset_top = -64.0
+offset_right = 32.0
+offset_bottom = -41.0
+text = "[E] Forge"
+horizontal_alignment = 1

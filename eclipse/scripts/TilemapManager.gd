@@ -502,6 +502,8 @@ func remove_tile(map_pos: Vector2i) -> void:
 	tile_types.erase(map_pos)
 	tile_variant.erase(map_pos)
 	tile_shapes[map_pos].disabled = true
+	
+	NavManager.on_tile_removed(map_pos)
 
 	# Remove ore overlay if present
 	if ore_types.has(map_pos):

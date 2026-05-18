@@ -1,0 +1,211 @@
+[gd_scene format=3 uid="uid://dxyxllhqirip2"]
+
+[ext_resource type="Script" uid="uid://4dxt4mgyo7pu" path="res://scripts/forging/forge_ui.gd" id="1_44mun"]
+
+[node name="ForgeUI" type="CanvasLayer" unique_id=1596043621]
+script = ExtResource("1_44mun")
+
+[node name="RootPanel" type="Control" parent="." unique_id=1483796767]
+unique_name_in_owner = true
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="InputScreen" type="Control" parent="RootPanel" unique_id=1862393286]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="RootPanel/InputScreen" unique_id=1500687521]
+custom_minimum_size = Vector2(800, 0)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -400.0
+offset_top = -108.0
+offset_right = 400.0
+offset_bottom = 108.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Label" type="Label" parent="RootPanel/InputScreen/VBoxContainer" unique_id=1870328408]
+layout_mode = 2
+text = "FORGE"
+
+[node name="HSeparator" type="HSeparator" parent="RootPanel/InputScreen/VBoxContainer" unique_id=800740592]
+layout_mode = 2
+
+[node name="HBoxContainer" type="HBoxContainer" parent="RootPanel/InputScreen/VBoxContainer" unique_id=1825522300]
+layout_mode = 2
+
+[node name="Inventory" type="VBoxContainer" parent="RootPanel/InputScreen/VBoxContainer/HBoxContainer" unique_id=1697875255]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="RootPanel/InputScreen/VBoxContainer/HBoxContainer/Inventory" unique_id=1146570215]
+layout_mode = 2
+text = "Your Orbs"
+
+[node name="Orbs" type="ScrollContainer" parent="RootPanel/InputScreen/VBoxContainer/HBoxContainer/Inventory" unique_id=2022042804]
+layout_mode = 2
+
+[node name="OrbInventoryList" type="VBoxContainer" parent="RootPanel/InputScreen/VBoxContainer/HBoxContainer/Inventory/Orbs" unique_id=179529281]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="Label2" type="Label" parent="RootPanel/InputScreen/VBoxContainer/HBoxContainer/Inventory" unique_id=1446665061]
+layout_mode = 2
+text = "Your Metals"
+
+[node name="ScrollContainer" type="ScrollContainer" parent="RootPanel/InputScreen/VBoxContainer/HBoxContainer/Inventory" unique_id=6058515]
+custom_minimum_size = Vector2(0, 150)
+layout_mode = 2
+
+[node name="MetalInventoryList" type="VBoxContainer" parent="RootPanel/InputScreen/VBoxContainer/HBoxContainer/Inventory/ScrollContainer" unique_id=756333204]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="Staged" type="VBoxContainer" parent="RootPanel/InputScreen/VBoxContainer/HBoxContainer" unique_id=2050175236]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="RootPanel/InputScreen/VBoxContainer/HBoxContainer/Staged" unique_id=1963848363]
+layout_mode = 2
+text = "Staged Orbs"
+
+[node name="StagedOrbList" type="VBoxContainer" parent="RootPanel/InputScreen/VBoxContainer/HBoxContainer/Staged" unique_id=1679597466]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="Label2" type="Label" parent="RootPanel/InputScreen/VBoxContainer/HBoxContainer/Staged" unique_id=1440097159]
+layout_mode = 2
+text = "Staged Metals
+"
+
+[node name="StagedMetalList" type="VBoxContainer" parent="RootPanel/InputScreen/VBoxContainer/HBoxContainer/Staged" unique_id=1584864746]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="HSeparator2" type="HSeparator" parent="RootPanel/InputScreen/VBoxContainer" unique_id=2132804380]
+layout_mode = 2
+
+[node name="HeatLabel" type="Label" parent="RootPanel/InputScreen/VBoxContainer" unique_id=1532645762]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="PreviewLabel" type="Label" parent="RootPanel/InputScreen/VBoxContainer" unique_id=240252074]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(700, 20)
+layout_mode = 2
+autowrap_mode = 1
+
+[node name="HBoxContainer2" type="HBoxContainer" parent="RootPanel/InputScreen/VBoxContainer" unique_id=2065033989]
+layout_mode = 2
+
+[node name="CancelButton" type="Button" parent="RootPanel/InputScreen/VBoxContainer/HBoxContainer2" unique_id=1823434666]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Cancel"
+
+[node name="ActivateButton" type="Button" parent="RootPanel/InputScreen/VBoxContainer/HBoxContainer2" unique_id=1505532402]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Activate Forge"
+
+[node name="ForgingScreen" type="Control" parent="RootPanel" unique_id=2020773814]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="RootPanel/ForgingScreen" unique_id=859478061]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -20.0
+offset_right = 20.0
+offset_bottom = 40.0
+grow_horizontal = 2
+
+[node name="ForgeProgressBar" type="ProgressBar" parent="RootPanel/ForgingScreen/VBoxContainer" unique_id=200515811]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+
+[node name="ForgingHeatLabel" type="Label" parent="RootPanel/ForgingScreen/VBoxContainer" unique_id=857812699]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="ForgingWaveLabel" type="Label" parent="RootPanel/ForgingScreen/VBoxContainer" unique_id=1922432733]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="CompleteScreen" type="Control" parent="RootPanel" unique_id=305965436]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="RootPanel/CompleteScreen" unique_id=472936338]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -20.0
+offset_top = -20.0
+offset_right = 20.0
+offset_bottom = 20.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="ResultNameLabel" type="Label" parent="RootPanel/CompleteScreen/VBoxContainer" unique_id=913265475]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="HSeparator" type="HSeparator" parent="RootPanel/CompleteScreen/VBoxContainer" unique_id=2033512859]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="RootPanel/CompleteScreen/VBoxContainer" unique_id=1804434452]
+layout_mode = 2
+text = "Abilities"
+
+[node name="ResultAbilityList" type="VBoxContainer" parent="RootPanel/CompleteScreen/VBoxContainer" unique_id=1550822876]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="HSeparator2" type="HSeparator" parent="RootPanel/CompleteScreen/VBoxContainer" unique_id=1689000823]
+layout_mode = 2
+
+[node name="Label2" type="Label" parent="RootPanel/CompleteScreen/VBoxContainer" unique_id=735220617]
+layout_mode = 2
+text = "Stat Bonuses"
+
+[node name="ResultStatList" type="VBoxContainer" parent="RootPanel/CompleteScreen/VBoxContainer" unique_id=1739729592]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="CollectButton" type="Button" parent="RootPanel/CompleteScreen/VBoxContainer" unique_id=458999808]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Collect Orb"

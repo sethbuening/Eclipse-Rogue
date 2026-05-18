@@ -1,13 +1,5 @@
 extends CharacterBody2D
 
-# ------------------------------------------------------ light (health) bar ---
-@onready var light_bar = $"../HUD/health bar"  # adjust path
-var light: float = 100.0:
-	set(value):
-		light = clampf(value, 0.0, 100.0)
-		if light_bar:
-			light_bar.set_light(light)
-
 var movement_enabled: bool = true
 @onready var speed: float  = 100.0 * get_parent().scale.x
 
@@ -29,6 +21,17 @@ var movement_enabled: bool = true
 @export_group("Starting Orbs")
 @export var starting_orb: Orb = preload("res://data/orbs/orb_focus_mine.tres")
 
+# ------------------------------------------------------ light (health) bar ---
+@onready var light_bar = $"../HUD/health bar"  # adjust path
+var light: float = 100.0:
+	set(value):
+		light = clampf(value, 0.0, 100.0)
+		if light_bar:
+			light_bar.set_light(light)
+
+# ----------------------------------------------------------------- forging ---
+var _nearby_forge: Forge = null
+
 # ---------------------------------------------------------------- textures ---
 var head_up:    Texture2D = preload("res://art/player/head_up.png")
 var head_right: Texture2D = preload("res://art/player/head_right.png")
@@ -46,7 +49,7 @@ const FOCUS_GLOW_MIN:       float = 0.3
 const FOCUS_GLOW_MAX:       float = 1.25
 const FOCUS_DECAY:          float = 4.0
 const CHANNEL_TIME:         float = 5.0
-const CHANNEL_LIGHT_COST:   float = 0.0 # temp 80.0
+const CHANNEL_LIGHT_COST:   float = 80.0
 const CHANNEL_POWER_BONUS:  float = 0.15
 
 # ------------------------------------------------------------------- state ---
@@ -54,7 +57,7 @@ var time:                float = 0.0
 var env_t:               float = 0.0
 var channeling_orb_index: int  = -1
 var channel_charge:       float = 0.0
-var orbit_speed_mult:     float = 1.0   # ← add this
+var orbit_speed_mult:     float = 1.0
 
 var direction: Vector2i = Vector2i.DOWN:
 	set(value):
@@ -87,8 +90,10 @@ func _ready() -> void:
 	$Inventory.orb_added.connect(_on_orb_added)
 	$Inventory.orb_removed.connect(_on_orb_removed)
 	$Inventory.add_orb(starting_orb.duplicate(true))
+	$Inventory.add_orb(starting_orb.duplicate(true))
 
 # --------------------------------------------------------- orb management ---
+# In player.gd
 func _on_orb_added(orb: Orb) -> void:
 	var ov             := OrbVisual.new()
 	ov.sprite           = Sprite2D.new()
@@ -102,6 +107,20 @@ func _on_orb_added(orb: Orb) -> void:
 	var new_count: int = orb_visuals.size()
 	for i in range(new_count):
 		orb_visuals[i].current_angle = orbit_time + (float(i) / float(new_count)) * TAU
+
+	_auto_assign_slot(orb)   # ← add this
+
+func _auto_assign_slot(orb: Orb) -> void:
+	var taken: Dictionary = {}
+	for o: Orb in $Inventory.orbs:
+		if o != orb and o.input_action != "":
+			taken[o.input_action] = true
+	for n in range(1, 8):
+		var action: String = "orb_%d" % n
+		if not taken.has(action):
+			orb.input_action = action
+			return
+	orb.input_action = ""
 
 func _on_orb_removed(orb: Orb) -> void:
 	var idx: int = $Inventory.orbs.find(orb)
@@ -254,6 +273,8 @@ func _tick_dev_input() -> void:
 	if Input.is_action_just_pressed("dev_call_wave"):
 		WaveManager.timer = 0.0
 		WaveManager._launch_wave()
+	if Input.is_action_just_pressed("interact") and _nearby_forge != null:
+		_try_open_forge()
 
 # --------------------------------------------------------- physics process ---
 func _physics_process(_delta: float) -> void:
@@ -356,6 +377,25 @@ func _complete_channel() -> void:
 	env_t                = 0.0
 	orbit_speed_mult     = 1.0
 	_set_env(0.0)
+
+# -------------------------------------------------------- forge interaction ---
+func _try_open_forge() -> void:
+	if _nearby_forge == null:
+		Log("Error! _nearby_forge = null, while trying to forge")
+		return
+	if _nearby_forge.state != Forge.State.IDLE:
+		Log("Error! _nearby_forge is already forging!")
+		return
+	_nearby_forge._open(self)
+	%ForgeUI.open(self, _nearby_forge)
+	Log("ForgeUI opened!")
+
+func _on_forge_in_range(forge: Forge) -> void:
+	_nearby_forge = forge
+
+func _on_forge_out_of_range(forge: Forge) -> void:
+	if _nearby_forge == forge:
+		_nearby_forge = null
 
 # ----------------------------------------------------------------- helpers ---
 func _set_env(t: float) -> void:

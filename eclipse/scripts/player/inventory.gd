@@ -5,9 +5,12 @@ signal item_added(item_type: Util.tile, quantity: int)
 signal item_removed(item_type: Util.tile, quantity: int)
 signal orb_added(orb: Orb)
 signal orb_removed(orb: Orb)
+signal metal_added(metal: MetalData, quantity: int)
+signal metal_removed(metal: MetalData, quantity: int)
 
-var items: Dictionary = {}
-var orbs:  Array[Orb] = []
+var items:  Dictionary = {}   # Util.tile → int
+var orbs:   Array[Orb] = []
+var metals: Dictionary = {}   # MetalData → int
 
 # ── items ─────────────────────────────────────────────────────────────────────
 func add(item_type: Util.tile, quantity: int = 1) -> void:
@@ -28,6 +31,29 @@ func has(item_type: Util.tile, quantity: int = 1) -> bool:
 
 func get_quantity(item_type: Util.tile) -> int:
 	return items.get(item_type, 0)
+
+# ── metals ────────────────────────────────────────────────────────────────────
+func add_metal(metal: MetalData, quantity: int = 1) -> void:
+	metals[metal] = metals.get(metal, 0) + quantity
+	emit_signal("metal_added", metal, quantity)
+
+func remove_metals(metal: MetalData, quantity: int = 1) -> bool:
+	if metals.get(metal, 0) < quantity:
+		return false
+	metals[metal] -= quantity
+	if metals[metal] <= 0:
+		metals.erase(metal)
+	emit_signal("metal_removed", metal, quantity)
+	return true
+
+func has_metal(metal: MetalData, quantity: int = 1) -> bool:
+	return metals.get(metal, 0) >= quantity
+
+func get_metal_quantity(metal: MetalData) -> int:
+	return metals.get(metal, 0)
+
+func get_metals() -> Dictionary:
+	return metals.duplicate()
 
 # ── orbs ──────────────────────────────────────────────────────────────────────
 func add_orb(orb: Orb) -> void:
