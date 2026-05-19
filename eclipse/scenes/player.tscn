@@ -21,6 +21,8 @@ fill_to = Vector2(0.833, 0.167)
 
 [node name="Player" type="CharacterBody2D" unique_id=341096909]
 y_sort_enabled = true
+collision_layer = 4
+collision_mask = 9
 script = ExtResource("1_g2els")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=166070350]

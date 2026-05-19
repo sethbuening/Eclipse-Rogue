@@ -47,11 +47,11 @@ func reset_exploded() -> void:
 
 func _explode(player: Node, tilemap: Node, context: Dictionary) -> void:
 	var power: int = int(stats.mining_power * context.get("orb_power", 1.0))
-	player.light -= stats.light_cost
 	for tile: Vector2i in targeted_tiles:
 		tilemap.damage_tile(tile, power)
 		ParticleManager.spawn_focus_spark(tilemap.map_to_world(tile))
 	targeted_tiles.clear()
+	stats.apply_to_player(player)
 
 func _clear_tiles(tilemap: Node) -> void:
 	for tile: Vector2i in targeted_tiles:

@@ -1,0 +1,45 @@
+[gd_scene format=3 uid="uid://dnishawyjc46h"]
+
+[ext_resource type="Script" uid="uid://d1i6frgffu2xc" path="res://scripts/enemies/pylon.gd" id="1_2gtiw"]
+[ext_resource type="Texture2D" uid="uid://bypeko2e87jpl" path="res://art/enemies/angel/angel_minor.png" id="2_mh3g5"]
+[ext_resource type="Texture2D" uid="uid://jfp8qxqhykoq" path="res://art/enemies/angel/line.png" id="3_1t44a"]
+[ext_resource type="Texture2D" uid="uid://dbow4wvvpeojh" path="res://art/enemies/angel/fracture1.png" id="3_qgvmf"]
+[ext_resource type="Texture2D" uid="uid://dlthsg0s85j5l" path="res://art/enemies/angel/line2.png" id="4_34vf4"]
+[ext_resource type="Texture2D" uid="uid://cl1mbxpefwo0n" path="res://art/enemies/angel/fracture2.png" id="4_pxw3q"]
+[ext_resource type="Texture2D" uid="uid://bfpx2uoioxes3" path="res://art/enemies/angel/fracture3.png" id="5_1t44a"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_ave5w"]
+radius = 8.0
+
+[node name="pylon" type="CharacterBody2D" unique_id=580996326]
+collision_layer = 8
+collision_mask = 0
+script = ExtResource("1_2gtiw")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=828114756]
+position = Vector2(0, -5)
+shape = SubResource("CircleShape2D_ave5w")
+
+[node name="main sphere" type="Sprite2D" parent="." unique_id=214917348]
+position = Vector2(0, -31)
+texture = ExtResource("2_mh3g5")
+
+[node name="line" type="Sprite2D" parent="." unique_id=176886339]
+texture = ExtResource("3_1t44a")
+offset = Vector2(0, -31)
+
+[node name="line2" type="Sprite2D" parent="." unique_id=2124941181]
+texture = ExtResource("4_34vf4")
+offset = Vector2(0, -31)
+
+[node name="fracture" type="Sprite2D" parent="." unique_id=518850049]
+texture = ExtResource("3_qgvmf")
+offset = Vector2(0, -31)
+
+[node name="fracture2" type="Sprite2D" parent="." unique_id=644450306]
+texture = ExtResource("4_pxw3q")
+offset = Vector2(0, -31)
+
+[node name="fracture3" type="Sprite2D" parent="." unique_id=1915778990]
+texture = ExtResource("5_1t44a")
+offset = Vector2(0, -31)

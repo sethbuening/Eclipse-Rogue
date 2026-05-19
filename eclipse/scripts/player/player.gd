@@ -19,7 +19,8 @@ var movement_enabled: bool = true
 @export var focus_orbit_speed: float = 8.0
 
 @export_group("Starting Orbs")
-@export var starting_orb: Orb = preload("res://data/orbs/orb_focus_mine.tres")
+const starting_orb: Orb = preload("res://data/orbs/orb_focus_mine.tres")
+const starting_orb_2: Orb = preload("res://data/orbs/orb_gold_bomb.tres")
 
 # ------------------------------------------------------ light (health) bar ---
 @onready var light_bar = $"../HUD/health bar"  # adjust path
@@ -57,7 +58,6 @@ var time:                float = 0.0
 var env_t:               float = 0.0
 var channeling_orb_index: int  = -1
 var channel_charge:       float = 0.0
-var orbit_speed_mult:     float = 1.0
 
 var direction: Vector2i = Vector2i.DOWN:
 	set(value):
@@ -81,19 +81,22 @@ class OrbVisual:
 	var reform_flash:  float = 0.0
 	var current_angle: float = 0.0
 	var glow:          float = 0.0
+	var angle_offset:  float = 0.0
+	var reforming:     bool  = false
 
 var orb_visuals: Array[OrbVisual] = []
 var orbit_time:  float            = 0.0
+var orbit_speed_mult:     float = 1.0
+var display_count: float = 0.0
 
 # ------------------------------------------------------------------- ready ---
 func _ready() -> void:
 	$Inventory.orb_added.connect(_on_orb_added)
 	$Inventory.orb_removed.connect(_on_orb_removed)
-	$Inventory.add_orb(starting_orb.duplicate(true))
-	$Inventory.add_orb(starting_orb.duplicate(true))
+	$Inventory.add_orb(starting_orb.clone())
+	$Inventory.add_orb(starting_orb_2.clone())
 
 # --------------------------------------------------------- orb management ---
-# In player.gd
 func _on_orb_added(orb: Orb) -> void:
 	var ov             := OrbVisual.new()
 	ov.sprite           = Sprite2D.new()
@@ -104,12 +107,8 @@ func _on_orb_added(orb: Orb) -> void:
 	ov.sprite.z_index       = 4096
 	add_child(ov.sprite)
 	orb_visuals.append(ov)
-	var new_count: int = orb_visuals.size()
-	for i in range(new_count):
-		orb_visuals[i].current_angle = orbit_time + (float(i) / float(new_count)) * TAU
-
-	_auto_assign_slot(orb)   # ← add this
-
+	_auto_assign_slot(orb)
+	
 func _auto_assign_slot(orb: Orb) -> void:
 	var taken: Dictionary = {}
 	for o: Orb in $Inventory.orbs:
@@ -129,7 +128,7 @@ func _on_orb_removed(orb: Orb) -> void:
 	orb_visuals[idx].sprite.queue_free()
 	orb_visuals.remove_at(idx)
 
-func shatter_orb(orb_index: int) -> void:
+func shatter_orb(orb_index: int, spawn_spark: bool = true) -> void:
 	if orb_index >= orb_visuals.size():
 		return
 	var ov:  OrbVisual = orb_visuals[orb_index]
@@ -143,7 +142,8 @@ func shatter_orb(orb_index: int) -> void:
 	ov.sprite.visible = false
 	var phase: float  = (float(orb_index) / float(orb_visuals.size())) * TAU
 	ov.current_angle  = orbit_time + phase
-	ParticleManager.spawn_focus_spark(global_position + ov.sprite.position)
+	if spawn_spark:
+		ParticleManager.spawn_focus_spark(global_position + ov.sprite.position)
 
 func store_light_in_orb(orb_index: int, amount: float) -> void:
 	if orb_index >= $Inventory.orbs.size():
@@ -162,12 +162,17 @@ func _make_context(delta: float, pressed: bool, orb_index: int) -> Dictionary:
 		"orb_t":         0.0,
 		"shatter":       false,
 		"orb_shattered": orb_visuals[orb_index].shattered,
+		"orb_index":     orb_index,
 	}
 
 func _read_context(context: Dictionary, orb_index: int, max_t: float) -> float:
 	if context["shatter"]:
-		shatter_orb(orb_index)
+		shatter_orb(orb_index, context.get("spark", true))
 		_trigger_connections(orb_index, context["delta"])
+		var orb: Orb = $Inventory.orbs[orb_index]
+		for ability: AbilityData in orb.abilities:
+			var cost: float = ability.stats.light_cost if "light_cost" in ability.stats else 0.0
+			light -= cost
 	if context["lock_movement"]:
 		movement_enabled = false
 	if orb_index < orb_visuals.size():
@@ -262,19 +267,38 @@ func _tick_env(delta: float) -> void:
 		env_t = maxf(0.0, env_t - delta * FOCUS_DECAY)
 		_set_env(env_t)
 
+# ------------------------------------------------------------ dev functions ---
 func _tick_dev_input() -> void:
 	if Input.is_action_just_pressed("dev_mode"):
 		if $CollisionShape2D.disabled:
 			speed /= 10.0
 			$CollisionShape2D.disabled = false
+			%Camera2D.zoom *= 2
+			%CanvasModulate.color = Color("101010")
+			light = 100
 		else:
 			speed *= 10.0
 			$CollisionShape2D.disabled = true
+			%Camera2D.zoom /= 2
+			%CanvasModulate.color = Color.WHITE
+			_dev_reset_cooldowns()
 	if Input.is_action_just_pressed("dev_call_wave"):
 		WaveManager.timer = 0.0
 		WaveManager._launch_wave()
 	if Input.is_action_just_pressed("interact") and _nearby_forge != null:
 		_try_open_forge()
+
+func _dev_reset_cooldowns() -> void:
+	for orb: Orb in $Inventory.orbs:
+		for ability: AbilityData in orb.abilities:
+			ability.reset_cooldown()
+	for ov: OrbVisual in orb_visuals:
+		ov.shattered    = false
+		ov.cooldown_age = 0.0
+		ov.cooldown     = 0.0
+		ov.reform_flash = orb_reform_flash
+		ov.reforming    = true
+		ov.glow         = 0.0
 
 # --------------------------------------------------------- physics process ---
 func _physics_process(_delta: float) -> void:
@@ -293,11 +317,25 @@ func _physics_process(_delta: float) -> void:
 func _update_orb_visuals(delta: float) -> void:
 	var total: int = orb_visuals.size()
 	if total == 0:
+		display_count = 0.0
 		return
 	var max_glow: float = 0.0
 	for ov: OrbVisual in orb_visuals:
 		max_glow = maxf(max_glow, ov.glow)
 	orbit_time += delta * orb_orbit_speed * orbit_speed_mult
+
+	# pass 2 — active slot assignments (moved up so active_count is ready)
+	var active_indices: Array[int] = []
+	for i in range(total):
+		if not orb_visuals[i].shattered and $Inventory.orbs[i].node_index != -1:
+			active_indices.append(i)
+	var active_count: int = active_indices.size()
+
+	# lerp display_count toward real count
+	if display_count == 0.0:
+		display_count = float(active_count)
+	else:
+		display_count = lerpf(display_count, float(active_count), minf(10.0 * delta, 1.0))
 
 	# pass 1 — resolve cooldowns
 	for i in range(total):
@@ -307,20 +345,14 @@ func _update_orb_visuals(delta: float) -> void:
 		ov.cooldown_age += delta
 		if ov.cooldown_age < ov.cooldown:
 			continue
-		ov.shattered      = false
-		ov.reform_flash   = orb_reform_flash
-		ov.cooldown_age   = 0.0
+		ov.shattered    = false
+		ov.reforming    = true
+		ov.reform_flash = orb_reform_flash
+		ov.cooldown_age = 0.0
 		ov.sprite.visible = false
 		for ability: AbilityData in $Inventory.orbs[i].abilities:
 			if ability is AbilityFocusMine:
 				(ability as AbilityFocusMine).reset_exploded()
-
-	# pass 2 — active slot assignments
-	var active_indices: Array[int] = []
-	for i in range(total):
-		if not orb_visuals[i].shattered and $Inventory.orbs[i].node_index != -1:
-			active_indices.append(i)
-	var active_count: int = active_indices.size()
 
 	# pass 3 — position and visibility
 	for i in range(total):
@@ -329,27 +361,36 @@ func _update_orb_visuals(delta: float) -> void:
 		if orb.node_index == -1 or ov.shattered:
 			ov.sprite.visible = false
 			continue
+		var angle: float   = orbit_time + ov.angle_offset
+		ov.current_angle   = angle
+		ov.sprite.position = _angle_to_orbit_pos(ov.current_angle)
+		ov.sprite.scale    = Vector2.ONE
+		if ov.reforming:
+			# position is correct this frame — reveal next frame
+			ov.reforming = false
+			continue
 		if not ov.sprite.visible:
-			ov.current_angle   = orbit_time
-			ov.sprite.position = _angle_to_orbit_pos(orbit_time)
-			ov.sprite.visible  = true
 			ov.sprite.reset_physics_interpolation()
-		var slot:         int   = active_indices.find(i)
-		var target_angle: float = orbit_time + (float(slot) / float(active_count)) * TAU
-		var angle_diff:   float = wrapf(target_angle - ov.current_angle, -PI, PI)
-		ov.current_angle       += angle_diff * minf(10.0 * delta, 1.0)
-		var brightness: float   = 1.0
+			ov.sprite.visible = true
+		var brightness: float = 1.0
 		if ov.reform_flash > 0.0:
 			ov.reform_flash -= delta
 			brightness       = lerpf(1.0, 4.0, ov.reform_flash / orb_reform_flash)
 		elif ov.glow > 0.0:
 			brightness       = lerpf(1.0, 3.0, ov.glow)
 		ov.sprite.self_modulate = Color(brightness, brightness, brightness)
-		ov.sprite.position      = _angle_to_orbit_pos(ov.current_angle)
-		ov.sprite.scale         = Vector2.ONE
 
 func _angle_to_orbit_pos(angle: float) -> Vector2:
 	return Vector2(cos(angle), sin(angle)) * orb_orbit_radius + orb_orbit_center
+
+func _recalculate_orb_offsets() -> void:
+	var active: Array[int] = []
+	for i in range($Inventory.orbs.size()):
+		if $Inventory.orbs[i].node_index != -1:
+			active.append(i)
+	var count: int = active.size()
+	for slot in range(count):
+		orb_visuals[active[slot]].angle_offset = (float(slot) / float(count)) * TAU
 
 # -------------------------------------------------------------- channeling ---
 func _cancel_channel() -> void:
@@ -404,32 +445,10 @@ func _set_env(t: float) -> void:
 	env.glow_intensity   = lerpf(FOCUS_GLOW_MIN,  FOCUS_GLOW_MAX,  t)
 
 func _trigger_connections(orb_index: int, delta: float) -> void:
-	var graph:      GraphData = GraphManager.graph
-	var node_index: int       = $Inventory.orbs[orb_index].node_index
+	var node_index: int = $Inventory.orbs[orb_index].node_index
 	if node_index == -1:
 		return
-	for conn: GraphConnectionData in graph.get_connections_for(node_index):
-		var target_node_index: int = conn.to_node if conn.from_node == node_index else conn.from_node
-		var target_orb: Orb        = graph.nodes[target_node_index].placed_orb
-		if target_orb == null:
-			continue
-		match conn.connection_type:
-			GraphConnectionData.ConnectionType.CHARGES:
-				conn.charge_stacks += 1
-				target_orb.add_charge(conn.charge_stacks)
-			GraphConnectionData.ConnectionType.OVERHEATS:
-				conn.overheat_count += 1
-				for ability: AbilityData in target_orb.abilities:
-					ability.stats.cooldown = maxf(0.0, ability.stats.cooldown - (0.1 * conn.overheat_count))
-			GraphConnectionData.ConnectionType.RESONATOR:
-				for ability: AbilityData in target_orb.abilities:
-					ability.stats.power *= 1.1
-			GraphConnectionData.ConnectionType.DRAINS:
-				var drained: float = target_orb.drain_light(conn.drain_power)
-				$Inventory.orbs[orb_index].store_light(drained)
-			GraphConnectionData.ConnectionType.SILENCE:
-				conn.silence_age   = 0.0
-				target_orb.silenced = true
+	GraphManager.on_orb_fired(node_index, {}, $Inventory.orbs[orb_index])
 
 func Log(msg: Variant) -> void:
 	print("[player.gd] " + str(msg))

@@ -3,22 +3,25 @@
 extends Node
 
 @export var agent_radius: float = 8.0
-@export var rebake_delay: float = 0.5
 @export var chunk_size:   int   = 16
 
-var _tilemap_ref:   Node       = null
-var _built:         bool       = false
-var _map_rid:       RID
+const REBAKE_DELAY: float = 0.05
 
-# chunk_coord → Array[PackedVector2Array] outlines
+var _tilemap_ref:    Node              = null
+var _built:          bool              = false
+var _map_rid:        RID
+var _region:         NavigationRegion2D = null
+var _apply_pending:  bool              = false
+var _rebake_timer:   float             = 0.0
+var _rebake_requested: bool            = false
+
+# chunk_coord → Array[PackedVector2Array]
 var _chunk_outlines:  Dictionary = {}
 # chunk_coord → float (remaining delay)
 var _dirty_chunks:    Dictionary = {}
 # chunk_coord → Thread
 var _chunk_threads:   Dictionary = {}
-
-var _region:          NavigationRegion2D = null
-var _apply_pending:   bool               = false
+var _pending_threads: Dictionary = {}
 
 # ── debug ─────────────────────────────────────────────────────────────────────
 var _debug_draw: bool   = false
@@ -32,7 +35,6 @@ func build(tilemap: Node) -> void:
 	var cw: int = ceili(float(tilemap.WIDTH)  / chunk_size)
 	var ch: int = ceili(float(tilemap.HEIGHT) / chunk_size)
 
-	# collect all chunk threads
 	var threads: Array[Thread] = []
 	for cy in range(ch):
 		for cx in range(cw):
@@ -53,10 +55,9 @@ func build(tilemap: Node) -> void:
 			))
 			threads.append(thread)
 
-	# wait for all threads then collect results
 	for thread: Thread in threads:
-		var result: Array = thread.wait_to_finish()
-		var chunk:  Vector2i                   = result[0]
+		var result:   Array                     = thread.wait_to_finish()
+		var chunk:    Vector2i                  = result[0]
 		var outlines: Array[PackedVector2Array] = result[1]
 		_chunk_outlines[chunk] = outlines
 
@@ -79,13 +80,17 @@ func query_path(from: Vector2, to: Vector2) -> PackedVector2Array:
 
 func on_tile_removed(map_pos: Vector2i) -> void:
 	var chunk := Vector2i(map_pos.x / chunk_size, map_pos.y / chunk_size)
-	_dirty_chunks[chunk] = rebake_delay
+	_dirty_chunks[chunk] = REBAKE_DELAY
+
+func request_rebake() -> void:
+	_rebake_requested = true
+	_rebake_timer     = REBAKE_DELAY
 
 func toggle_debug_draw() -> void:
 	_debug_draw = not _debug_draw
 	_draw_navmesh()
 
-# ── debounce ──────────────────────────────────────────────────────────────────
+# ── process ───────────────────────────────────────────────────────────────────
 
 func _process(delta: float) -> void:
 	for chunk: Vector2i in _dirty_chunks.keys():
@@ -93,6 +98,26 @@ func _process(delta: float) -> void:
 		if _dirty_chunks[chunk] <= 0.0:
 			_dirty_chunks.erase(chunk)
 			_rebuild_chunk(chunk)
+
+	var any_done: bool = false
+	for chunk: Vector2i in _pending_threads.keys():
+		var thread: Thread = _pending_threads[chunk]
+		if not thread.is_alive():
+			var result:   Array                     = thread.wait_to_finish()
+			var outlines: Array[PackedVector2Array] = result[1]
+			_chunk_outlines[chunk] = outlines
+			_chunk_threads.erase(chunk)
+			_pending_threads.erase(chunk)
+			any_done = true
+
+	if any_done and not _apply_pending:
+		_apply_all_outlines()
+
+	if _rebake_requested and _built:
+		_rebake_timer -= delta
+		if _rebake_timer <= 0.0:
+			_rebake_requested = false
+			_apply_all_outlines()
 
 # ── partial rebuild ───────────────────────────────────────────────────────────
 
@@ -115,36 +140,18 @@ func _rebuild_chunk(chunk: Vector2i) -> void:
 			world_map[Vector2i(x, y)] = _tilemap_ref.map_to_world(Vector2i(x, y))
 
 	var thread := Thread.new()
-	_chunk_threads[chunk] = thread
+	_chunk_threads[chunk]  = thread
+	_pending_threads[chunk] = thread
 	thread.start(_thread_build_chunk_geometry.bind(
 		chunk, tile_x0, tile_y0, tile_x1, tile_y1, tile_size, tile_map, world_map
 	))
 
-	while thread.is_alive():
-		await get_tree().process_frame
-
-	var result:   Array                      = thread.wait_to_finish()
-	var outlines: Array[PackedVector2Array]  = result[1]
-	_chunk_threads.erase(chunk)
-
-	_chunk_outlines[chunk] = outlines
-	await _apply_all_outlines()
-
-# ── apply all chunk outlines into one single region ───────────────────────────
+# ── bake ──────────────────────────────────────────────────────────────────────
 
 func _apply_all_outlines() -> void:
 	if _apply_pending:
 		return
 	_apply_pending = true
-
-	if _region != null and is_instance_valid(_region):
-		_region.queue_free()
-		_region = null
-
-	_region      = NavigationRegion2D.new()
-	_region.name = "NavRegion"
-	add_child(_region)
-	await get_tree().process_frame
 
 	var nav_poly := NavigationPolygon.new()
 	nav_poly.agent_radius         = agent_radius
@@ -154,13 +161,28 @@ func _apply_all_outlines() -> void:
 		for outline: PackedVector2Array in outlines:
 			nav_poly.add_outline(outline)
 
+	# Obstacle cutouts — reversed to CCW so the baker treats them as holes
+	for obs in get_tree().get_nodes_in_group("nav_obstacles"):
+		if not obs.has_method("get_world_outline"):
+			continue
+		var outline: PackedVector2Array = obs.get_world_outline()
+		if outline.size() < 3:
+			continue
+		outline.reverse()
+		nav_poly.add_outline(outline)
+
 	NavigationServer2D.bake_from_source_geometry_data(
 		nav_poly,
 		NavigationMeshSourceGeometryData2D.new()
 	)
+
+	if _region == null or not is_instance_valid(_region):
+		_region      = NavigationRegion2D.new()
+		_region.name = "NavRegion"
+		add_child(_region)
+
 	_region.navigation_polygon = nav_poly
 
-	await get_tree().process_frame
 	await get_tree().process_frame
 
 	_map_rid       = _region.get_navigation_map()

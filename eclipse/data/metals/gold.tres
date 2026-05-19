@@ -3,12 +3,14 @@
 [ext_resource type="Script" uid="uid://crg63cnpq5g5p" path="res://scripts/abilities/ability_data.gd" id="1_yy8mg"]
 [ext_resource type="Script" uid="uid://ccvg8ff4amw77" path="res://scripts/enemies/enemy_data.gd" id="2_hq3t7"]
 [ext_resource type="Script" uid="uid://t08klcxdsebx" path="res://scripts/forging/metal_data.gd" id="3_q3unc"]
+[ext_resource type="Texture2D" uid="uid://bvtprvkbu4pgx" path="res://art/orbs/orb_gold.png" id="4_hq3t7"]
 
 [resource]
 script = ExtResource("3_q3unc")
-id = "1"
+id = "Gold"
 display_name = "Gold"
 rarity = 2
 stat_names = Array[String](["crit_damage", "crit_aoe"])
-stat_amounts = Array[float]([0.0, 0.0])
+stat_amounts = Array[float]([0.05, 1.0])
+sprite_texture = ExtResource("4_hq3t7")
 metadata/_custom_type_script = "uid://t08klcxdsebx"

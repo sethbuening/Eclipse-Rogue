@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" uid="uid://djpnnk51toyae" path="res://scripts/forging/forge.gd" id="1_huql2"]
 [ext_resource type="Texture2D" uid="uid://bk3wxelkjv5d3" path="res://art/statue.png" id="2_ebsuy"]
+[ext_resource type="Script" uid="uid://bvpht4epwp2nb" path="res://scripts/pathfinding/nav_obstacle.gd" id="3_cc85a"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_cc85a"]
 radius = 9.0
@@ -15,6 +16,7 @@ script = ExtResource("1_huql2")
 
 [node name="StaticBody2D" type="StaticBody2D" parent="." unique_id=441977134]
 position = Vector2(0, -14)
+collision_mask = 7
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="StaticBody2D" unique_id=386009770]
 position = Vector2(0, 14)
@@ -24,6 +26,7 @@ shape = SubResource("CapsuleShape2D_cc85a")
 [node name="InteractArea" type="Area2D" parent="." unique_id=1782538907]
 position = Vector2(0, -14)
 collision_layer = 2
+collision_mask = 4
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="InteractArea" unique_id=872655660]
 position = Vector2(0, 14)
@@ -41,3 +44,7 @@ offset_right = 32.0
 offset_bottom = -41.0
 text = "[E] Forge"
 horizontal_alignment = 1
+
+[node name="NavObstacle" type="Node2D" parent="." unique_id=892351366 node_paths=PackedStringArray("collision_source")]
+script = ExtResource("3_cc85a")
+collision_source = NodePath("../StaticBody2D/CollisionShape2D")

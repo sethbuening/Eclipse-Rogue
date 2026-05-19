@@ -134,6 +134,24 @@ func spawn_focus_particles(pos: Vector2, charge_t: float) -> void:
 			false
 		)
 
+func spawn_gold_bomb_trail(pos: Vector2) -> void:
+	var gradient := Gradient.new()
+	gradient.set_color(0, Color(2.5, 2.0, 0.3, 1.0))
+	gradient.add_point(0.4, Color(1.8, 1.0, 0.1, 0.8))
+	gradient.set_color(1, Color(0.8, 0.3, 0.0, 0.0))
+	for i in range(randi_range(2, 4)):
+		spawn(
+			pos + Vector2(randf_range(-3, 3), randf_range(-3, 3)),
+			Vector2(randf_range(-20, 20), randf_range(-20, 20)),
+			randf_range(10, 40),
+			gradient,
+			randf_range(0.15, 0.3),
+			randf_range(2.0, 4.0),
+			0.0,
+			false,
+			false
+		)
+
 # -------------------------------------------------------------------- Sprite Particles ------------
 
 class SpriteParticle:

@@ -85,34 +85,47 @@ func _random_connection_type() -> GraphConnectionData.ConnectionType:
 	return types[randi() % types.size()]
 
 # called when an orb ability fires — process connection effects
-func on_orb_fired(node_index: int, context: Dictionary) -> void:
+func on_orb_fired(node_index: int, context: Dictionary, source_orb: Orb) -> void:
+	# if this orb had charges built up, consume them now
+	for conn: GraphConnectionData in graph.connections:
+		if conn.connection_type == GraphConnectionData.ConnectionType.CHARGES \
+		and conn.to_node == node_index \
+		and conn.charge_stacks > 0:
+			conn.charge_stacks = 0
+			source_orb.clear_charges()
+			
 	for conn: GraphConnectionData in graph.get_connections_for(node_index):
-		var is_source: bool = conn.from_node == node_index
+		var is_source:         bool = conn.from_node == node_index
+		var target_node_index: int  = conn.to_node if is_source else conn.from_node
+		var target_orb:        Orb  = graph.nodes[target_node_index].placed_orb
+		if target_orb == null:
+			continue
 		match conn.connection_type:
 			GraphConnectionData.ConnectionType.CHARGES:
-				if is_source:
-					conn.charge_stacks += 1
-					context["charge_bonus"] = conn.charge_stacks
-			GraphConnectionData.ConnectionType.OVERHEATS:
-				conn.overheat_count += 1
-				if conn.overheat_count > 3:
-					context["overheated"] = true
-			GraphConnectionData.ConnectionType.SILENCE:
-				context["silence_bonus"] = conn.silence_age
-				conn.silence_age = 0.0
-			GraphConnectionData.ConnectionType.DRAINS:
-				if is_source:
-					conn.drain_power = maxf(0.5, conn.drain_power - 0.1)
-					context["drain_weakened"] = conn.drain_power
-				else:
-					context["drain_empowered"] = 1.0 + (1.0 - conn.drain_power)
-					conn.drain_power = 1.0
+				conn.charge_stacks += 1
+				target_orb.add_charge(conn.charge_stacks)
+			# TODO:
+			#GraphConnectionData.ConnectionType.OVERHEATS:
+				#conn.overheat_count += 1
+				#for ability: AbilityData in target_orb.abilities:
+					#ability.stats.cooldown = maxf(0.0, ability.stats.cooldown - (0.1 * conn.overheat_count))
+			#GraphConnectionData.ConnectionType.RESONATOR:
+				#for ability: AbilityData in target_orb.abilities:
+					#ability.stats.power *= 1.1
+			#GraphConnectionData.ConnectionType.DRAINS:
+				#var drained: float = target_orb.drain_light(conn.drain_power)
+				#source_orb.store_light(drained)
+			#GraphConnectionData.ConnectionType.SILENCE:
+				#conn.silence_age    = 0.0
+				#target_orb.silenced = true
 
 func _process(delta: float) -> void:
-	for conn: GraphConnectionData in graph.connections:
-		# silence builds up over time when not triggered
-		if conn.connection_type == GraphConnectionData.ConnectionType.SILENCE:
-			conn.silence_age += delta
-		# overheat slowly decays
-		if conn.connection_type == GraphConnectionData.ConnectionType.OVERHEATS:
-			conn.overheat_count = max(0, conn.overheat_count - delta * 0.5)
+	pass
+	# TODO:
+	#for conn: GraphConnectionData in graph.connections:
+		## silence builds up over time when not triggered
+		#if conn.connection_type == GraphConnectionData.ConnectionType.SILENCE:
+			#conn.silence_age += delta
+		## overheat slowly decays
+		#if conn.connection_type == GraphConnectionData.ConnectionType.OVERHEATS:
+			#conn.overheat_count = max(0, conn.overheat_count - delta * 0.5)

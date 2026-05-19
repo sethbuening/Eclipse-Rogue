@@ -30,9 +30,11 @@ unique_name_in_owner = true
 environment = SubResource("Environment_iywne")
 
 [node name="CanvasModulate" type="CanvasModulate" parent="." unique_id=1136346527]
+unique_name_in_owner = true
 color = Color(0.0627451, 0.0627451, 0.0627451, 1)
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=1754347079]
+unique_name_in_owner = true
 zoom = Vector2(4, 4)
 script = ExtResource("3_lnu2h")
 

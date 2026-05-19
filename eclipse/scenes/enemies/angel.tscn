@@ -1,0 +1,20 @@
+[gd_scene format=3 uid="uid://p3ooir6dxpom"]
+
+[ext_resource type="Script" uid="uid://rdrar57y5hn6" path="res://scripts/enemies/angel.gd" id="1_8a88t"]
+[ext_resource type="Texture2D" uid="uid://cjrx5ytgo5jhg" path="res://art/enemies/angel/angel.png" id="2_8a88t"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_ave5w"]
+radius = 16.0
+
+[node name="angel" type="CharacterBody2D" unique_id=678939723]
+collision_layer = 8
+collision_mask = 9
+script = ExtResource("1_8a88t")
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=214917348]
+position = Vector2(1, -19)
+texture = ExtResource("2_8a88t")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=828114756]
+position = Vector2(0, -6)
+shape = SubResource("CircleShape2D_ave5w")

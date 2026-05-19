@@ -41,12 +41,15 @@ func init() -> void:
 func _on_body_entered(body: Node2D) -> void:
 	if body is CharacterBody2D:
 		emit_signal("player_in_range", self)
-		$InteractPrompt.show()
+		_refresh_prompt()
 
 func _on_body_exited(body: Node2D) -> void:
 	if body is CharacterBody2D:
 		emit_signal("player_out_of_range", self)
 		$InteractPrompt.hide()
+
+func _refresh_prompt() -> void:
+	$InteractPrompt.visible = state == State.IDLE
 
 # ── interaction ───────────────────────────────────────────────────────────────
 
@@ -61,7 +64,7 @@ func _open(_player: Node2D) -> void:
 	if state != State.IDLE:
 		return
 	state = State.OPEN
-	$InteractPrompt.hide()
+	_refresh_prompt()
 	emit_signal("forge_opened", self)
 
 func deposit_orb(orb: Orb) -> void:
@@ -97,6 +100,7 @@ func activate() -> void:
 	wave_timer     = 0.0
 	state          = State.FORGING
 	WaveManager.pause_waves()
+	_refresh_prompt()
 	emit_signal("forge_closed")
 
 # ── process ───────────────────────────────────────────────────────────────────
@@ -152,4 +156,5 @@ func _pick_weighted_metal(total: int) -> MetalData:
 func _complete() -> void:
 	state = State.COMPLETE
 	WaveManager.resume_waves()
+	_refresh_prompt()
 	emit_signal("forge_complete", result)

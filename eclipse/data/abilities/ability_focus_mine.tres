@@ -14,8 +14,9 @@ metadata/_custom_type_script = "uid://djuyt3y2iehml"
 
 [resource]
 script = ExtResource("1_kqyj5")
-id = "0"
+id = "FocusMine"
 display_name = "Focus Explosion"
+description = "Focus and explode tiles in front of yourself."
 requires_hold = true
 stats = SubResource("Resource_ca384")
 metadata/_custom_type_script = "uid://df7ru3quqk7rm"

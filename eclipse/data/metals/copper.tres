@@ -7,10 +7,10 @@
 
 [resource]
 script = ExtResource("3_uwhkm")
-id = "0"
+id = "Malachite"
 display_name = "Malachite"
 tile_type = 5
 stat_names = Array[String](["cast_speed", "projectile_speed", "move_speed_bonus"])
-stat_amounts = Array[float]([0.0, 0.0, 0.0])
+stat_amounts = Array[float]([5.0, 10.0, 15.0])
 sprite_texture = ExtResource("4_40av7")
 metadata/_custom_type_script = "uid://t08klcxdsebx"

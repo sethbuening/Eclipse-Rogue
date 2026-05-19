@@ -27,6 +27,9 @@ func _build_roster() -> void:
 	enemy_roster.clear()
 	for res: Resource in Util.load_resources(roster_path):
 		if res is EnemyData:
+			if (res.cost == 0):
+				Log("Loaded enemy: " + res.id + " :and skipping because cost = 0")
+				continue
 			enemy_roster.append(res)
 			Log("Loaded enemy: " + res.id)
 		else:

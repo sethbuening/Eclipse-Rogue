@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="Orb" format=3 uid="uid://1xu5jdnidts3"]
+
+[ext_resource type="Script" uid="uid://crg63cnpq5g5p" path="res://scripts/abilities/ability_data.gd" id="1_jc5ht"]
+[ext_resource type="Resource" uid="uid://coy7v6khdawpo" path="res://data/abilities/ability_gold_bomb.tres" id="2_3ly0h"]
+[ext_resource type="Script" uid="uid://coa8uhnocedee" path="res://scripts/orb/orb.gd" id="2_bkqiq"]
+[ext_resource type="Texture2D" uid="uid://bvtprvkbu4pgx" path="res://art/orbs/orb_gold.png" id="4_4ltjx"]
+
+[resource]
+script = ExtResource("2_bkqiq")
+id = "Gold Bomb"
+display_name = "Gold Bomb"
+abilities = Array[ExtResource("1_jc5ht")]([ExtResource("2_3ly0h")])
+sprite_texture = ExtResource("4_4ltjx")
+metadata/_custom_type_script = "uid://coa8uhnocedee"

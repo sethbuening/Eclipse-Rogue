@@ -1,0 +1,88 @@
+[gd_scene format=3 uid="uid://dnb22cvyh50b6"]
+
+[ext_resource type="Script" uid="uid://chukm1xpuglmn" path="res://scripts/abilities/gold_bomb.gd" id="1_gyvvv"]
+[ext_resource type="Texture2D" uid="uid://cw67ofvus6ji2" path="res://art/abilities/gold/overpowered_sweep.png" id="2_fngu6"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_66rrx"]
+atlas = ExtResource("2_fngu6")
+region = Rect2(0, 0, 512, 1024)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_xwavy"]
+atlas = ExtResource("2_fngu6")
+region = Rect2(512, 0, 512, 1024)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_rrnvd"]
+atlas = ExtResource("2_fngu6")
+region = Rect2(1024, 0, 512, 1024)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_uugks"]
+atlas = ExtResource("2_fngu6")
+region = Rect2(1536, 0, 512, 1024)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_fei6c"]
+atlas = ExtResource("2_fngu6")
+region = Rect2(2048, 0, 512, 1024)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_blea3"]
+atlas = ExtResource("2_fngu6")
+region = Rect2(2560, 0, 512, 1024)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_rgg7v"]
+atlas = ExtResource("2_fngu6")
+region = Rect2(3072, 0, 512, 1024)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_exvdu"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_66rrx")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_xwavy")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_rrnvd")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_uugks")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_fei6c")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_blea3")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_rgg7v")
+}],
+"loop": false,
+"name": &"explode",
+"speed": 5.0
+}]
+
+[sub_resource type="Gradient" id="Gradient_fngu6"]
+colors = PackedColorArray(1, 1, 1, 1, 0, 0, 0, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_66rrx"]
+gradient = SubResource("Gradient_fngu6")
+width = 1024
+height = 1024
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(0.86, 0.86)
+
+[node name="GoldBomb" type="Node2D" unique_id=3349223]
+script = ExtResource("1_gyvvv")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=1523761011]
+z_index = 4096
+z_as_relative = false
+position = Vector2(212, -479)
+sprite_frames = SubResource("SpriteFrames_exvdu")
+animation = &"explode"
+
+[node name="PointLight2D" type="PointLight2D" parent="." unique_id=296006961]
+energy = 2.0
+range_z_min = -4096
+range_z_max = 4096
+texture = SubResource("GradientTexture2D_66rrx")

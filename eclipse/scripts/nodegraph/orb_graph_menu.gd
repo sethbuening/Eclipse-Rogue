@@ -325,9 +325,10 @@ func _place_orb(node_index: int, orb: Orb) -> void:
 	var node: GraphNodeData = GraphManager.graph.nodes[node_index]
 	if node.placed_orb != null:
 		_remove_orb(node_index)
-	node.placed_orb  = orb
-	orb.node_index   = node_index
+	node.placed_orb = orb
+	orb.node_index  = node_index
 	_apply_node_to_orb(node, orb)
+	player._recalculate_orb_offsets()
 	_rebuild_orb_list()
 
 func _remove_orb(node_index: int) -> void:
@@ -337,6 +338,7 @@ func _remove_orb(node_index: int) -> void:
 	_unapply_node_from_orb(node, node.placed_orb)
 	node.placed_orb.node_index = -1
 	node.placed_orb            = null
+	player._recalculate_orb_offsets()
 	_rebuild_orb_list()
 
 func _apply_node_to_orb(node: GraphNodeData, orb: Orb) -> void:
@@ -351,6 +353,8 @@ func _apply_node_to_orb(node: GraphNodeData, orb: Orb) -> void:
 			modifier.value      = node.stat_value
 			modifier.mod_type   = OrbModifier.ModType.ADDITIVE
 			modifier.apply(orb)
+			if node.stat_name == "power":
+				orb.node_power_base = orb.power + node.stat_value
 		GraphNodeData.NodeType.ECHO:
 			pass
 		GraphNodeData.NodeType.DECAYING:
@@ -371,6 +375,8 @@ func _unapply_node_from_orb(node: GraphNodeData, orb: Orb) -> void:
 			modifier.value      = node.stat_value
 			modifier.mod_type   = OrbModifier.ModType.ADDITIVE
 			modifier.unapply(orb)
+			if node.stat_name == "power":
+				orb.node_power_base = -1.0
 		GraphNodeData.NodeType.DECAYING:
 			pass  # cooldown changes are permanent by design
 		_:

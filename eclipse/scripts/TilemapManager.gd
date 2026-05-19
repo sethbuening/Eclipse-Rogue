@@ -337,10 +337,12 @@ func _redraw_neighbors(map_pos: Vector2i) -> void:
 			continue
 		if tile_instance_index.has(neighbor) and not occluder_sprites.has(neighbor):
 			_write_base_instance(tile_instance_index[neighbor], neighbor)
-		if ore_instance_index.has(neighbor):
+		if ore_instance_index.has(neighbor) and not ore_occluder_sprites.has(neighbor):
 			_write_ore_instance(ore_instance_index[neighbor], neighbor)
 		if occluder_sprites.has(neighbor):
 			occluder_sprites[neighbor].region_rect = _get_occluder_rect(neighbor)
+		if ore_occluder_sprites.has(neighbor):
+			ore_occluder_sprites[neighbor].region_rect = _get_ore_occluder_rect(neighbor)
 
 func get_tile_uv(t: Util.tile) -> Rect2:
 	return _uv_for(0, _base_row_for(t), tile_atlas)
@@ -350,13 +352,20 @@ func set_tile_color(map_pos: Vector2i, color: Color) -> void:
 		multimesh.set_instance_color(tile_instance_index[map_pos], color)
 	if ore_instance_index.has(map_pos):
 		ore_multimesh.set_instance_color(ore_instance_index[map_pos], color)
-	if occluder_sprites.has(map_pos):                                           # Magic number
+	if occluder_sprites.has(map_pos):
+		var sprite_color: Color = Color(
+			(color.r - 1.0) * 0.38 + 1.0,                                        # 0.38 is a Magic number
+			(color.g - 1.0) * 0.38 + 1.0,
+			(color.b - 1.0) * 0.38 + 1.0
+		)
+		occluder_sprites[map_pos].modulate = sprite_color
+	if ore_occluder_sprites.has(map_pos):
 		var sprite_color: Color = Color(
 			(color.r - 1.0) * 0.38 + 1.0,
 			(color.g - 1.0) * 0.38 + 1.0,
 			(color.b - 1.0) * 0.38 + 1.0
 		)
-		occluder_sprites[map_pos].modulate = sprite_color
+		ore_occluder_sprites[map_pos].modulate = sprite_color
 
 func get_tile_color(map_pos: Vector2i) -> Color:
 	if not tile_instance_index.has(map_pos):
@@ -367,7 +376,7 @@ func get_z_for(world_pos: Vector2) -> int:
 	var tile_row: int    = world_to_map(world_pos).y
 	var tile_top: float  = map_to_world(Vector2i(0, tile_row)).y - TILE_SIZE.y / 2.0
 	var within_tile: int = int((world_pos.y - tile_top) / float(TILE_SIZE.y) * 8.0)
-	return tile_row * 10 + clampi(within_tile, 0, 9)
+	return clampi(tile_row * 10 + clampi(within_tile, 0, 9), -4096, 4096)
 
 # ─────────────────────────────────────────────────────────────── occluder ───
 func _get_occluder_rect(map_pos: Vector2i) -> Rect2:
@@ -376,6 +385,15 @@ func _get_occluder_rect(map_pos: Vector2i) -> Rect2:
 	var t:        Util.tile = tile_types[map_pos]
 	var variant:  int       = tile_variant[map_pos]
 	var base_row: int       = _base_row_for(t) + variant
+	var bitmask:  int       = _get_bitmask(map_pos)
+	return Rect2(Vector2(bitmask * ATLAS_TILE_SIZE.x, base_row * ATLAS_TILE_SIZE.y), Vector2(ATLAS_TILE_SIZE))
+
+func _get_ore_occluder_rect(map_pos: Vector2i) -> Rect2:
+	if not ore_types.has(map_pos) or not ore_variant.has(map_pos):
+		return Rect2()
+	var t:        Util.tile = ore_types[map_pos]
+	var variant:  int       = ore_variant[map_pos]
+	var base_row: int       = _ore_row_for(t) + variant
 	var bitmask:  int       = _get_bitmask(map_pos)
 	return Rect2(Vector2(bitmask * ATLAS_TILE_SIZE.x, base_row * ATLAS_TILE_SIZE.y), Vector2(ATLAS_TILE_SIZE))
 
@@ -407,10 +425,7 @@ func _add_occluder_sprite(map_pos: Vector2i) -> void:
 		var ore_sprite            := Sprite2D.new()
 		ore_sprite.texture         = ore_atlas
 		ore_sprite.region_enabled  = true
-		ore_sprite.region_rect     = Rect2(
-			_ore_atlas_uv(map_pos).position * Vector2(ore_atlas.get_size()),
-			Vector2(ATLAS_TILE_SIZE)
-		)
+		ore_sprite.region_rect     = _get_ore_occluder_rect(map_pos)  # ← was wrong
 		ore_sprite.z_as_relative   = false
 		ore_sprite.z_index         = map_pos.y * 10 + 1
 		ore_sprite.position        = sprite.position

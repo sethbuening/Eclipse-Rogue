@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bypeko2e87jpl"
-path="res://.godot/imported/angel_minor.png-965cb67a88154e14d5c8b02482a50284.ctex"
+uid="uid://cw67ofvus6ji2"
+path="res://.godot/imported/overpowered_sweep.png-130585d6ecace566c59fbfb66ca48d22.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/angel_minor.png"
-dest_files=["res://.godot/imported/angel_minor.png-965cb67a88154e14d5c8b02482a50284.ctex"]
+source_file="res://art/abilities/gold/overpowered_sweep.png"
+dest_files=["res://.godot/imported/overpowered_sweep.png-130585d6ecace566c59fbfb66ca48d22.ctex"]
 
 [params]
 
