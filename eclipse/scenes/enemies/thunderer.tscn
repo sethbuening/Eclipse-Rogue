@@ -1,0 +1,19 @@
+[gd_scene format=3 uid="uid://d00ocytw0r6bx"]
+
+[ext_resource type="Script" uid="uid://bbsvhkla6w0as" path="res://scripts/enemies/thunderer.gd" id="1_0fdba"]
+[ext_resource type="Texture2D" uid="uid://grptp3r37l7g" path="res://art/enemies/thunderer/thunderer1.png" id="2_f0wmy"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_1f2ut"]
+radius = 5.0
+
+[node name="Thunderer" type="CharacterBody2D" unique_id=1216015802]
+collision_layer = 8
+collision_mask = 9
+script = ExtResource("1_0fdba")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1826249784]
+shape = SubResource("CircleShape2D_1f2ut")
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=910844309]
+position = Vector2(-1, -9)
+texture = ExtResource("2_f0wmy")

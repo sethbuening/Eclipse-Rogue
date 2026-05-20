@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="MetalData" format=3 uid="uid://iia57ifxiam5"]
+
+[ext_resource type="Script" uid="uid://crg63cnpq5g5p" path="res://scripts/abilities/ability_data.gd" id="1_w3p4s"]
+[ext_resource type="Script" uid="uid://ccvg8ff4amw77" path="res://scripts/enemies/enemy_data.gd" id="2_pioh0"]
+[ext_resource type="Script" uid="uid://t08klcxdsebx" path="res://scripts/forging/metal_data.gd" id="3_2rsnh"]
+[ext_resource type="Resource" uid="uid://by78wlxopmhdi" path="res://data/enemies/thunderer.tres" id="3_pioh0"]
+[ext_resource type="Texture2D" uid="uid://dxg2wdayt8uye" path="res://art/orbs/orb_malachite.png" id="4_4r0p3"]
+
+[resource]
+script = ExtResource("3_2rsnh")
+id = "Malachite"
+display_name = "Malachite"
+tile_type = 5
+stat_names = Array[String](["cast_speed", "projectile_speed", "move_speed_bonus"])
+stat_amounts = Array[float]([0.5, 5.0, 3.0])
+enemy_pool = Array[ExtResource("2_pioh0")]([ExtResource("3_pioh0")])
+sprite_texture = ExtResource("4_4r0p3")
+metadata/_custom_type_script = "uid://t08klcxdsebx"

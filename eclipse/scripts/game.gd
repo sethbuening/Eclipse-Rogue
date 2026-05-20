@@ -4,6 +4,10 @@ extends Node2D
 const DEBUG_MSG_DURATION: float = 3.0
 var debug_messages: Array[Dictionary] = []
 
+const FPS_DROP_THRESHOLD: int = 40
+var _prev_fps: int = 0
+var _frame_times: Array[float] = []
+
 func _ready() -> void:
 	ParticleManager.tilemap_manager = %TilemapManager
 	EnemyManager.tilemap_manager    = %TilemapManager
@@ -29,7 +33,28 @@ func _process(delta: float) -> void:
 		return
 	var fps: int         = int(1.0 / delta)
 	var env: Environment = %Environment.environment
+
+	if _prev_fps >= FPS_DROP_THRESHOLD and fps < FPS_DROP_THRESHOLD:
+		_report_drop(fps)
+	_prev_fps = fps
+
 	%DebugLabel.parse_bbcode(_build_debug_text(fps, env, player))
+
+func _report_drop(fps: int) -> void:
+	var shockwaves_active: int = 0
+	var shockwaves_mining: int = 0
+	for s in GoldShockwave._pool:
+		if s._active:
+			shockwaves_active += 1
+		if s._mining:
+			shockwaves_mining += 1
+	push_debug("DROP %d fps | shockwaves active=%d mining=%d | nav_pending=%s | enemies=%d" % [
+		fps,
+		shockwaves_active,
+		shockwaves_mining,
+		str(NavManager._pending_threads.size()),
+		EnemyManager.living_enemies.size(),
+	], true)
 
 func push_debug(msg: String, flash: bool = false) -> void:
 	debug_messages.append({ "text": msg, "age": 0.0, "flash": flash })

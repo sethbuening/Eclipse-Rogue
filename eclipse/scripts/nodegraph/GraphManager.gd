@@ -1,15 +1,13 @@
-# graph_manager.gd
 extends Node
 
-const MIN_NODES:        int   = 4
-const MAX_NODES:        int   = 4
-const MIN_NODE_DIST:    float = 120.0
-const GRAPH_RADIUS:     float = 300.0
-const CONNECTION_CHANCE: float = 0.4   # per eligible pair
+const MIN_NODES:         int   = 4
+const MAX_NODES:         int   = 4
+const MIN_NODE_DIST:     float = 120.0
+const GRAPH_RADIUS:      float = 300.0
+const CONNECTION_CHANCE: float = 0.4
 
 var graph: GraphData = GraphData.new()
 
-# stat names available for STAT nodes
 const STAT_POOL: Array[String] = [
 	"power", "crit_chance", "crit_damage", "aoe_radius",
 	"cooldown", "mining_power", "knockback", "shield_amount"
@@ -36,16 +34,13 @@ func _place_nodes(count: int) -> void:
 				break
 		if too_close:
 			continue
-		var node          := GraphNodeData.new()
-		node.position      = candidate
-		node.node_type     = _random_node_type()
-		if node.node_type == GraphNodeData.NodeType.STAT:
-			node.stat_name  = STAT_POOL[randi() % STAT_POOL.size()]
-			node.stat_value = randf_range(0.1, 0.5)
+		var node       := GraphNodeData.new()
+		node.position   = candidate
+		node.stat_name  = STAT_POOL[randi() % STAT_POOL.size()]
+		node.stat_value = randf_range(0.1, 0.5)
 		graph.nodes.append(node)
 
 func _generate_connections() -> void:
-	# ensure graph is connected first — span a minimum spanning path
 	var connected: Array[int] = [0]
 	var remaining: Array[int] = Array(range(1, graph.nodes.size()), TYPE_INT, "", null)
 	remaining.shuffle()
@@ -54,7 +49,6 @@ func _generate_connections() -> void:
 		_add_connection(from, idx)
 		connected.append(idx)
 
-	# then add bonus connections randomly
 	for a in range(graph.nodes.size()):
 		for b in range(a + 1, graph.nodes.size()):
 			if _already_connected(a, b):
@@ -63,11 +57,10 @@ func _generate_connections() -> void:
 				_add_connection(a, b)
 
 func _add_connection(from: int, to: int) -> void:
-	var c                := GraphConnectionData.new()
-	c.from_node           = from
-	c.to_node             = to
-	c.connection_type     = _random_connection_type()
-	c.bidirectional       = GraphConnectionData.is_bidirectional_type(c.connection_type)
+	var c          := GraphConnectionData.new()
+	c.from_node     = from
+	c.to_node       = to
+	c.bidirectional = false
 	graph.connections.append(c)
 
 func _already_connected(a: int, b: int) -> bool:
@@ -76,56 +69,16 @@ func _already_connected(a: int, b: int) -> bool:
 			return true
 	return false
 
-func _random_node_type() -> GraphNodeData.NodeType:
-	var types: Array = GraphNodeData.NodeType.values()
-	return types[randi() % types.size()]
-
-func _random_connection_type() -> GraphConnectionData.ConnectionType:
-	var types: Array = GraphConnectionData.ConnectionType.values()
-	return types[randi() % types.size()]
-
-# called when an orb ability fires — process connection effects
 func on_orb_fired(node_index: int, context: Dictionary, source_orb: Orb) -> void:
-	# if this orb had charges built up, consume them now
-	for conn: GraphConnectionData in graph.connections:
-		if conn.connection_type == GraphConnectionData.ConnectionType.CHARGES \
-		and conn.to_node == node_index \
-		and conn.charge_stacks > 0:
-			conn.charge_stacks = 0
-			source_orb.clear_charges()
-			
 	for conn: GraphConnectionData in graph.get_connections_for(node_index):
 		var is_source:         bool = conn.from_node == node_index
 		var target_node_index: int  = conn.to_node if is_source else conn.from_node
 		var target_orb:        Orb  = graph.nodes[target_node_index].placed_orb
 		if target_orb == null:
 			continue
-		match conn.connection_type:
-			GraphConnectionData.ConnectionType.CHARGES:
-				conn.charge_stacks += 1
-				target_orb.add_charge(conn.charge_stacks)
-			# TODO:
-			#GraphConnectionData.ConnectionType.OVERHEATS:
-				#conn.overheat_count += 1
-				#for ability: AbilityData in target_orb.abilities:
-					#ability.stats.cooldown = maxf(0.0, ability.stats.cooldown - (0.1 * conn.overheat_count))
-			#GraphConnectionData.ConnectionType.RESONATOR:
-				#for ability: AbilityData in target_orb.abilities:
-					#ability.stats.power *= 1.1
-			#GraphConnectionData.ConnectionType.DRAINS:
-				#var drained: float = target_orb.drain_light(conn.drain_power)
-				#source_orb.store_light(drained)
-			#GraphConnectionData.ConnectionType.SILENCE:
-				#conn.silence_age    = 0.0
-				#target_orb.silenced = true
-
-func _process(delta: float) -> void:
-	pass
-	# TODO:
-	#for conn: GraphConnectionData in graph.connections:
-		## silence builds up over time when not triggered
-		#if conn.connection_type == GraphConnectionData.ConnectionType.SILENCE:
-			#conn.silence_age += delta
-		## overheat slowly decays
-		#if conn.connection_type == GraphConnectionData.ConnectionType.OVERHEATS:
-			#conn.overheat_count = max(0, conn.overheat_count - delta * 0.5)
+		if is_source:
+			conn.charge_stacks += 1
+			target_orb.power   += 0.1
+		else:
+			source_orb.power   -= conn.charge_stacks * 0.1
+			conn.charge_stacks  = 0

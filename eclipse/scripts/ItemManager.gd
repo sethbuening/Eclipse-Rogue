@@ -14,7 +14,7 @@ var tilemap_manager: Node
 
 const PICKUP_RADIUS: float = 8.0
 const MAGNET_RADIUS: float = 64.0
-const MAGNET_SPEED:  float = 180.0
+const MAGNET_SPEED:  float = 315.0
 
 @export var dropped_item_scene: PackedScene = preload("res://scenes/DroppedItem.tscn")
 

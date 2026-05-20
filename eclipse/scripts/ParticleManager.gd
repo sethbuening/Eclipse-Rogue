@@ -152,6 +152,46 @@ func spawn_gold_bomb_trail(pos: Vector2) -> void:
 			false
 		)
 
+# Add this function to particle_manager.gd alongside the other spawn_ functions.
+
+func spawn_lightning_spark(pos: Vector2) -> void:
+	# Core flash — bright white-blue, tight burst, no gravity (electric, not ballistic)
+	var core_gradient := Gradient.new()
+	core_gradient.set_color(0, Color(3.0, 3.0, 4.0, 1.0))       # blinding white-blue core
+	core_gradient.add_point(0.3, Color(0.6, 0.8, 3.5, 0.9))      # electric blue mid
+	core_gradient.set_color(1, Color(0.1, 0.2, 1.2, 0.0))        # deep blue fade
+	for i in range(randi_range(5, 8)):
+		spawn(
+			pos + Vector2(randf_range(-4, 4), randf_range(-4, 4)),
+			Vector2(randf_range(-160, 160), randf_range(-160, 160)),
+			randf_range(0, 30),          # very low arc — electricity hugs the surface
+			core_gradient,
+			randf_range(0.12, 0.25),     # short-lived, snappy
+			randf_range(1.5, 2.5),
+			0.0,                         # no bounce — dissipates on contact
+			false,                       # no shadow
+			false                        # no gravity — floats outward
+		)
+
+	# Tendril streamers — longer, thinner, drift further
+	var tendril_gradient := Gradient.new()
+	tendril_gradient.set_color(0, Color(1.0, 1.4, 4.0, 0.8))     # vivid blue-violet
+	tendril_gradient.add_point(0.5, Color(0.3, 0.5, 2.5, 0.5))
+	tendril_gradient.set_color(1, Color(0.05, 0.1, 0.8, 0.0))
+	for i in range(randi_range(3, 5)):
+		var dir: Vector2 = Vector2(randf_range(-1, 1), randf_range(-1, 1)).normalized()
+		spawn(
+			pos,
+			dir * randf_range(60, 200),
+			randf_range(10, 50),
+			tendril_gradient,
+			randf_range(0.2, 0.45),
+			randf_range(1.0, 1.8),
+			0.0,
+			false,
+			false
+		)
+
 # -------------------------------------------------------------------- Sprite Particles ------------
 
 class SpriteParticle:

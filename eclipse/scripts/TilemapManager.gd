@@ -5,12 +5,12 @@ var map_seed: int
 @export_group("Proc Gen Parameters")
 @export_subgroup("Map Sizing")
 @export_multiline var note: String = "WIDTH and HEIGHT must be divisible by 16 since CHUNK_SIZE is WIDTH/16"
-@export var WIDTH:                int     = 256 + 32
-@export var HEIGHT:               int     = 256 + 32
+@export var WIDTH:                int      = 256 + 32
+@export var HEIGHT:               int      = 256 + 32
 @warning_ignore("integer_division")
-@export var CHUNK_SIZE:           int     = WIDTH / 16
+@export var CHUNK_SIZE:           int      = WIDTH / 16
 @export var TILE_SIZE:            Vector2i = Vector2i(32, 32)
-@export var STARTING_AREA_RADIUS: float   = 3 * sqrt(2)
+@export var STARTING_AREA_RADIUS: float    = 3 * sqrt(2)
 
 @export_subgroup("Air Generation Perlin Values")
 @export var PERLIN_CHAMBER_THRESHOLD: float = 0.20
@@ -23,14 +23,14 @@ var map_seed: int
 @export var CELL_BIRTH_THRESHOLD: int = 4
 
 @export_subgroup("Gold Generation")
-@export var CHUNK_CHANCE:    float = 0.25
+@export var CHUNK_CHANCE:     float = 0.25
 @export var ADD_POINT_CHANCE: float = 0.035
 
 @export_subgroup("Copper Generation")
-@export var COPPER_CHANCE:      float = 0.1
-@export var COPPER_ADD_CHANCE:  float = 0.015
-@export var COPPER_MIN_RADIUS:  int   = 3
-@export var COPPER_MAX_RADIUS:  int   = 5
+@export var COPPER_CHANCE:     float = 0.1
+@export var COPPER_ADD_CHANCE: float = 0.015
+@export var COPPER_MIN_RADIUS: int   = 3
+@export var COPPER_MAX_RADIUS: int   = 5
 
 @export_subgroup("Rock Variation")
 @export var ROCK_VARIATION_THRESHOLD: float = 0.01
@@ -44,22 +44,18 @@ var map_seed: int
 @export var ATLAS_TILE_SIZE: Vector2i = Vector2i(32, 48)
 var SPRITE_OFFSET_Y: float = 0
 
-# ── bitmask atlas layout ──────────────────────────────────────────────────────
-# Each entry: atlas row of the FIRST variant for bitmask tiles 0-15
-# Variants occupy consecutive rows beneath the base row
 @export_subgroup("Bitmask Atlas Rows")
-@export var atlas_row_stone:   int = 0   # stone base row
-@export var atlas_variants_stone: int = 2
-@export var atlas_row_rock:    int = 2   # rock base row
-@export var atlas_variants_rock:  int = 2
-@export var atlas_row_crystal: int = 4
+@export var atlas_row_stone:       int = 0
+@export var atlas_variants_stone:  int = 2
+@export var atlas_row_rock:        int = 2
+@export var atlas_variants_rock:   int = 2
+@export var atlas_row_crystal:     int = 4
 @export var atlas_variants_crystal: int = 1
 
-# ── ore atlas layout ──────────────────────────────────────────────────────────
-@export var ore_row_gold:          int = 0
-@export var ore_variants_gold:     int = 1
-@export var ore_row_copper:        int = 1
-@export var ore_variants_copper:   int = 1
+@export var ore_row_gold:        int = 0
+@export var ore_variants_gold:   int = 1
+@export var ore_row_copper:      int = 1
+@export var ore_variants_copper: int = 1
 
 # ── noise ─────────────────────────────────────────────────────────────────────
 var chamber_noise:        FastNoiseLite = FastNoiseLite.new()
@@ -68,12 +64,12 @@ var rock_variation_noise: FastNoiseLite = FastNoiseLite.new()
 var rock_variation_tiles: Array[Vector2i] = []
 
 # ── tile data ─────────────────────────────────────────────────────────────────
-var tile_types:   Dictionary = {}   # Vector2i -> Util.tile (stone/rock/crystal only)
-var ore_types:    Dictionary = {}   # Vector2i -> Util.tile (gold/copper only)
-var tile_health:  Dictionary = {}   # Vector2i -> int (shared pool for ore+base)
+var tile_types:   Dictionary = {}
+var ore_types:    Dictionary = {}
+var tile_health:  Dictionary = {}
 var tile_shapes:  Dictionary = {}
-var tile_variant: Dictionary = {}   # Vector2i -> int (which variant row was chosen)
-var ore_variant:  Dictionary = {}   # Vector2i -> int
+var tile_variant: Dictionary = {}
+var ore_variant:  Dictionary = {}
 
 var static_body: StaticBody2D
 
@@ -90,13 +86,13 @@ var gold_tiles_added:   int = 0
 var copper_tiles_added: int = 0
 
 # ── occluder ──────────────────────────────────────────────────────────────────
-var occluder_sprites: Dictionary = {}
-var ore_occluder_sprites: Dictionary = {}  # Vector2i -> Sprite2D
+var occluder_sprites:     Dictionary = {}
+var ore_occluder_sprites: Dictionary = {}
 
 # ─────────────────────────────────────────────────────────────────── ready ───
 func _ready() -> void:
 	SPRITE_OFFSET_Y = (ATLAS_TILE_SIZE.y - TILE_SIZE.y) / 2.0
-	map_seed = randi()
+	map_seed        = randi()
 
 	_setup_noise(chamber_noise,        PERLIN_CHAMBER_FREQUENCY)
 	_setup_noise(path_noise,           PERLIN_PATH_FREQUENCY)
@@ -127,7 +123,6 @@ func _ready() -> void:
 				continue
 			var map_pos: Vector2i = Vector2i(x, y)
 			if _is_ore(t):
-				# Store ore separately, base tile defaults to STONE
 				ore_types[map_pos]    = t
 				tile_types[map_pos]   = Util.tile.STONE
 				ore_variant[map_pos]  = randi() % _ore_variant_count(t)
@@ -152,7 +147,6 @@ func _setup_noise(noise: FastNoiseLite, frequency: float) -> void:
 	noise.frequency  = frequency
 
 # ──────────────────────────────────────────────────────────────── bitmask ───
-# North=1, East=2, South=4, West=8
 func _get_bitmask(map_pos: Vector2i) -> int:
 	var mask: int = 0
 	if not is_air(map_pos + Vector2i( 0, -1)): mask |= 1
@@ -171,10 +165,10 @@ func _base_atlas_uv(map_pos: Vector2i) -> Rect2:
 	return _uv_for(bitmask, base_row, tile_atlas)
 
 func _ore_atlas_uv(map_pos: Vector2i) -> Rect2:
-	var t:       Util.tile = ore_types[map_pos]
-	var variant: int       = ore_variant[map_pos]
-	var base_row: int      = _ore_row_for(t) + variant
-	var bitmask:  int      = _get_bitmask(map_pos)
+	var t:        Util.tile = ore_types[map_pos]
+	var variant:  int       = ore_variant[map_pos]
+	var base_row: int       = _ore_row_for(t) + variant
+	var bitmask:  int       = _get_bitmask(map_pos)
 	return _uv_for(bitmask, base_row, ore_atlas)
 
 func _uv_for(col: int, row: int, atlas: Texture2D) -> Rect2:
@@ -226,7 +220,6 @@ func _setup_rendering() -> void:
 	static_body.scale           = get_parent().scale
 	add_child(static_body)
 
-	# ── base multimesh ──
 	multimesh                  = MultiMesh.new()
 	multimesh.transform_format = MultiMesh.TRANSFORM_2D
 	multimesh.use_colors       = true
@@ -234,11 +227,11 @@ func _setup_rendering() -> void:
 	multimesh.mesh             = _make_quad_mesh()
 	multimesh.instance_count   = tile_types.size()
 
-	multimesh_instance             = MultiMeshInstance2D.new()
-	multimesh_instance.scale       = get_parent().scale
-	multimesh_instance.multimesh   = multimesh
-	multimesh_instance.texture     = tile_atlas
-	multimesh_instance.z_index     = -1
+	multimesh_instance               = MultiMeshInstance2D.new()
+	multimesh_instance.scale         = get_parent().scale
+	multimesh_instance.multimesh     = multimesh
+	multimesh_instance.texture       = tile_atlas
+	multimesh_instance.z_index       = -1
 	multimesh_instance.z_as_relative = false
 
 	var mat := ShaderMaterial.new()
@@ -248,7 +241,6 @@ func _setup_rendering() -> void:
 	multimesh_instance.material = mat
 	add_child(multimesh_instance)
 
-	# ── ore multimesh ──
 	ore_multimesh                  = MultiMesh.new()
 	ore_multimesh.transform_format = MultiMesh.TRANSFORM_2D
 	ore_multimesh.use_colors       = true
@@ -270,7 +262,6 @@ func _setup_rendering() -> void:
 	ore_multimesh_instance.material = ore_mat
 	add_child(ore_multimesh_instance)
 
-	# ── write instances ──
 	var sorted_tiles: Array = tile_types.keys()
 	sorted_tiles.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y < b.y)
 	var idx: int = 0
@@ -325,7 +316,6 @@ func _hide_ore_instance(map_pos: Vector2i) -> void:
 	t.origin = Vector2(-999999, -999999)
 	ore_multimesh.set_instance_transform_2d(ore_instance_index[map_pos], t)
 
-# When a neighbor changes, redraw affected tiles so bitmask updates
 func _redraw_neighbors(map_pos: Vector2i) -> void:
 	for neighbor: Vector2i in [
 		map_pos + Vector2i( 0, -1),
@@ -354,7 +344,7 @@ func set_tile_color(map_pos: Vector2i, color: Color) -> void:
 		ore_multimesh.set_instance_color(ore_instance_index[map_pos], color)
 	if occluder_sprites.has(map_pos):
 		var sprite_color: Color = Color(
-			(color.r - 1.0) * 0.38 + 1.0,                                        # 0.38 is a Magic number
+			(color.r - 1.0) * 0.38 + 1.0,
 			(color.g - 1.0) * 0.38 + 1.0,
 			(color.b - 1.0) * 0.38 + 1.0
 		)
@@ -373,9 +363,9 @@ func get_tile_color(map_pos: Vector2i) -> Color:
 	return multimesh.get_instance_color(tile_instance_index[map_pos])
 
 func get_z_for(world_pos: Vector2) -> int:
-	var tile_row: int    = world_to_map(world_pos).y
-	var tile_top: float  = map_to_world(Vector2i(0, tile_row)).y - TILE_SIZE.y / 2.0
-	var within_tile: int = int((world_pos.y - tile_top) / float(TILE_SIZE.y) * 8.0)
+	var tile_row:    int   = world_to_map(world_pos).y
+	var tile_top:    float = map_to_world(Vector2i(0, tile_row)).y - TILE_SIZE.y / 2.0
+	var within_tile: int   = int((world_pos.y - tile_top) / float(TILE_SIZE.y) * 8.0)
 	return clampi(tile_row * 10 + clampi(within_tile, 0, 9), -4096, 4096)
 
 # ─────────────────────────────────────────────────────────────── occluder ───
@@ -406,7 +396,7 @@ func _add_occluder_sprite(map_pos: Vector2i) -> void:
 	if occluder_sprites.has(map_pos):
 		return
 	_hide_instance(map_pos)
-	_hide_ore_instance(map_pos)  # hide ore multimesh too
+	_hide_ore_instance(map_pos)
 
 	var world_center: Vector2 = map_to_world(map_pos)
 	var sprite             := Sprite2D.new()
@@ -420,12 +410,11 @@ func _add_occluder_sprite(map_pos: Vector2i) -> void:
 	occluder_sprites[map_pos] = sprite
 	get_parent().add_child.call_deferred(sprite)
 
-	# add ore overlay sprite on top if this tile has ore
 	if ore_types.has(map_pos):
 		var ore_sprite            := Sprite2D.new()
 		ore_sprite.texture         = ore_atlas
 		ore_sprite.region_enabled  = true
-		ore_sprite.region_rect     = _get_ore_occluder_rect(map_pos)  # ← was wrong
+		ore_sprite.region_rect     = _get_ore_occluder_rect(map_pos)
 		ore_sprite.z_as_relative   = false
 		ore_sprite.z_index         = map_pos.y * 10 + 1
 		ore_sprite.position        = sprite.position
@@ -489,17 +478,18 @@ func tile_exists(map_pos: Vector2i) -> bool:
 
 func is_air(map_pos: Vector2i) -> bool:
 	return not tile_types.has(map_pos)
-	
+
 func _drop_ore(map_pos: Vector2i) -> void:
 	if not ore_types.has(map_pos):
 		return
 	ItemManager.spawn_dropped_item(map_to_world(map_pos), ore_types[map_pos])
 
+# Standard single-tile damage with particles — used by player mining tool etc.
 func damage_tile(map_pos: Vector2i, damage: int = 1) -> void:
 	if not tile_health.has(map_pos):
 		return
-	var world_pos: Vector2  = map_to_world(map_pos)
-	var base_type: Util.tile = tile_types[map_pos]
+	var world_pos:  Vector2   = map_to_world(map_pos)
+	var base_type:  Util.tile = tile_types[map_pos]
 	ParticleManager.spawn_mine_dust(world_pos, base_type)
 	ParticleManager.spawn_debris(world_pos, base_type)
 	tile_health[map_pos] -= damage
@@ -509,18 +499,26 @@ func damage_tile(map_pos: Vector2i, damage: int = 1) -> void:
 			_drop_ore(map_pos)
 		remove_tile(map_pos)
 
-func remove_tile(map_pos: Vector2i) -> void:
+# Silent damage used by bomb — no particles, no DF/nav update (flush handles that)
+func damage_tile_silent(map_pos: Vector2i, damage: int = 1) -> bool:
+	if not tile_health.has(map_pos):
+		return false
+	tile_health[map_pos] -= damage
+	if tile_health[map_pos] <= 0:
+		if ore_types.has(map_pos):
+			_drop_ore(map_pos)
+		_remove_tile_silent(map_pos)
+		return true
+	return false
+
+func _remove_tile_silent(map_pos: Vector2i) -> void:
 	if not tile_types.has(map_pos):
 		return
-
 	tile_health.erase(map_pos)
 	tile_types.erase(map_pos)
 	tile_variant.erase(map_pos)
 	tile_shapes[map_pos].disabled = true
-	
-	NavManager.on_tile_removed(map_pos)
 
-	# Remove ore overlay if present
 	if ore_types.has(map_pos):
 		_hide_ore_instance(map_pos)
 		ore_types.erase(map_pos)
@@ -531,15 +529,66 @@ func remove_tile(map_pos: Vector2i) -> void:
 	else:
 		_hide_instance(map_pos)
 
-	# Promote tile below to occluder if now exposed
+# Called once after all silent removals — batches all expensive consequences
+func flush_removed_tiles(removed: Array[Vector2i]) -> void:
+	if removed.is_empty():
+		return
+
+	var t0 := Time.get_ticks_usec()
+
+	var nav_touched: Dictionary = {}
+	var df_touched:  Dictionary = {}
+
+	for map_pos in removed:
+		var below: Vector2i = map_pos + Vector2i(0, 1)
+		if tile_types.has(below) and not occluder_sprites.has(below):
+			_add_occluder_sprite(below)
+		_redraw_neighbors(map_pos)
+		nav_touched[Vector2i(map_pos.x / NavManager.chunk_size, map_pos.y / NavManager.chunk_size)] = true
+		df_touched[Vector2i(map_pos.x / DF_CHUNK_SIZE, map_pos.y / DF_CHUNK_SIZE)] = true
+
+	var t1 := Time.get_ticks_usec()
+
+	for chunk in nav_touched:
+		NavManager._dirty_chunks[chunk] = NavManager.REBAKE_DELAY
+
+	var t2 := Time.get_ticks_usec()
+
+	for chunk in df_touched:
+		if not _df_dirty_chunks.has(chunk):
+			_df_dirty_chunks.append(chunk)
+	_request_df_update()
+
+	var t3 := Time.get_ticks_usec()
+
+	print("flush: occluder+redraw=%dµs  nav=%dµs  df=%dµs  tiles=%d" % [t1-t0, t2-t1, t3-t2, removed.size()])
+
+func remove_tile(map_pos: Vector2i) -> void:
+	if not tile_types.has(map_pos):
+		return
+
+	tile_health.erase(map_pos)
+	tile_types.erase(map_pos)
+	tile_variant.erase(map_pos)
+	tile_shapes[map_pos].disabled = true
+
+	NavManager.on_tile_removed(map_pos)
+
+	if ore_types.has(map_pos):
+		_hide_ore_instance(map_pos)
+		ore_types.erase(map_pos)
+		ore_variant.erase(map_pos)
+
+	if occluder_sprites.has(map_pos):
+		_remove_occluder_sprite(map_pos)
+	else:
+		_hide_instance(map_pos)
+
 	var below: Vector2i = map_pos + Vector2i(0, 1)
 	if tile_types.has(below) and not occluder_sprites.has(below):
 		_add_occluder_sprite(below)
 
-	# Redraw neighbors so their bitmasks update
 	_redraw_neighbors(map_pos)
-	
-	# update the distance field for shadows created by the shader
 	_mark_chunk_dirty(map_pos)
 	_request_df_update()
 
@@ -551,9 +600,9 @@ func generate_chamber_noise(grid: Array) -> void:
 	for x in range(WIDTH):
 		for y in range(HEIGHT):
 			var perlin_value: float = chamber_noise.get_noise_2d(x, y)
-			var dist: float         = sqrt((x - WIDTH / 2.0) ** 2 + (y - HEIGHT / 2.0) ** 2)
-			var dist_n: float       = dist / ((WIDTH - BUFFER_TILES) / 2.0)
-			var bonus: float        = 0.0
+			var dist:         float = sqrt((x - WIDTH / 2.0) ** 2 + (y - HEIGHT / 2.0) ** 2)
+			var dist_n:       float = dist / ((WIDTH - BUFFER_TILES) / 2.0)
+			var bonus:        float = 0.0
 			if dist > (WIDTH - BUFFER_TILES) / 3.0:
 				bonus = (1.0 - PERLIN_CHAMBER_THRESHOLD) * dist_n
 			if perlin_value > (PERLIN_CHAMBER_THRESHOLD + bonus) and is_replaceable(grid[x][y]):
@@ -563,9 +612,9 @@ func generate_path_noise(grid: Array) -> void:
 	for x in range(WIDTH):
 		for y in range(HEIGHT):
 			var perlin_value: float = path_noise.get_noise_2d(x, y)
-			var dist: float         = sqrt((x - WIDTH / 2.0) ** 2 + (y - HEIGHT / 2.0) ** 2)
-			var dist_n: float       = dist / ((WIDTH - BUFFER_TILES) / 2.0)
-			var bonus: float        = 0.0
+			var dist:         float = sqrt((x - WIDTH / 2.0) ** 2 + (y - HEIGHT / 2.0) ** 2)
+			var dist_n:       float = dist / ((WIDTH - BUFFER_TILES) / 2.0)
+			var bonus:        float = 0.0
 			if dist > 2.0 * (WIDTH - BUFFER_TILES) / 5.0:
 				bonus = PERLIN_PATH_THRESHOLD * dist_n
 			if absf(perlin_value) < (PERLIN_PATH_THRESHOLD - bonus) and is_replaceable(grid[x][y]):
@@ -587,8 +636,8 @@ func cellular_step(grid: Array) -> Array[Array]:
 	for x in range(WIDTH):
 		new_grid.append([])
 		for y in range(HEIGHT):
-			var alive: bool    = grid[x][y] == Util.tile.AIR
-			var neighbors: int = count_neighbors(grid, x, y)
+			var alive:     bool = grid[x][y] == Util.tile.AIR
+			var neighbors: int  = count_neighbors(grid, x, y)
 			if alive:
 				if neighbors < CELL_DEATH_THRESHOLD:
 					var neighbor_value: Variant = null
@@ -662,10 +711,10 @@ func bresenham_line(a: Vector2, b: Vector2) -> Array[Vector2]:
 	var x0: int = int(a.x); var y0: int = int(a.y)
 	var x1: int = int(b.x); var y1: int = int(b.y)
 	var tiles: Array[Vector2] = []
-	var dx: int  =  abs(x1 - x0)
-	var dy: int  = -abs(y1 - y0)
-	var sx: int  = 1 if x0 < x1 else -1
-	var sy: int  = 1 if y0 < y1 else -1
+	var dx:  int = abs(x1 - x0)
+	var dy:  int = -abs(y1 - y0)
+	var sx:  int = 1 if x0 < x1 else -1
+	var sy:  int = 1 if y0 < y1 else -1
 	var err: int = dx + dy
 	while true:
 		tiles.append(Vector2(x0, y0))
@@ -677,9 +726,9 @@ func bresenham_line(a: Vector2, b: Vector2) -> Array[Vector2]:
 	return tiles
 
 func generate_branch(origin: Vector2, length: int = 4, turn_chance: float = 0.5) -> Array[Vector2]:
-	var tiles: Array[Vector2] = []
-	var dir: Vector2          = Vector2(1, 0).rotated(randf_range(0, PI * 2))
-	var current: Vector2      = Vector2(origin)
+	var tiles:   Array[Vector2] = []
+	var dir:     Vector2        = Vector2(1, 0).rotated(randf_range(0, PI * 2))
+	var current: Vector2        = Vector2(origin)
 	for i in range(length):
 		if randf() < turn_chance:
 			dir = dir.rotated(randf_range(-0.6, 0.6))
@@ -691,9 +740,9 @@ func generate_rock_variation(grid: Array) -> void:
 	for x in range(WIDTH):
 		for y in range(HEIGHT):
 			var perlin_value: float = rock_variation_noise.get_noise_2d(x, y)
-			var dist: float         = sqrt((x - WIDTH / 2.0) ** 2 + (y - HEIGHT / 2.0) ** 2)
-			var dist_n: float       = dist / ((WIDTH - BUFFER_TILES) / 2.0)
-			var bonus: float        = 0.0
+			var dist:         float = sqrt((x - WIDTH / 2.0) ** 2 + (y - HEIGHT / 2.0) ** 2)
+			var dist_n:       float = dist / ((WIDTH - BUFFER_TILES) / 2.0)
+			var bonus:        float = 0.0
 			if dist >= WIDTH / 2.0:
 				bonus = (1.0 - ROCK_VARIATION_THRESHOLD) * dist_n
 			if perlin_value > (ROCK_VARIATION_THRESHOLD + bonus):
@@ -701,7 +750,7 @@ func generate_rock_variation(grid: Array) -> void:
 				rock_variation_tiles.append(Vector2i(x, y))
 
 func generate_faults(grid: Array) -> Array[Array]:
-	var new_grid: Array[Array] = []
+	var new_grid:    Array[Array] = []
 	var fault_point: Vector2i
 	if rock_variation_tiles.is_empty():
 		@warning_ignore("integer_division")
@@ -712,7 +761,7 @@ func generate_faults(grid: Array) -> Array[Array]:
 			pt = rock_variation_tiles.pop_at(randi_range(0, rock_variation_tiles.size() - 1))
 		fault_point = pt
 
-	var m: float           = randf_range(-2.0, 2.0)
+	var m:         float   = randf_range(-2.0, 2.0)
 	var fault_dir: Vector2 = Vector2(1.0 / sqrt(1.0 + m ** 2), m / sqrt(1.0 + m ** 2))
 	var magnitude: float   = randf_range(16.0, 32.0)
 	print("Fault magnitude: %.2f" % magnitude)
@@ -734,9 +783,9 @@ func generate_faults(grid: Array) -> Array[Array]:
 	var candidates: Array[Vector2i] = []
 	for x in range(WIDTH):
 		var y_fault: float = m * (x - fault_point.x) + fault_point.y
-		var y: int         = int(floor(y_fault))
-		var dist: float    = sqrt((x - WIDTH / 2.0) ** 2 + (y - HEIGHT / 2.0) ** 2)
-		var radius: float  = (WIDTH - BUFFER_TILES) / 2.0
+		var y:       int   = int(floor(y_fault))
+		var dist:    float = sqrt((x - WIDTH / 2.0) ** 2 + (y - HEIGHT / 2.0) ** 2)
+		var radius:  float = (WIDTH - BUFFER_TILES) / 2.0
 		if dist < radius and dist > radius - 16.0:
 			candidates.append(Vector2i(x, y))
 	for i in range(2):
@@ -779,19 +828,22 @@ func place_copper(grid: Array) -> void:
 func is_replaceable(t: Variant) -> bool:
 	return t != null and t != Util.tile.AIR and t != Util.tile.CRYSTAL and t != Util.tile.COPPER
 
-# ── distance field shadow calculation ─────────────────────────────────────────
-var _df_texture:      ImageTexture     = ImageTexture.new()
-var _df_thread:       Thread           = Thread.new()
-var _df_pending:      Image            = null
-var _df_dirty_chunks: Array[Vector2i]  = []
-var _df_running:      bool             = false
+# ── distance field ────────────────────────────────────────────────────────────
+var _df_texture:      ImageTexture    = ImageTexture.new()
+var _df_thread:       Thread          = Thread.new()
+var _df_pending:      Image           = null
+var _df_pending_rect: Rect2i         = Rect2i()
+var _df_dirty_chunks: Array[Vector2i] = []
+var _df_running:      bool            = false
 
 const DF_CHUNK_SIZE: int   = 16
 const DF_MAX_DEPTH:  float = 5.0
 
+var _df_image: Image = null
+
 func _initial_df_bake() -> void:
-	var img: Image = Image.create(WIDTH, HEIGHT, false, Image.FORMAT_RF)
-	var dist: Array = []
+	var img:  Image          = Image.create(WIDTH, HEIGHT, false, Image.FORMAT_RF)
+	var dist: Array          = []
 	dist.resize(WIDTH * HEIGHT)
 	dist.fill(-1.0)
 	var queue: Array[Vector2i] = []
@@ -815,18 +867,19 @@ func _initial_df_bake() -> void:
 	for x in range(WIDTH):
 		for y in range(HEIGHT):
 			img.set_pixel(x, y, Color(clampf((dist[y * WIDTH + x] - 1.0) / DF_MAX_DEPTH, 0.0, 1.0), 0, 0, 1))
+	_df_image = img
 	_df_texture.set_image(img)
 	_set_df_shader_params()
 
 func _set_df_shader_params() -> void:
 	var world_origin: Vector2 = map_to_world(Vector2i(0, 0)) - Vector2(TILE_SIZE) / 2.0
 	for mat: ShaderMaterial in [multimesh_instance.material, ore_multimesh_instance.material]:
-		mat.set_shader_parameter("distance_field",  _df_texture)
-		mat.set_shader_parameter("map_size",        Vector2(WIDTH, HEIGHT))
+		mat.set_shader_parameter("distance_field",   _df_texture)
+		mat.set_shader_parameter("map_size",         Vector2(WIDTH, HEIGHT))
 		mat.set_shader_parameter("map_world_origin", world_origin)
-		mat.set_shader_parameter("tile_world_size", float(TILE_SIZE.x))
-		mat.set_shader_parameter("max_depth",       DF_MAX_DEPTH)
-		mat.set_shader_parameter("darkness_power",  1.0)
+		mat.set_shader_parameter("tile_world_size",  float(TILE_SIZE.x))
+		mat.set_shader_parameter("max_depth",        DF_MAX_DEPTH)
+		mat.set_shader_parameter("darkness_power",   1.0)
 
 func _mark_chunk_dirty(map_pos: Vector2i) -> void:
 	var chunk: Vector2i = Vector2i(map_pos.x / DF_CHUNK_SIZE, map_pos.y / DF_CHUNK_SIZE)
@@ -839,9 +892,10 @@ func _request_df_update() -> void:
 	_df_running = true
 	var dirty_copy: Array[Vector2i] = _df_dirty_chunks.duplicate()
 	_df_dirty_chunks.clear()
-	_df_thread.start(_compute_df_threaded.bind(dirty_copy, tile_types.duplicate()))
+	var image_snapshot: Image = _df_image.duplicate()
+	_df_thread.start(_compute_df_threaded.bind(dirty_copy, tile_types.duplicate(), image_snapshot))
 
-func _compute_df_threaded(dirty_chunks: Array[Vector2i], snapshot: Dictionary) -> void:
+func _compute_df_threaded(dirty_chunks: Array[Vector2i], snapshot: Dictionary, base_img: Image) -> void:
 	var min_tile := Vector2i(WIDTH, HEIGHT)
 	var max_tile := Vector2i(0, 0)
 	for chunk in dirty_chunks:
@@ -877,24 +931,33 @@ func _compute_df_threaded(dirty_chunks: Array[Vector2i], snapshot: Dictionary) -
 			dist[nb.y * rw + nb.x] = dist[cur.y * rw + cur.x] + 1.0
 			queue.append(nb)
 
-	var img: Image = _df_texture.get_image()
-	if img == null or img.get_width() != WIDTH or img.get_height() != HEIGHT:
-		img = Image.create(WIDTH, HEIGHT, false, Image.FORMAT_RF)
+	var patch: Image = Image.create(rw, rh, false, Image.FORMAT_RF)
 	for x in range(rw):
 		for y in range(rh):
-			var d: float = dist[y * rw + x]
+			var d:       float = dist[y * rw + x]
 			var new_val: float = clampf((d - 1.0) / DF_MAX_DEPTH, 0.0, 1.0) if d >= 0.0 else 0.0
-			var old_val: float = img.get_pixel(min_tile.x + x, min_tile.y + y).r
-			# only write if new value is darker than current (tile was removed, so only brightening allowed)
-			if new_val < old_val:
-				img.set_pixel(min_tile.x + x, min_tile.y + y, Color(new_val, 0, 0, 1))
-	_df_pending = img
+			var old_val: float = base_img.get_pixel(min_tile.x + x, min_tile.y + y).r
+			patch.set_pixel(x, y, Color(new_val if new_val < old_val else old_val, 0, 0, 1))
+
+	_df_pending      = patch
+	_df_pending_rect = Rect2i(min_tile, Vector2i(rw, rh))
 
 func _process(_delta: float) -> void:
 	if _df_pending != null and not _df_thread.is_alive():
 		_df_thread.wait_to_finish()
-		_df_texture.set_image(_df_pending)
-		_df_pending = null
-		_df_running = false
+		
+		var t0 := Time.get_ticks_usec()
+		_df_image.blit_rect(_df_pending, Rect2i(Vector2i.ZERO, _df_pending_rect.size), _df_pending_rect.position)
+		var t1 := Time.get_ticks_usec()
+		
+		_df_pending      = null
+		_df_pending_rect = Rect2i()
+		_df_running      = false
+		
 		if not _df_dirty_chunks.is_empty():
 			_request_df_update()
+		else:
+			var t2 := Time.get_ticks_usec()
+			_df_texture.update(_df_image)
+			var t3 := Time.get_ticks_usec()
+			print("df _process: blit=%dµs  upload=%dµs" % [t1-t0, t3-t2])

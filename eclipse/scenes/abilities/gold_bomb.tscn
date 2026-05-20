@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://dnb22cvyh50b6"]
 
-[ext_resource type="Script" uid="uid://chukm1xpuglmn" path="res://scripts/abilities/gold_bomb.gd" id="1_gyvvv"]
+[ext_resource type="Script" uid="uid://chukm1xpuglmn" path="res://scripts/abilities/ability_gold_bomb/gold_bomb.gd" id="1_gyvvv"]
 [ext_resource type="Texture2D" uid="uid://cw67ofvus6ji2" path="res://art/abilities/gold/overpowered_sweep.png" id="2_fngu6"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_66rrx"]

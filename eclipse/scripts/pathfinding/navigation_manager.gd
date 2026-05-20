@@ -12,7 +12,7 @@ var _built:          bool              = false
 var _map_rid:        RID
 var _region:         NavigationRegion2D = null
 var _apply_pending:  bool              = false
-var _rebake_timer:   float             = 0.0
+var _rebake_timer:   float             = 0.25
 var _rebake_requested: bool            = false
 
 # chunk_coord → Array[PackedVector2Array]
@@ -156,12 +156,9 @@ func _apply_all_outlines() -> void:
 	var nav_poly := NavigationPolygon.new()
 	nav_poly.agent_radius         = agent_radius
 	nav_poly.source_geometry_mode = NavigationPolygon.SOURCE_GEOMETRY_GROUPS_WITH_CHILDREN
-
 	for outlines: Array in _chunk_outlines.values():
 		for outline: PackedVector2Array in outlines:
 			nav_poly.add_outline(outline)
-
-	# Obstacle cutouts — reversed to CCW so the baker treats them as holes
 	for obs in get_tree().get_nodes_in_group("nav_obstacles"):
 		if not obs.has_method("get_world_outline"):
 			continue
@@ -171,24 +168,23 @@ func _apply_all_outlines() -> void:
 		outline.reverse()
 		nav_poly.add_outline(outline)
 
-	NavigationServer2D.bake_from_source_geometry_data(
+	var source_geo := NavigationMeshSourceGeometryData2D.new()
+	NavigationServer2D.bake_from_source_geometry_data_async(
 		nav_poly,
-		NavigationMeshSourceGeometryData2D.new()
+		source_geo,
+		_on_nav_bake_complete.bind(nav_poly)
 	)
 
+func _on_nav_bake_complete(nav_poly: NavigationPolygon) -> void:
 	if _region == null or not is_instance_valid(_region):
 		_region      = NavigationRegion2D.new()
 		_region.name = "NavRegion"
 		add_child(_region)
-
 	_region.navigation_polygon = nav_poly
-
 	await get_tree().process_frame
-
 	_map_rid       = _region.get_navigation_map()
 	_built         = true
 	_apply_pending = false
-
 	print("NavManager: applied — polygons: %d  map valid: %s" % [
 		nav_poly.get_polygon_count(), _map_rid.is_valid()
 	])

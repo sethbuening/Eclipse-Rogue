@@ -1,18 +1,19 @@
 class_name AbilityFocusMine
 extends AbilityData
 
-var charge:         float          = 0.0
-var charging:       bool           = false
-var exploded:       bool           = false
+var charge:         float           = 0.0
+var charging:       bool            = false
+var exploded:       bool            = false
 var targeted_tiles: Array[Vector2i] = []
 
 const CHARGE_TIME: float = 1.5
 
 func activate(context: Dictionary) -> void:
-	var player:  Node  = context.get("player")
-	var tilemap: Node  = context.get("tilemap")
-	var delta:   float = context.get("delta", 0.0)
-	var pressed: bool  = context.get("pressed", false)
+	var player:    Node  = context.get("player")
+	var tilemap:   Node  = context.get("tilemap")
+	var delta:     float = context.get("delta", 0.0)
+	var pressed:   bool  = context.get("pressed", false)
+	var orb_power: float = context.get("power", 1.0)
 	if player == null or tilemap == null:
 		return
 	if context.get("orb_shattered", false):
@@ -20,7 +21,7 @@ func activate(context: Dictionary) -> void:
 	if pressed:
 		if not exploded:
 			if not charging:
-				targeted_tiles = _get_focus_tiles(player, tilemap)
+				targeted_tiles = _get_focus_tiles(player, tilemap, orb_power)
 			if targeted_tiles.size() != 0:
 				context["lock_movement"] = true
 				charging                  = true
@@ -30,7 +31,7 @@ func activate(context: Dictionary) -> void:
 					tilemap.set_tile_color(tile, Color(1.0 + t, 1.0 + t, 1.0 + t))
 				context["orb_t"] = t
 				if charge >= CHARGE_TIME:
-					_explode(player, tilemap, context)
+					_explode(player, tilemap, orb_power)
 					charge                   = 0.0
 					charging                 = false
 					exploded                 = true
@@ -45,8 +46,8 @@ func activate(context: Dictionary) -> void:
 func reset_exploded() -> void:
 	exploded = false
 
-func _explode(player: Node, tilemap: Node, context: Dictionary) -> void:
-	var power: int = int(stats.mining_power * context.get("orb_power", 1.0))
+func _explode(player: Node, tilemap: Node, orb_power: float) -> void:
+	var power: int = int(stats.mining_power * stats.power * orb_power)
 	for tile: Vector2i in targeted_tiles:
 		tilemap.damage_tile(tile, power)
 		ParticleManager.spawn_focus_spark(tilemap.map_to_world(tile))
@@ -58,9 +59,9 @@ func _clear_tiles(tilemap: Node) -> void:
 		tilemap.set_tile_color(tile, Color.WHITE)
 	targeted_tiles.clear()
 
-func _get_focus_tiles(player: Node, tilemap: Node) -> Array[Vector2i]:
+func _get_focus_tiles(player: Node, tilemap: Node, orb_power: float = 1.0) -> Array[Vector2i]:
 	var start: Vector2i = tilemap.world_to_map(player.global_position) + player.direction
-	var limit: int      = stats.mining_radius * stats.power - 1
+	var limit: int = stats.mining_radius * int(stats.power * orb_power) - 1
 	if tilemap.is_air(start):
 		return []
 	var visited: Dictionary      = { start: true }

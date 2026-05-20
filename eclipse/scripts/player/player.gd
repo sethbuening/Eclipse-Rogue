@@ -21,6 +21,7 @@ var movement_enabled: bool = true
 @export_group("Starting Orbs")
 const starting_orb: Orb = preload("res://data/orbs/orb_focus_mine.tres")
 const starting_orb_2: Orb = preload("res://data/orbs/orb_gold_bomb.tres")
+const starting_orb_3: Orb = preload("res://data/orbs/orb_lightning_chain.tres")
 
 # ------------------------------------------------------ light (health) bar ---
 @onready var light_bar = $"../HUD/health bar"  # adjust path
@@ -95,6 +96,7 @@ func _ready() -> void:
 	$Inventory.orb_removed.connect(_on_orb_removed)
 	$Inventory.add_orb(starting_orb.clone())
 	$Inventory.add_orb(starting_orb_2.clone())
+	$Inventory.add_orb(starting_orb_3.clone())
 
 # --------------------------------------------------------- orb management ---
 func _on_orb_added(orb: Orb) -> void:
@@ -163,6 +165,7 @@ func _make_context(delta: float, pressed: bool, orb_index: int) -> Dictionary:
 		"shatter":       false,
 		"orb_shattered": orb_visuals[orb_index].shattered,
 		"orb_index":     orb_index,
+		"power":         $Inventory.orbs[orb_index].power,
 	}
 
 func _read_context(context: Dictionary, orb_index: int, max_t: float) -> float:
@@ -193,6 +196,10 @@ func _process(delta: float) -> void:
 	_tick_abilities(delta)
 	_tick_env(delta)
 	_tick_dev_input()
+
+	'''for i in range($Inventory.orbs.size()):
+		var orb: Orb = $Inventory.orbs[i]
+		print("orb %d | action='%s' node=%d" % [i, orb.input_action, orb.node_index])'''
 
 func _tick_channel(delta: float) -> void:
 	var channel_held: bool = Input.is_action_pressed("channel_light")
@@ -273,13 +280,11 @@ func _tick_dev_input() -> void:
 		if $CollisionShape2D.disabled:
 			speed /= 10.0
 			$CollisionShape2D.disabled = false
-			%Camera2D.zoom *= 2
 			%CanvasModulate.color = Color("101010")
 			light = 100
 		else:
 			speed *= 10.0
 			$CollisionShape2D.disabled = true
-			%Camera2D.zoom /= 2
 			%CanvasModulate.color = Color.WHITE
 			_dev_reset_cooldowns()
 	if Input.is_action_just_pressed("dev_call_wave"):
@@ -287,7 +292,11 @@ func _tick_dev_input() -> void:
 		WaveManager._launch_wave()
 	if Input.is_action_just_pressed("interact") and _nearby_forge != null:
 		_try_open_forge()
-
+	if Input.is_action_just_pressed("zoom_in"):
+		%Camera2D.zoom *= 2
+	if Input.is_action_just_pressed("zoom_out"):
+		%Camera2D.zoom /= 2
+	
 func _dev_reset_cooldowns() -> void:
 	for orb: Orb in $Inventory.orbs:
 		for ability: AbilityData in orb.abilities:
@@ -349,8 +358,10 @@ func _update_orb_visuals(delta: float) -> void:
 		ov.reforming    = true
 		ov.reform_flash = orb_reform_flash
 		ov.cooldown_age = 0.0
+		ov.glow         = 0.0        # ← prevents brightness lock after reform
 		ov.sprite.visible = false
 		for ability: AbilityData in $Inventory.orbs[i].abilities:
+			ability.reset_cooldown()  # ← ensures ability agrees it's ready
 			if ability is AbilityFocusMine:
 				(ability as AbilityFocusMine).reset_exploded()
 

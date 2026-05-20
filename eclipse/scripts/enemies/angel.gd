@@ -1,37 +1,38 @@
-# angel.gd
 class_name E_Angel
 extends Enemy
-
-@export var heal_radius:         float     = 120.0
-@export var heal_amount_per_sec: float     = 5.0
-@export var pylon_orbit_radius:  float     = 60.0
-@export var pylon_data:          EnemyData = preload("res://data/enemies/pylon.tres")
 
 var _pylons:       Array[E_Pylon] = []
 var _pylons_alive: int            = 0
 var _vulnerable:   bool           = false
 var _heal_timer:   float          = 0.0
 
-const HEAL_INTERVAL: float = 0.25
+var _nav_target:       Vector2 = Vector2.ZERO
+var _nav_target_raw:   Vector2 = Vector2.ZERO
+var _nav_update_timer: float   = 0.0
+var _smoothed_sep_vel: Vector2 = Vector2.ZERO
+
+const NAV_UPDATE_INTERVAL: float = 0.2
+const NAV_TARGET_LERP:     float = 4.0
 
 # ── lifecycle ─────────────────────────────────────────────────────────────────
 
-func _ready() -> void:
-	super._ready()
-
 func initialize(p: CharacterBody2D, modifier: Util.Modifier = Util.Modifier.NONE) -> void:
 	super.initialize(p, modifier)
+	_nav_target     = player.global_position
+	_nav_target_raw = player.global_position
 	_spawn_pylons()
 
 # ── pylons ────────────────────────────────────────────────────────────────────
 
 func _spawn_pylons() -> void:
-	for i in 4:
-		var pylon: E_Pylon = pylon_data.scene.instantiate() as E_Pylon
-		pylon.orbit_radius = pylon_orbit_radius
-		pylon.health       = pylon_data.max_health
+	for i in data.spawn_count:
+		var pylon: E_Pylon = data.spawned_unit_data.scene.instantiate() as E_Pylon
+		pylon.data         = data.spawned_unit_data
+		pylon.health       = data.spawned_unit_data.max_health
 		add_child(pylon)
-		pylon.setup(self, (TAU / 4.0) * i)
+		pylon.setup(self, (TAU / data.spawn_count) * i)
+		pylon.died.connect(_on_pylon_died)
+		EnemyManager.register_enemy(pylon)
 		_pylons.append(pylon)
 	_pylons_alive = _pylons.size()
 
@@ -41,56 +42,55 @@ func _on_pylon_died(pylon: E_Pylon) -> void:
 	if _pylons_alive <= 0:
 		_vulnerable = true
 
-# ── process ───────────────────────────────────────────────────────────────────
+# ── behavior ──────────────────────────────────────────────────────────────────
 
-func _physics_process(delta: float) -> void:
-	if player == null:
-		return
-	z_index = tilemap_manager.get_z_for(global_position)
-	_move(delta)
+func _tick_behavior(delta: float) -> void:
 	_tick_healing(delta)
-
-func _move(delta: float) -> void:
-	var best_pos:   Vector2 = Vector2.ZERO
-	var best_count: int     = 0
-
-	var all_enemies := get_tree().get_nodes_in_group("enemies")
-	for candidate in all_enemies:
-		if candidate == self or not candidate is Enemy:
-			continue
-		var count: int = 0
-		for other in all_enemies:
-			if other == self:
-				continue
-			if (candidate as Enemy).global_position.distance_to((other as Enemy).global_position) < heal_radius:
-				count += 1
-		if count > best_count:
-			best_count = count
-			best_pos   = (candidate as Enemy).global_position
-
-	var target: Vector2 = best_pos if best_count > 0 else player.global_position
-
-	if NavManager._built:
-		velocity = _navigator.navigate_toward(target, delta)
-	else:
-		velocity = (target - global_position).normalized() * data.speed
-
-	velocity += _separation_velocity()
-	move_and_slide()
 
 func _tick_healing(delta: float) -> void:
 	_heal_timer += delta
-	if _heal_timer < HEAL_INTERVAL:
+	if _heal_timer < data.heal_interval:
 		return
 	_heal_timer = 0.0
-
-	var heal: float = heal_amount_per_sec * HEAL_INTERVAL
-	for node in get_tree().get_nodes_in_group("enemies"):
-		if not node is Enemy:
+	var heal: int = int(data.heal_amount_per_sec * data.heal_interval)
+	for enemy: Enemy in EnemyManager.living_enemies:
+		if not is_instance_valid(enemy) or enemy.data == null:
 			continue
-		var enemy := node as Enemy
-		if global_position.distance_to(enemy.global_position) <= heal_radius:
-			enemy.health = mini(enemy.health + int(heal), enemy.data.max_health)
+		if global_position.distance_to(enemy.global_position) <= data.heal_radius:
+			enemy.health = mini(enemy.health + heal, enemy.data.max_health)
+
+# ── movement ──────────────────────────────────────────────────────────────────
+
+func _compute_nav_velocity(delta: float) -> Vector2:
+	_nav_update_timer += delta
+	if _nav_update_timer >= NAV_UPDATE_INTERVAL:
+		_nav_update_timer = 0.0
+		_nav_target_raw   = _find_best_target()
+
+	_nav_target       = _nav_target.lerp(_nav_target_raw, NAV_TARGET_LERP * delta)
+	_smoothed_sep_vel = _smoothed_sep_vel.lerp(_separation_velocity(), 10.0 * delta)
+
+	var target: Vector2 = _range_offset_target(_nav_target, data.preferred_range)
+	if NavManager._built:
+		return _navigator.navigate_toward(target, delta) + _smoothed_sep_vel
+	return (target - global_position).normalized() * data.speed + _smoothed_sep_vel
+
+func _find_best_target() -> Vector2:
+	var best_pos:   Vector2 = Vector2.ZERO
+	var best_count: int     = 0
+	for candidate: Enemy in EnemyManager.living_enemies:
+		if not is_instance_valid(candidate) or candidate == self or candidate is E_Pylon:
+			continue
+		var count: int = 0
+		for other: Enemy in EnemyManager.living_enemies:
+			if not is_instance_valid(other) or other == self or other is E_Pylon:
+				continue
+			if candidate.global_position.distance_to(other.global_position) < data.heal_radius:
+				count += 1
+		if count > best_count:
+			best_count = count
+			best_pos   = candidate.global_position
+	return best_pos if best_count > 0 else player.global_position
 
 # ── combat ────────────────────────────────────────────────────────────────────
 
@@ -100,7 +100,8 @@ func take_damage(amount: int) -> void:
 	super.take_damage(amount)
 
 func die() -> void:
-	for pylon in _pylons:
+	for pylon: E_Pylon in _pylons:
 		if is_instance_valid(pylon):
+			EnemyManager.unregister_enemy(pylon)
 			pylon.queue_free()
 	super.die()

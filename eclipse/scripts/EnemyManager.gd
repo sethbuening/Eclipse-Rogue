@@ -1,8 +1,8 @@
 # enemy_manager.gd
 extends Node
 
-var living_enemies: Array[Enemy]   = []
-var player:         CharacterBody2D
+var living_enemies:  Array[Enemy]   = []
+var player:          CharacterBody2D
 var tilemap_manager: Node = null
 
 signal enemy_died
@@ -22,6 +22,20 @@ func spawn_enemy(data: EnemyData, modifier: Util.Modifier = Util.Modifier.NONE) 
 	add_child(enemy)
 	enemy.initialize(player, modifier)
 	living_enemies.append(enemy)
+
+## Register an enemy that was spawned outside the normal spawn_enemy path
+## (e.g. pylons parented to another enemy).  Connects the died signal so the
+## entry is cleaned up automatically.
+func register_enemy(enemy: Enemy) -> void:
+	if living_enemies.has(enemy):
+		return
+	enemy.died.connect(_on_enemy_died)
+	living_enemies.append(enemy)
+
+## Remove an enemy from the living list without freeing it.
+## Use when you need manual control over the node lifetime.
+func unregister_enemy(enemy: Enemy) -> void:
+	living_enemies.erase(enemy)
 
 func clear_all() -> void:
 	for enemy: Enemy in living_enemies:

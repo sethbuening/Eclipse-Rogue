@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://bbnhevnup0t44"]
 
-[ext_resource type="Script" uid="uid://cd16d01ocqn5q" path="res://scripts/abilities/gold_shockwave.gd" id="1_phc46"]
+[ext_resource type="Script" uid="uid://cd16d01ocqn5q" path="res://scripts/abilities/ability_gold_bomb/gold_shockwave.gd" id="1_hituy"]
 [ext_resource type="Texture2D" uid="uid://bacsvag64f1hh" path="res://art/abilities/gold/overpowered_shockwave.png" id="2_hituy"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_7qd0i"]
@@ -58,7 +58,7 @@ fill_from = Vector2(0.5, 0.5)
 fill_to = Vector2(0.86, 0.86)
 
 [node name="GoldShockwave" type="Node2D" unique_id=1159856170]
-script = ExtResource("1_phc46")
+script = ExtResource("1_hituy")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=617000645]
 z_index = 4096

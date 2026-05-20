@@ -1,44 +1,35 @@
-# orb_graph_menu.gd
 extends CanvasLayer
 
 # ── references ────────────────────────────────────────────────────────────────
 var player: CharacterBody2D
 
 # ── ui state ──────────────────────────────────────────────────────────────────
-var selected_orb:     Orb     = null
-var dragging_orb:     Orb     = null
-var drag_origin_node: int     = -1
-var drag_pos:         Vector2 = Vector2.ZERO
-var hover_node:       int     = -1
-var pressed_inventory_orb: Orb = null
-var inventory_press_pos: Vector2 = Vector2.ZERO
-const DRAG_THRESHOLD := 8.0
+var selected_orb:          Orb     = null
+var dragging_orb:          Orb     = null
+var drag_origin_node:      int     = -1
+var drag_pos:              Vector2 = Vector2.ZERO
+var hover_node:            int     = -1
+var pressed_inventory_orb: Orb     = null
+var inventory_press_pos:   Vector2 = Vector2.ZERO
+
+const DRAG_THRESHOLD: float = 8.0
 
 # ── colors ────────────────────────────────────────────────────────────────────
 const COLOR_NODE_EMPTY:  Color = Color(0.2, 0.2, 0.3)
 const COLOR_NODE_FILLED: Color = Color(0.4, 0.6, 0.9)
 const COLOR_NODE_HOVER:  Color = Color(0.6, 0.8, 1.0)
-const COLOR_CONNECTION:  Dictionary = {
-	GraphConnectionData.ConnectionType.CHARGES:   Color(0.3, 0.8, 0.3),
-	GraphConnectionData.ConnectionType.OVERHEATS: Color(1.0, 0.4, 0.2),
-	GraphConnectionData.ConnectionType.RESONATOR: Color(0.8, 0.3, 0.8),
-	GraphConnectionData.ConnectionType.DRAINS:    Color(0.2, 0.5, 0.9),
-	GraphConnectionData.ConnectionType.SILENCE:   Color(0.7, 0.7, 0.9),
-}
+const COLOR_CONNECTION:  Color = Color(0.3, 0.8, 0.3)
 
 # ── graph sizing ──────────────────────────────────────────────────────────────
-const NODE_RADIUS: float      = 88.0
-const NODE_OUTLINE: float     = 3.0
-const CONNECTION_WIDTH: float = 5.0
-
+const NODE_RADIUS:        float = 88.0
+const NODE_OUTLINE:       float = 3.0
+const CONNECTION_WIDTH:   float = 5.0
 const CONNECTION_FONT_SIZE: int = 18
-const NODE_FONT_SIZE: int       = 16
-const ORB_FONT_SIZE: int        = 14
-
-const ORB_ICON_SIZE: Vector2 = Vector2(40, 40)
-const DRAG_ICON_SIZE: Vector2 = Vector2(52, 52)
-
-const ARROW_SIZE: float = 14.0
+const NODE_FONT_SIZE:       int = 16
+const ORB_FONT_SIZE:        int = 14
+const ORB_ICON_SIZE:    Vector2 = Vector2(40, 40)
+const DRAG_ICON_SIZE:   Vector2 = Vector2(52, 52)
+const ARROW_SIZE:         float = 14.0
 
 @onready var graph_canvas: Control = %GraphCanvas
 @onready var orb_list:     Control = %OrbList
@@ -86,15 +77,12 @@ func _layout_nodes() -> void:
 		forces.fill(Vector2.ZERO)
 
 		for i in range(count):
-			# repel from every other node
 			for j in range(i + 1, count):
 				var diff:  Vector2 = nodes[i].position - nodes[j].position
 				var dist:  float   = maxf(diff.length(), 1.0)
 				var force: Vector2 = diff.normalized() * 30000.0 / (dist * dist)
 				forces[i] += force
 				forces[j] -= force
-
-			# gentle center pull
 			forces[i] += -nodes[i].position * 0.01
 
 		for i in range(count):
@@ -113,90 +101,60 @@ func _input(event: InputEvent) -> void:
 		return
 
 	var canvas_mouse: Vector2 = graph_canvas.get_local_mouse_position()
-	var graph_mouse: Vector2 = canvas_mouse - graph_canvas.size / 2.0
+	var graph_mouse:  Vector2 = canvas_mouse - graph_canvas.size / 2.0
 
 	if event is InputEventMouseMotion:
 		hover_node = GraphManager.graph.get_node_at(graph_mouse, NODE_RADIUS)
-
 		if dragging_orb != null:
 			drag_pos = get_viewport().get_mouse_position()
-
 		graph_canvas.queue_redraw()
 
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 
-		# ───────────────── LEFT CLICK ─────────────────
 		if mb.button_index == MOUSE_BUTTON_LEFT:
-
-			# ── pressed ────────────────────────────────
 			if mb.pressed:
 				var clicked := GraphManager.graph.get_node_at(graph_mouse, NODE_RADIUS)
-
-				# start dragging orb from node
 				if clicked != -1:
 					var node: GraphNodeData = GraphManager.graph.nodes[clicked]
-
 					if dragging_orb == null and node.placed_orb != null:
-						dragging_orb = node.placed_orb
+						dragging_orb     = node.placed_orb
 						drag_origin_node = clicked
-						drag_pos = get_viewport().get_mouse_position()
-
+						drag_pos         = get_viewport().get_mouse_position()
 						_remove_orb(clicked)
 						selected_orb = null
 						_rebuild_orb_list()
-
-			# ── released ───────────────────────────────
 			else:
 				var clicked := GraphManager.graph.get_node_at(graph_mouse, NODE_RADIUS)
-
-				# finish drag
 				if dragging_orb != null:
 					if clicked != -1:
 						_place_orb(clicked, dragging_orb)
 					elif drag_origin_node != -1:
-						# return to original node
 						_place_orb(drag_origin_node, dragging_orb)
-
-					dragging_orb = null
+					dragging_orb     = null
 					drag_origin_node = -1
-
-				# place selected orb
 				elif selected_orb != null:
 					if clicked != -1:
 						_place_orb(clicked, selected_orb)
 						selected_orb = null
-
-				# pick up orb from node without dragging
 				elif clicked != -1:
 					var node: GraphNodeData = GraphManager.graph.nodes[clicked]
-
 					if node.placed_orb != null:
 						selected_orb = node.placed_orb
 						_remove_orb(clicked)
-
 				else:
 					selected_orb = null
-
 				_rebuild_orb_list()
 
-		# ───────────────── RIGHT CLICK ────────────────
 		if mb.button_index == MOUSE_BUTTON_RIGHT and mb.pressed:
-
 			var clicked := GraphManager.graph.get_node_at(graph_mouse, NODE_RADIUS)
-
-			# remove orb from node
 			if clicked != -1:
 				_remove_orb(clicked)
-
-			# cancel drag
 			if dragging_orb != null:
 				if drag_origin_node != -1:
 					_place_orb(drag_origin_node, dragging_orb)
-
-				dragging_orb = null
+				dragging_orb     = null
 				drag_origin_node = -1
-
 			selected_orb = null
 			_rebuild_orb_list()
 
@@ -214,32 +172,29 @@ func _draw_graph() -> void:
 
 	# ── connections ───────────────────────────────────────────────────────────
 	for conn: GraphConnectionData in connections:
-		var a:     Vector2 = nodes[conn.from_node].position + origin
-		var b:     Vector2 = nodes[conn.to_node].position   + origin
-		var color: Color   = COLOR_CONNECTION.get(conn.connection_type, Color.WHITE)
-		graph_canvas.draw_line(a, b, color, CONNECTION_WIDTH)
+		var a: Vector2 = nodes[conn.from_node].position + origin
+		var b: Vector2 = nodes[conn.to_node].position   + origin
+		graph_canvas.draw_line(a, b, COLOR_CONNECTION, CONNECTION_WIDTH)
 
-		if not conn.bidirectional:
-			var mid:  Vector2 = (a + b) / 2.0
-			var dir:  Vector2 = (b - a).normalized()
-			var perp: Vector2 = Vector2(-dir.y, dir.x) * (ARROW_SIZE * 0.5)
-			graph_canvas.draw_colored_polygon(
-				PackedVector2Array([
-					mid + dir * ARROW_SIZE,
-					mid - dir * ARROW_SIZE + perp,
-					mid - dir * ARROW_SIZE - perp
-				]),
-				color
-			)
+		var mid: Vector2 = (a + b) / 2.0
+		var dir: Vector2 = (b - a).normalized()
+		var perp: Vector2 = Vector2(-dir.y, dir.x) * (ARROW_SIZE * 0.5)
+		graph_canvas.draw_colored_polygon(
+			PackedVector2Array([
+				mid + dir * ARROW_SIZE,
+				mid - dir * ARROW_SIZE + perp,
+				mid - dir * ARROW_SIZE - perp
+			]),
+			COLOR_CONNECTION
+		)
 
-		var mid:   Vector2 = (a + b) / 2.0
-		var label: String  = GraphConnectionData.ConnectionType.keys()[conn.connection_type]
+		var charge_label: String = "charges (%d)" % conn.charge_stacks
 		graph_canvas.draw_string(
 			ThemeDB.fallback_font,
 			mid + Vector2(4, -4),
-			label.to_lower(),
+			charge_label,
 			HORIZONTAL_ALIGNMENT_LEFT,
-			-1, CONNECTION_FONT_SIZE, color
+			-1, CONNECTION_FONT_SIZE, COLOR_CONNECTION
 		)
 
 	# ── nodes ─────────────────────────────────────────────────────────────────
@@ -256,60 +211,50 @@ func _draw_graph() -> void:
 			color = COLOR_NODE_EMPTY
 
 		graph_canvas.draw_circle(center, NODE_RADIUS, color)
-		graph_canvas.draw_arc(
-			center,
-			NODE_RADIUS,
-			0,
-			TAU,
-			48,
-			Color.WHITE,
-			NODE_OUTLINE
-		)
+		graph_canvas.draw_arc(center, NODE_RADIUS, 0, TAU, 48, Color.WHITE, NODE_OUTLINE)
 
-		var type_label: String = GraphNodeData.NodeType.keys()[node.node_type].to_lower()
+		var stat_label: String = node.stat_name.replace("_", " ")
+		var value_label: String = "%s%.0f%%" % ["-" if node.stat_name == "cooldown" else "+", node.stat_value * 100.0]
 		graph_canvas.draw_string(
 			ThemeDB.fallback_font,
-			center + Vector2(-NODE_RADIUS + 4, -4),
-			type_label,
+			center + Vector2(-NODE_RADIUS + 8, -10),
+			stat_label,
 			HORIZONTAL_ALIGNMENT_LEFT,
 			-1, NODE_FONT_SIZE, Color.WHITE
+		)
+		graph_canvas.draw_string(
+			ThemeDB.fallback_font,
+			center + Vector2(-NODE_RADIUS + 8, 12),
+			value_label,
+			HORIZONTAL_ALIGNMENT_LEFT,
+			-1, NODE_FONT_SIZE, Color(0.8, 1.0, 0.6)
 		)
 
 		if node.placed_orb != null:
 			if node.placed_orb.sprite_texture != null:
-				var icon_size: Vector2 = ORB_ICON_SIZE
 				graph_canvas.draw_texture_rect(
 					node.placed_orb.sprite_texture,
-					Rect2(center - icon_size / 2.0 + Vector2(0, 8), icon_size),
+					Rect2(center - ORB_ICON_SIZE / 2.0 + Vector2(0, 24), ORB_ICON_SIZE),
 					false
 				)
 			graph_canvas.draw_string(
 				ThemeDB.fallback_font,
-				center + Vector2(-NODE_RADIUS + 4, 10),
+				center + Vector2(-NODE_RADIUS + 8, 32),
 				node.placed_orb.display_name,
 				HORIZONTAL_ALIGNMENT_LEFT,
 				-1, ORB_FONT_SIZE, Color(1, 1, 0.6)
 			)
 
 		if selected_orb != null and i == hover_node:
-			graph_canvas.draw_arc(
-				center,
-				NODE_RADIUS + 6,
-				0,
-				TAU,
-				48,
-				Color(1.0, 0.85, 0.3),
-				4.0
-			)
+			graph_canvas.draw_arc(center, NODE_RADIUS + 6, 0, TAU, 48, Color(1.0, 0.85, 0.3), 4.0)
 
 	# ── floating drag icon ────────────────────────────────────────────────────
 	if dragging_orb != null:
 		var local_drag: Vector2 = graph_canvas.get_local_mouse_position()
-		var icon_size: Vector2 = DRAG_ICON_SIZE
 		if dragging_orb.sprite_texture != null:
 			graph_canvas.draw_texture_rect(
 				dragging_orb.sprite_texture,
-				Rect2(local_drag - icon_size / 2.0, icon_size),
+				Rect2(local_drag - DRAG_ICON_SIZE / 2.0, DRAG_ICON_SIZE),
 				false
 			)
 		graph_canvas.draw_string(
@@ -335,52 +280,45 @@ func _remove_orb(node_index: int) -> void:
 	var node: GraphNodeData = GraphManager.graph.nodes[node_index]
 	if node.placed_orb == null:
 		return
-	_unapply_node_from_orb(node, node.placed_orb)
+	var orb: Orb = node.placed_orb
+
+	for conn: GraphConnectionData in GraphManager.graph.connections:
+		if conn.charge_stacks == 0:
+			continue
+		if conn.to_node == node_index:
+			orb.power         -= conn.charge_stacks * 0.1
+			conn.charge_stacks = 0
+		elif conn.from_node == node_index:
+			var target_orb: Orb = GraphManager.graph.nodes[conn.to_node].placed_orb
+			if target_orb != null:
+				target_orb.power  -= conn.charge_stacks * 0.1
+			conn.charge_stacks = 0
+
+	_unapply_node_from_orb(node, orb)
 	node.placed_orb.node_index = -1
 	node.placed_orb            = null
 	player._recalculate_orb_offsets()
 	_rebuild_orb_list()
 
 func _apply_node_to_orb(node: GraphNodeData, orb: Orb) -> void:
-	match node.node_type:
-		GraphNodeData.NodeType.AOE:
-			for ability: AbilityData in orb.abilities:
-				ability.stats.aoe_radius   *= 2.0
-				ability.stats.mining_radius *= 2.0
-		GraphNodeData.NodeType.STAT:
-			var modifier       := OrbModifier.new()
-			modifier.stat_name  = node.stat_name
-			modifier.value      = node.stat_value
-			modifier.mod_type   = OrbModifier.ModType.ADDITIVE
-			modifier.apply(orb)
-			if node.stat_name == "power":
-				orb.node_power_base = orb.power + node.stat_value
-		GraphNodeData.NodeType.ECHO:
-			pass
-		GraphNodeData.NodeType.DECAYING:
-			for ability: AbilityData in orb.abilities:
-				ability.stats.cooldown = 0.0
-		GraphNodeData.NodeType.STAT_CONVERTER:
-			pass
+	if node.stat_name == "power":
+		orb.node_power_base = orb.power + node.stat_value
+		return
+	var modifier       := OrbModifier.new()
+	modifier.stat_name  = node.stat_name
+	modifier.value      = -node.stat_value if node.stat_name == "cooldown" else node.stat_value
+	modifier.mod_type   = OrbModifier.ModType.MULTIPLICATIVE
+	modifier.apply(orb)
 
 func _unapply_node_from_orb(node: GraphNodeData, orb: Orb) -> void:
-	match node.node_type:
-		GraphNodeData.NodeType.AOE:
-			for ability: AbilityData in orb.abilities:
-				ability.stats.aoe_radius   /= 2.0
-				ability.stats.mining_radius /= 2.0
-		GraphNodeData.NodeType.STAT:
-			var modifier       := OrbModifier.new()
-			modifier.stat_name  = node.stat_name
-			modifier.value      = node.stat_value
-			modifier.mod_type   = OrbModifier.ModType.ADDITIVE
-			modifier.unapply(orb)
-			if node.stat_name == "power":
-				orb.node_power_base = -1.0
-		GraphNodeData.NodeType.DECAYING:
-			pass  # cooldown changes are permanent by design
-		_:
-			pass
+	if node.stat_name == "power":
+		orb.node_power_base = -1.0
+		return
+	var modifier       := OrbModifier.new()
+	modifier.stat_name  = node.stat_name
+	modifier.value      = -node.stat_value if node.stat_name == "cooldown" else node.stat_value
+	modifier.mod_type   = OrbModifier.ModType.MULTIPLICATIVE
+	modifier.unapply(orb)
 
 # ── orb list ──────────────────────────────────────────────────────────────────
 func _rebuild_orb_list() -> void:
@@ -395,8 +333,7 @@ func _rebuild_orb_list() -> void:
 		if node.placed_orb != null:
 			placed.append(node.placed_orb)
 
-	# build a map of which slot is already taken
-	var taken_slots: Dictionary = {}  # "orb_1" -> Orb
+	var taken_slots: Dictionary = {}
 	var inventory: Node = player.get_node("Inventory")
 	for orb: Orb in inventory.orbs:
 		if orb.input_action != "":
@@ -425,8 +362,7 @@ func _rebuild_orb_list() -> void:
 		vbox.add_child(label)
 		hbox.add_child(vbox)
 
-		# slot picker — a row of buttons 1-7
-		var slot_vbox := VBoxContainer.new()
+		var slot_vbox  := VBoxContainer.new()
 		var slot_label := Label.new()
 		slot_label.text = "slot"
 		slot_label.add_theme_font_size_override("font_size", 9)
@@ -435,15 +371,14 @@ func _rebuild_orb_list() -> void:
 
 		var slot_row := HBoxContainer.new()
 		for n in range(1, 8):
-			var action: String  = "orb_%d" % n
-			var btn            := Button.new()
-			btn.text            = str(n)
-			btn.toggle_mode     = true
-			btn.button_pressed  = (orb.input_action == action)
+			var action: String = "orb_%d" % n
+			var btn           := Button.new()
+			btn.text           = str(n)
+			btn.toggle_mode    = true
+			btn.button_pressed = (orb.input_action == action)
 			btn.custom_minimum_size = Vector2(22, 22)
 			btn.add_theme_font_size_override("font_size", 11)
 
-			# grey out if taken by a different orb
 			if taken_slots.has(action) and taken_slots[action] != orb:
 				btn.modulate = Color(0.5, 0.5, 0.5)
 
@@ -451,7 +386,6 @@ func _rebuild_orb_list() -> void:
 			var action_ref: String = action
 			btn.toggled.connect(func(pressed: bool) -> void:
 				if pressed:
-					# unassign whoever had this slot before
 					for other: Orb in inventory.orbs:
 						if other != orb_ref and other.input_action == action_ref:
 							other.input_action = ""
@@ -468,9 +402,7 @@ func _rebuild_orb_list() -> void:
 		panel.add_child(hbox)
 
 		if selected_orb == orb or dragging_orb == orb:
-			panel.add_theme_stylebox_override("panel",
-				_make_highlight_style(Color(1.0, 0.85, 0.3, 0.3))
-			)
+			panel.add_theme_stylebox_override("panel", _make_highlight_style(Color(1.0, 0.85, 0.3, 0.3)))
 
 		panel.mouse_filter = Control.MOUSE_FILTER_PASS
 		hbox.mouse_filter  = Control.MOUSE_FILTER_PASS
@@ -491,16 +423,13 @@ func _rebuild_orb_list() -> void:
 					else:
 						pressed_inventory_orb = null
 			elif ev is InputEventMouseMotion:
-				if pressed_inventory_orb == orb_ref \
-				and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
-					var dist := inventory_press_pos.distance_to(
-						get_viewport().get_mouse_position()
-					)
+				if pressed_inventory_orb == orb_ref and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+					var dist := inventory_press_pos.distance_to(get_viewport().get_mouse_position())
 					if dist >= DRAG_THRESHOLD:
-						dragging_orb      = orb_ref
-						selected_orb      = null
-						drag_origin_node  = -1
-						drag_pos          = get_viewport().get_mouse_position()
+						dragging_orb          = orb_ref
+						selected_orb          = null
+						drag_origin_node      = -1
+						drag_pos              = get_viewport().get_mouse_position()
 						pressed_inventory_orb = null
 						_rebuild_orb_list()
 		)
@@ -508,10 +437,10 @@ func _rebuild_orb_list() -> void:
 		orb_list.add_child(panel)
 
 func _make_highlight_style(color: Color) -> StyleBoxFlat:
-	var style                        := StyleBoxFlat.new()
-	style.bg_color                    = color
-	style.corner_radius_top_left      = 4
-	style.corner_radius_top_right     = 4
-	style.corner_radius_bottom_left   = 4
-	style.corner_radius_bottom_right  = 4
+	var style                       := StyleBoxFlat.new()
+	style.bg_color                   = color
+	style.corner_radius_top_left     = 4
+	style.corner_radius_top_right    = 4
+	style.corner_radius_bottom_left  = 4
+	style.corner_radius_bottom_right = 4
 	return style

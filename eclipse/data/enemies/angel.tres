@@ -12,6 +12,7 @@ scene = ExtResource("1_yngaj")
 cost = 4
 max_health = 100
 damage = 0
+preferred_range = 48.0
 heals_allies = true
 heal_amount_per_sec = 5.0
 spawns_units = true

@@ -1,7 +1,5 @@
 extends Node
 
-const ZSORT_EFFECTS: int = 0
-
 enum tile {
 	AIR,
 	STONE,
@@ -54,3 +52,28 @@ func load_resources(path: String) -> Array[Resource]:
 		filename = dir.get_next()
 	dir.list_dir_end()
 	return results
+
+# ── debug draw ────────────────────────────────────────────────────────────────
+static func draw_debug_circle(parent: Node2D, radius: float, color: Color = Color(1, 0, 0, 0.4), duration: float = 0.5) -> void:
+	var circle := _DebugCircle.new()
+	circle.radius   = radius
+	circle.color    = color
+	circle.duration = duration
+	parent.get_tree().get_root().add_child(circle)
+	circle.global_position = parent.global_position
+
+class _DebugCircle extends Node2D:
+	var radius:   float = 32.0
+	var color:    Color = Color(1, 0, 0, 0.4)
+	var duration: float = 0.5
+	var _age:     float = 0.0
+
+	func _process(delta: float) -> void:
+		_age += delta
+		modulate.a = 1.0 - (_age / duration)
+		if _age >= duration:
+			queue_free()
+		queue_redraw()
+
+	func _draw() -> void:
+		draw_arc(Vector2.ZERO, radius, 0, TAU, 48, color, 2.0)
