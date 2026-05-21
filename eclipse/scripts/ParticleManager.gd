@@ -152,8 +152,6 @@ func spawn_gold_bomb_trail(pos: Vector2) -> void:
 			false
 		)
 
-# Add this function to particle_manager.gd alongside the other spawn_ functions.
-
 func spawn_lightning_spark(pos: Vector2) -> void:
 	# Core flash — bright white-blue, tight burst, no gravity (electric, not ballistic)
 	var core_gradient := Gradient.new()
@@ -187,6 +185,41 @@ func spawn_lightning_spark(pos: Vector2) -> void:
 			tendril_gradient,
 			randf_range(0.2, 0.45),
 			randf_range(1.0, 1.8),
+			0.0,
+			false,
+			false
+		)
+
+func spawn_basic_attack_trail(pos: Vector2, dir: Vector2, speed: float) -> void:
+	var gradient := Gradient.new()
+	gradient.set_color(0, Color(1.825, 1.825, 1.825, 1.0))
+	gradient.set_color(1, Color(1.0, 1.0, 1.2, 0.0))
+	spawn(
+		pos + Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)),
+		dir * speed * randf_range(0.3, 0.5),
+		0.0,
+		gradient,
+		randf_range(0.14, 0.22),
+		randf_range(1.5, 2.5),
+		0.0,
+		false,
+		false
+	)
+
+func spawn_basic_attack_explode(pos: Vector2) -> void:
+	var gradient := Gradient.new()
+	gradient.set_color(0, Color(3.0, 3.0, 3.5, 1.0))
+	gradient.add_point(0.3, Color(1.5, 1.5, 2.0, 0.8))
+	gradient.set_color(1, Color(0.6, 0.6, 1.0, 0.0))
+	for i in range(randi_range(6, 10)):
+		var burst_dir: Vector2 = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)).normalized()
+		spawn(
+			pos + burst_dir * randf_range(0.0, 3.0),
+			burst_dir * randf_range(60.0, 160.0),
+			randf_range(20.0, 80.0),
+			gradient,
+			randf_range(0.15, 0.3),
+			randf_range(1.5, 3.0),
 			0.0,
 			false,
 			false

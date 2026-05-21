@@ -10,8 +10,8 @@ func _ready() -> void:
 	super._ready()
 	z_index = 1
 
-func _draw() -> void:
-	draw_arc(Vector2.ZERO, data.buff_radius, 0.0, TAU, 64, Color(1.0, 0.85, 0.2, 0.5), 1.0)
+#func _draw() -> void:
+	#draw_arc(Vector2.ZERO, data.buff_radius, 0.0, TAU, 64, Color(1.0, 0.85, 0.2, 0.5), 1.0)
 
 # ── behavior ──────────────────────────────────────────────────────────────────
 

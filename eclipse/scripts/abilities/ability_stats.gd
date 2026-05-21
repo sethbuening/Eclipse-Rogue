@@ -54,7 +54,18 @@ extends Resource
 @export var shield_amount:    float = 0.0
 
 # ── helpers ───────────────────────────────────────────────────────────────────
-func roll_crit() -> bool:
+func get_stat(stat_name: String, orb_potency: float = 1.0, main_stats: Array[String] = []) -> float:
+	var base: float = get(stat_name)
+	if stat_name in main_stats:
+		return base * orb_potency
+	return base
+
+func roll_crit(player: CharacterBody2D = null) -> bool:
+	if player != null and player.guaranteed_crits > 0:
+		player.guaranteed_crits -= 1
+		return true
+	if player == null:
+		printerr("[ability_stats.gd] player is null in function roll_crit! Cannot check for guaranteed crits!")
 	return randf() < crit_chance
 
 func get_power(is_crit: bool = false) -> float:

@@ -6,7 +6,7 @@ func activate(context: Dictionary) -> void:
 	var player: Node = context.get("player")
 	if player == null:
 		return
-	var is_crit: bool = stats.roll_crit()
+	var is_crit: bool = stats.roll_crit(player)
 	var radius:  int  = stats.mining_radius + (1 if is_crit else 0)
 	player.mine_around(player.global_position, radius)
 	ParticleManager.spawn_focus_spark(player.global_position)

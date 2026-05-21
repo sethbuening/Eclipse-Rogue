@@ -8,15 +8,18 @@ script = ExtResource("2_hlbru")
 power = 3.0
 cooldown = 1.0
 aoe_radius = 2.0
+crit_chance = 0.1
 light_cost = 5.0
 mining_power = 5
+mining_radius = 2
 metadata/_custom_type_script = "uid://djuyt3y2iehml"
 
 [resource]
 script = ExtResource("1_kqyj5")
 id = "FocusMine"
 display_name = "Focus Explosion"
-description = "Focus and explode tiles in front of yourself."
+description = "Focus and explode tiles in front of yourself. If you are not facing any tiles, focus and receive 3 guaranteed critical hits on your next 3 attacks."
 requires_hold = true
 stats = SubResource("Resource_ca384")
+main_stats = Array[String](["mining_radius", "mining_power"])
 metadata/_custom_type_script = "uid://df7ru3quqk7rm"

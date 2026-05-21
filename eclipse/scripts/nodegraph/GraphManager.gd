@@ -13,6 +13,11 @@ const STAT_POOL: Array[String] = [
 	"cooldown", "mining_power", "knockback", "shield_amount"
 ]
 
+# Stat values are multiplicative scalars applied as (base * stat_value).
+# Range 1.1–1.5 means +10% to +50% of the base stat value.
+const STAT_VALUE_MIN: float = 1.1
+const STAT_VALUE_MAX: float = 1.5
+
 func generate() -> void:
 	graph = GraphData.new()
 	var count: int = randi_range(MIN_NODES, MAX_NODES)
@@ -37,7 +42,7 @@ func _place_nodes(count: int) -> void:
 		var node       := GraphNodeData.new()
 		node.position   = candidate
 		node.stat_name  = STAT_POOL[randi() % STAT_POOL.size()]
-		node.stat_value = randf_range(0.1, 0.5)
+		node.stat_value = randf_range(STAT_VALUE_MIN, STAT_VALUE_MAX)
 		graph.nodes.append(node)
 
 func _generate_connections() -> void:
@@ -48,7 +53,6 @@ func _generate_connections() -> void:
 		var from: int = connected[randi() % connected.size()]
 		_add_connection(from, idx)
 		connected.append(idx)
-
 	for a in range(graph.nodes.size()):
 		for b in range(a + 1, graph.nodes.size()):
 			if _already_connected(a, b):
@@ -78,7 +82,9 @@ func on_orb_fired(node_index: int, context: Dictionary, source_orb: Orb) -> void
 			continue
 		if is_source:
 			conn.charge_stacks += 1
-			target_orb.power   += 0.1
+			for ability: AbilityData in target_orb.abilities:
+				ability.stats.power += 0.1
 		else:
-			source_orb.power   -= conn.charge_stacks * 0.1
-			conn.charge_stacks  = 0
+			for ability: AbilityData in source_orb.abilities:
+				ability.stats.power -= conn.charge_stacks * 0.1
+			conn.charge_stacks = 0

@@ -41,6 +41,7 @@ func _on_pylon_died(pylon: E_Pylon) -> void:
 	_pylons_alive -= 1
 	if _pylons_alive <= 0:
 		_vulnerable = true
+		print("angel is now vulnerable: %d pylons left" % _pylons_alive)
 
 # ── behavior ──────────────────────────────────────────────────────────────────
 
@@ -54,10 +55,14 @@ func _tick_healing(delta: float) -> void:
 	_heal_timer = 0.0
 	var heal: int = int(data.heal_amount_per_sec * data.heal_interval)
 	for enemy: Enemy in EnemyManager.living_enemies:
-		if not is_instance_valid(enemy) or enemy.data == null:
+		if not is_instance_valid(enemy) or enemy == self or enemy.data == null:
 			continue
 		if global_position.distance_to(enemy.global_position) <= data.heal_radius:
-			enemy.health = mini(enemy.health + heal, enemy.data.max_health)
+			var actual: int = mini(heal, enemy.data.max_health - enemy.health)
+			if actual <= 0:
+				continue
+			enemy.health += actual
+			DamageNumbers.spawn_heal(enemy.global_position + Vector2(0, -16), actual)
 
 # ── movement ──────────────────────────────────────────────────────────────────
 
@@ -94,10 +99,10 @@ func _find_best_target() -> Vector2:
 
 # ── combat ────────────────────────────────────────────────────────────────────
 
-func take_damage(amount: int) -> void:
+func take_damage(amount: int, is_crit: bool = false) -> void:
 	if not _vulnerable:
 		return
-	super.take_damage(amount)
+	super.take_damage(amount, is_crit)
 
 func die() -> void:
 	for pylon: E_Pylon in _pylons:

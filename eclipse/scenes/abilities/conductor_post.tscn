@@ -1,0 +1,72 @@
+[gd_scene format=3 uid="uid://d04nvbhwgxln2"]
+
+[ext_resource type="Texture2D" uid="uid://ctgmav7iwwfxr" path="res://art/abilities/conductor_post/conductor_post.png" id="1_7s4ed"]
+[ext_resource type="Script" uid="uid://71hqs2k1r51q" path="res://scripts/abilities/ability_conductor_post/conductor_post.gd" id="1_xh2rr"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_xh2rr"]
+atlas = ExtResource("1_7s4ed")
+region = Rect2(0, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_v66up"]
+atlas = ExtResource("1_7s4ed")
+region = Rect2(0, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_2kjjy"]
+atlas = ExtResource("1_7s4ed")
+region = Rect2(0, 0, 64, 64)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_3se0e"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_xh2rr")
+}],
+"loop": true,
+"name": &"charged",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_v66up")
+}],
+"loop": true,
+"name": &"idle",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_2kjjy")
+}],
+"loop": true,
+"name": &"travel",
+"speed": 5.0
+}]
+
+[sub_resource type="Gradient" id="Gradient_7s4ed"]
+colors = PackedColorArray(1, 1, 1, 1, 0, 0, 0, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_xh2rr"]
+gradient = SubResource("Gradient_7s4ed")
+width = 128
+height = 128
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(0.866, 0.866)
+
+[node name="ConductorPost" type="Node2D" unique_id=1734562457]
+script = ExtResource("1_xh2rr")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=28467672]
+position = Vector2(0, -11)
+sprite_frames = SubResource("SpriteFrames_3se0e")
+animation = &"charged"
+
+[node name="ChargeLight" type="PointLight2D" parent="." unique_id=302182394]
+enabled = false
+energy = 0.8
+texture = SubResource("GradientTexture2D_xh2rr")
+
+[node name="FieldArea" type="Area2D" parent="." unique_id=1415965321]
+collision_mask = 9
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="FieldArea" unique_id=6799640]

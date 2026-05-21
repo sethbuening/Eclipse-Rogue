@@ -1,6 +1,7 @@
 extends Node
 
 enum tile {
+	LIGHT_ORB,
 	AIR,
 	STONE,
 	ROCK,

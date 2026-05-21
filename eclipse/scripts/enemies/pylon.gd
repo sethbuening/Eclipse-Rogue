@@ -50,15 +50,16 @@ func _process(delta: float) -> void:
 
 # ── combat ────────────────────────────────────────────────────────────────────
 
-func take_damage(amount: int) -> void:
+func take_damage(amount: int, is_crit: bool = false) -> void:
 	if not _alive:
 		return
-	health -= amount
+	var reduced: int = int(amount * (1.0 - data.damage_reduction))
+	health -= reduced
+	DamageNumbers.spawn(global_position + Vector2(0, -16), reduced, is_crit)
 	if health <= 0:
 		die()
 
 func die() -> void:
 	_alive = false
-	if is_instance_valid(angel):
-		angel._on_pylon_died(self)
+	emit_signal("died", self)
 	queue_free()

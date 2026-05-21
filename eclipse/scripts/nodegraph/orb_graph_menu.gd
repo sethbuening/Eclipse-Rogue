@@ -214,7 +214,7 @@ func _draw_graph() -> void:
 		graph_canvas.draw_arc(center, NODE_RADIUS, 0, TAU, 48, Color.WHITE, NODE_OUTLINE)
 
 		var stat_label: String = node.stat_name.replace("_", " ")
-		var value_label: String = "%s%.0f%%" % ["-" if node.stat_name == "cooldown" else "+", node.stat_value * 100.0]
+		var value_label: String = "%s%.0f%%" % ["-" if node.stat_name == "cooldown" else "+", (node.stat_value - 1.0) * 100.0]
 		graph_canvas.draw_string(
 			ThemeDB.fallback_font,
 			center + Vector2(-NODE_RADIUS + 8, -10),
@@ -281,19 +281,19 @@ func _remove_orb(node_index: int) -> void:
 	if node.placed_orb == null:
 		return
 	var orb: Orb = node.placed_orb
-
 	for conn: GraphConnectionData in GraphManager.graph.connections:
 		if conn.charge_stacks == 0:
 			continue
 		if conn.to_node == node_index:
-			orb.power         -= conn.charge_stacks * 0.1
+			for ability: AbilityData in orb.abilities:
+				ability.stats.power -= conn.charge_stacks * 0.1
 			conn.charge_stacks = 0
 		elif conn.from_node == node_index:
 			var target_orb: Orb = GraphManager.graph.nodes[conn.to_node].placed_orb
 			if target_orb != null:
-				target_orb.power  -= conn.charge_stacks * 0.1
+				for ability: AbilityData in target_orb.abilities:
+					ability.stats.power -= conn.charge_stacks * 0.1
 			conn.charge_stacks = 0
-
 	_unapply_node_from_orb(node, orb)
 	node.placed_orb.node_index = -1
 	node.placed_orb            = null
@@ -301,23 +301,17 @@ func _remove_orb(node_index: int) -> void:
 	_rebuild_orb_list()
 
 func _apply_node_to_orb(node: GraphNodeData, orb: Orb) -> void:
-	if node.stat_name == "power":
-		orb.node_power_base = orb.power + node.stat_value
-		return
 	var modifier       := OrbModifier.new()
 	modifier.stat_name  = node.stat_name
-	modifier.value      = -node.stat_value if node.stat_name == "cooldown" else node.stat_value
 	modifier.mod_type   = OrbModifier.ModType.MULTIPLICATIVE
+	modifier.value      = (1.0 / node.stat_value) if node.stat_name == "cooldown" else node.stat_value
 	modifier.apply(orb)
-
+ 
 func _unapply_node_from_orb(node: GraphNodeData, orb: Orb) -> void:
-	if node.stat_name == "power":
-		orb.node_power_base = -1.0
-		return
 	var modifier       := OrbModifier.new()
 	modifier.stat_name  = node.stat_name
-	modifier.value      = -node.stat_value if node.stat_name == "cooldown" else node.stat_value
 	modifier.mod_type   = OrbModifier.ModType.MULTIPLICATIVE
+	modifier.value      = (1.0 / node.stat_value) if node.stat_name == "cooldown" else node.stat_value
 	modifier.unapply(orb)
 
 # ── orb list ──────────────────────────────────────────────────────────────────

@@ -18,13 +18,18 @@ var movement_enabled: bool = true
 @export_group("Focus Animation")
 @export var focus_orbit_speed: float = 8.0
 
-@export_group("Starting Orbs")
-const starting_orb: Orb = preload("res://data/orbs/orb_focus_mine.tres")
+@export_group("Starting Orbs/Abilities")
+@export var basic_ability: AbilityData = preload("res://data/abilities/ability_basic_attack.tres")
+const starting_orb:   Orb = preload("res://data/orbs/orb_focus_mine.tres")
 const starting_orb_2: Orb = preload("res://data/orbs/orb_gold_bomb.tres")
 const starting_orb_3: Orb = preload("res://data/orbs/orb_lightning_chain.tres")
+const starting_orb_4: Orb = preload("res://data/orbs/orb_conductor_post.tres")
+
+# -------------------------------------------------------------------- crit ---
+var guaranteed_crits: int = 0
 
 # ------------------------------------------------------ light (health) bar ---
-@onready var light_bar = $"../HUD/health bar"  # adjust path
+@onready var light_bar = $"../HUD/health bar"
 var light: float = 100.0:
 	set(value):
 		light = clampf(value, 0.0, 100.0)
@@ -45,20 +50,20 @@ var body_down:  Texture2D = preload("res://art/player/body_down.png")
 var body_left:  Texture2D = preload("res://art/player/body_left.png")
 
 # --------------------------------------------------------------- constants ---
-const FOCUS_BLOOM_MIN:      float = 0.0
-const FOCUS_BLOOM_MAX:      float = 0.75
-const FOCUS_GLOW_MIN:       float = 0.3
-const FOCUS_GLOW_MAX:       float = 1.25
-const FOCUS_DECAY:          float = 4.0
-const CHANNEL_TIME:         float = 5.0
-const CHANNEL_LIGHT_COST:   float = 80.0
-const CHANNEL_POWER_BONUS:  float = 0.15
+const FOCUS_BLOOM_MIN:     float = 0.0
+const FOCUS_BLOOM_MAX:     float = 0.75
+const FOCUS_GLOW_MIN:      float = 0.3
+const FOCUS_GLOW_MAX:      float = 1.25
+const FOCUS_DECAY:         float = 4.0
+const CHANNEL_TIME:        float = 5.0
+const CHANNEL_LIGHT_COST:  float = 80.0
+const CHANNEL_POWER_BONUS: float = 0.15
 
 # ------------------------------------------------------------------- state ---
-var time:                float = 0.0
-var env_t:               float = 0.0
-var channeling_orb_index: int  = -1
-var channel_charge:       float = 0.0
+var time:             float = 0.0
+var env_t:            float = 0.0
+var channeling_orb_index: int   = -1
+var channel_charge:   float = 0.0
 
 var direction: Vector2i = Vector2i.DOWN:
 	set(value):
@@ -73,7 +78,7 @@ var direction: Vector2i = Vector2i.DOWN:
 	get():
 		return direction
 
-# -------------------------------------------------------------- orb visuals --
+# -------------------------------------------------------------- orb visuals ---
 class OrbVisual:
 	var sprite:        Sprite2D
 	var shattered:     bool  = false
@@ -82,13 +87,14 @@ class OrbVisual:
 	var reform_flash:  float = 0.0
 	var current_angle: float = 0.0
 	var glow:          float = 0.0
+	var glow_target: float = 0.0
 	var angle_offset:  float = 0.0
 	var reforming:     bool  = false
 
-var orb_visuals: Array[OrbVisual] = []
-var orbit_time:  float            = 0.0
-var orbit_speed_mult:     float = 1.0
-var display_count: float = 0.0
+var orb_visuals:      Array[OrbVisual] = []
+var orbit_time:       float            = 0.0
+var orbit_speed_mult: float            = 1.0
+var display_count:    float            = 0.0
 
 # ------------------------------------------------------------------- ready ---
 func _ready() -> void:
@@ -97,20 +103,21 @@ func _ready() -> void:
 	$Inventory.add_orb(starting_orb.clone())
 	$Inventory.add_orb(starting_orb_2.clone())
 	$Inventory.add_orb(starting_orb_3.clone())
+	$Inventory.add_orb(starting_orb_4.clone())
 
 # --------------------------------------------------------- orb management ---
 func _on_orb_added(orb: Orb) -> void:
-	var ov             := OrbVisual.new()
-	ov.sprite           = Sprite2D.new()
-	ov.sprite.texture   = orb.sprite_texture
-	ov.sprite.centered  = true
-	ov.sprite.visible   = false
+	var ov              := OrbVisual.new()
+	ov.sprite            = Sprite2D.new()
+	ov.sprite.texture    = orb.sprite_texture
+	ov.sprite.centered   = true
+	ov.sprite.visible    = false
 	ov.sprite.z_as_relative = false
 	ov.sprite.z_index       = 4096
 	add_child(ov.sprite)
 	orb_visuals.append(ov)
 	_auto_assign_slot(orb)
-	
+
 func _auto_assign_slot(orb: Orb) -> void:
 	var taken: Dictionary = {}
 	for o: Orb in $Inventory.orbs:
@@ -130,22 +137,30 @@ func _on_orb_removed(orb: Orb) -> void:
 	orb_visuals[idx].sprite.queue_free()
 	orb_visuals.remove_at(idx)
 
-func shatter_orb(orb_index: int, spawn_spark: bool = true) -> void:
+func shatter_orb(orb_index: int) -> void:
 	if orb_index >= orb_visuals.size():
 		return
 	var ov:  OrbVisual = orb_visuals[orb_index]
 	var orb: Orb       = $Inventory.orbs[orb_index]
 	if ov.shattered:
 		return
-	ov.shattered      = true
-	ov.glow           = 0.0
-	ov.cooldown_age   = 0.0
-	ov.cooldown       = orb.primary_ability().stats.cooldown if orb.primary_ability() else 1.0
+	ov.shattered    = true
+	ov.glow         = 0.0
+	ov.cooldown_age = 0.0
+	if orb.cooldown != 0.0:
+		ov.cooldown = orb.cooldown
+	else:
+		var total_cooldown: float = 0.0
+		var ability_count:  int   = 0
+		for ability: AbilityData in orb.abilities:
+			if ability.stats != null:
+				total_cooldown += ability.stats.cooldown
+				ability_count  += 1
+		ov.cooldown = total_cooldown / ability_count if ability_count > 0 else 1.0
 	ov.sprite.visible = false
 	var phase: float  = (float(orb_index) / float(orb_visuals.size())) * TAU
 	ov.current_angle  = orbit_time + phase
-	if spawn_spark:
-		ParticleManager.spawn_focus_spark(global_position + ov.sprite.position)
+	ParticleManager.spawn_focus_spark(global_position + ov.sprite.position)
 
 func store_light_in_orb(orb_index: int, amount: float) -> void:
 	if orb_index >= $Inventory.orbs.size():
@@ -153,7 +168,7 @@ func store_light_in_orb(orb_index: int, amount: float) -> void:
 	$Inventory.orbs[orb_index].store_light(amount)
 	ParticleManager.spawn_focus_particles(global_position, 1.0)
 
-# -------------------------------------------------------------- context ---
+# --------------------------------------------------------------- context ---
 func _make_context(delta: float, pressed: bool, orb_index: int) -> Dictionary:
 	return {
 		"player":        self,
@@ -162,27 +177,22 @@ func _make_context(delta: float, pressed: bool, orb_index: int) -> Dictionary:
 		"pressed":       pressed,
 		"lock_movement": false,
 		"orb_t":         0.0,
-		"shatter":       false,
+		"activated":     false,
 		"orb_shattered": orb_visuals[orb_index].shattered,
 		"orb_index":     orb_index,
-		"power":         $Inventory.orbs[orb_index].power,
+		"potency":       $Inventory.orbs[orb_index].orb_potency,
 	}
 
+# _read_context is now unused and can be deleted
+
 func _read_context(context: Dictionary, orb_index: int, max_t: float) -> float:
-	if context["shatter"]:
-		shatter_orb(orb_index, context.get("spark", true))
-		_trigger_connections(orb_index, context["delta"])
-		var orb: Orb = $Inventory.orbs[orb_index]
-		for ability: AbilityData in orb.abilities:
-			var cost: float = ability.stats.light_cost if "light_cost" in ability.stats else 0.0
-			light -= cost
 	if context["lock_movement"]:
 		movement_enabled = false
 	if orb_index < orb_visuals.size():
 		orb_visuals[orb_index].glow = context["orb_t"]
 	return maxf(max_t, context["orb_t"])
 
-# --------------------------------------------------------------- process ---
+# ---------------------------------------------------------------- process ---
 func _process(delta: float) -> void:
 	time             += delta
 	z_index           = %TilemapManager.get_z_for(global_position)
@@ -197,23 +207,19 @@ func _process(delta: float) -> void:
 	_tick_env(delta)
 	_tick_dev_input()
 
-	'''for i in range($Inventory.orbs.size()):
-		var orb: Orb = $Inventory.orbs[i]
-		print("orb %d | action='%s' node=%d" % [i, orb.input_action, orb.node_index])'''
-
 func _tick_channel(delta: float) -> void:
 	var channel_held: bool = Input.is_action_pressed("channel_light")
 	if channeling_orb_index != -1:
 		if not channel_held:
 			_cancel_channel()
 			return
-		movement_enabled = false
+		movement_enabled  = false
 		channel_charge   += delta
 		var t: float      = minf(channel_charge / CHANNEL_TIME, 1.0)
 		env_t             = t
 		_set_env(t)
 		orb_visuals[channeling_orb_index].glow = t
-		orbit_speed_mult = lerpf(1.0, focus_orbit_speed, t)
+		orbit_speed_mult  = lerpf(1.0, focus_orbit_speed, t)
 		ParticleManager.spawn_focus_particles(global_position, t)
 		if channel_charge >= CHANNEL_TIME:
 			_complete_channel()
@@ -231,41 +237,108 @@ func _tick_channel(delta: float) -> void:
 func _tick_abilities(delta: float) -> void:
 	if channeling_orb_index != -1:
 		return
+		
+	# basic ability — always available, not tied to any orb
+	if Input.is_action_just_pressed("basic_ability"):
+		var ctx := {
+			"player":        self,
+			"tilemap":       %TilemapManager,
+			"delta":         delta,
+		}
+		basic_ability.activate(ctx)
+
 	var max_orb_t: float = 0.0
 	var orbs: Array[Orb] = $Inventory.orbs
+
 	for i in range(orbs.size()):
 		var orb: Orb = orbs[i]
 		if orb.node_index == -1:
 			continue
+		if orb_visuals[i].shattered:
+			continue
+		if orb.input_action == "":
+			continue
+
+		var has_hold_ability:   bool  = false
+		var hold_ability_count: int   = 0
 		for ability: AbilityData in orb.abilities:
-			var cost:      float = ability.stats.light_cost if "light_cost" in ability.stats else 0.0
-			var can_afford: bool = light >= cost
+			if ability.trigger_type == AbilityData.TriggerType.ACTIVE and ability.requires_hold:
+				has_hold_ability    = true
+				hold_ability_count += 1
+
+		var orb_activated:   bool  = false
+		var nonhold_fired:   bool  = orb.nonhold_fired
+		var holds_completed: int   = 0
+		var hold_t_sum:      float = 0.0
+
+		for ability: AbilityData in orb.abilities:
+			var cost:       float = ability.stats.light_cost if "light_cost" in ability.stats else 0.0
+			var can_afford: bool  = light >= cost
 
 			match ability.trigger_type:
 				AbilityData.TriggerType.PASSIVE:
-					var passive_ctx: Dictionary = _make_context(delta, false, i)
-					ability.activate(passive_ctx)
-					max_orb_t = _read_context(passive_ctx, i, max_orb_t)
+					var ctx := _make_context(delta, false, i)
+					ability.activate(ctx)
+					if ctx["lock_movement"]:
+						movement_enabled = false
 
 				AbilityData.TriggerType.ACTIVE:
-					if orb.input_action == "":
-						continue
-					if ability.requires_hold:
-						if Input.is_action_pressed(orb.input_action) and can_afford:
-							var held_ctx: Dictionary = _make_context(delta, true, i)
-							ability.activate(held_ctx)
-							max_orb_t = _read_context(held_ctx, i, max_orb_t)
-						elif Input.is_action_just_released(orb.input_action):
-							var released_ctx: Dictionary = _make_context(delta, false, i)
-							ability.activate(released_ctx)
-							max_orb_t = _read_context(released_ctx, i, max_orb_t)
-					else:
+					if not ability.requires_hold:
 						if Input.is_action_just_pressed(orb.input_action) and can_afford:
-							var instant_ctx: Dictionary = _make_context(delta, true, i)
-							ability.activate(instant_ctx)
-							max_orb_t = _read_context(instant_ctx, i, max_orb_t)
+							var ctx := _make_context(delta, true, i)
+							ability.activate(ctx)
+							if ctx["lock_movement"]:
+								movement_enabled = false
+							if has_hold_ability:
+								orb.nonhold_fired = true
+								nonhold_fired     = true
+							else:
+								orb_activated = true
 
-	var body_glow: Color = Color(lerpf(1.0, 2.0, max_orb_t), lerpf(1.0, 2.0, max_orb_t), lerpf(1.0, 2.0, max_orb_t))
+					else:  # requires_hold
+						var just_started: bool = Input.is_action_just_pressed(orb.input_action)
+						if nonhold_fired and just_started:
+							pass
+						elif Input.is_action_pressed(orb.input_action) and can_afford:
+							var ctx := _make_context(delta, true, i)
+							ability.activate(ctx)
+							if ctx["lock_movement"]:
+								movement_enabled = false
+							if ctx["activated"]:
+								holds_completed += 1
+							hold_t_sum += ctx["orb_t"]
+						elif Input.is_action_just_released(orb.input_action):
+							var ctx := _make_context(delta, false, i)
+							ability.activate(ctx)
+							if ctx["lock_movement"]:
+								movement_enabled = false
+
+		# resolve glow and shatter
+		if has_hold_ability:
+			var released: bool = Input.is_action_just_released(orb.input_action)
+			if released and nonhold_fired:
+				orb_visuals[i].glow_target = 1.0
+				orb.nonhold_fired          = false
+				orb_activated              = true
+			elif holds_completed >= hold_ability_count and hold_ability_count > 0:
+				orb_visuals[i].glow_target = 1.0
+				orb.nonhold_fired          = false
+				orb_activated              = true
+			elif Input.is_action_pressed(orb.input_action):
+				orb_visuals[i].glow_target = hold_t_sum / float(hold_ability_count)
+			elif released and not nonhold_fired:
+				orb_visuals[i].glow_target = 0.0
+		else:
+			if orb_activated:
+				orb_visuals[i].glow_target = 1.0
+
+		max_orb_t = maxf(max_orb_t, orb_visuals[i].glow)
+
+		if orb_activated:
+			shatter_orb(i)
+			_trigger_connections(i, delta)
+
+	var body_glow := Color(lerpf(1.0, 2.0, max_orb_t), lerpf(1.0, 2.0, max_orb_t), lerpf(1.0, 2.0, max_orb_t))
 	%body.self_modulate = body_glow if max_orb_t > 0.0 else Color.WHITE
 	%head.self_modulate = body_glow if max_orb_t > 0.0 else Color.WHITE
 
@@ -274,14 +347,14 @@ func _tick_env(delta: float) -> void:
 		env_t = maxf(0.0, env_t - delta * FOCUS_DECAY)
 		_set_env(env_t)
 
-# ------------------------------------------------------------ dev functions ---
+# ----------------------------------------------------------- dev functions ---
 func _tick_dev_input() -> void:
 	if Input.is_action_just_pressed("dev_mode"):
 		if $CollisionShape2D.disabled:
 			speed /= 10.0
 			$CollisionShape2D.disabled = false
 			%CanvasModulate.color = Color("101010")
-			light = 100
+			heal(100)
 		else:
 			speed *= 10.0
 			$CollisionShape2D.disabled = true
@@ -296,7 +369,7 @@ func _tick_dev_input() -> void:
 		%Camera2D.zoom *= 2
 	if Input.is_action_just_pressed("zoom_out"):
 		%Camera2D.zoom /= 2
-	
+
 func _dev_reset_cooldowns() -> void:
 	for orb: Orb in $Inventory.orbs:
 		for ability: AbilityData in orb.abilities:
@@ -307,9 +380,9 @@ func _dev_reset_cooldowns() -> void:
 		ov.cooldown     = 0.0
 		ov.reform_flash = orb_reform_flash
 		ov.reforming    = true
-		ov.glow         = 0.0
+		ov.glow_target  = 0.0
 
-# --------------------------------------------------------- physics process ---
+# ------------------------------------------------------ physics process ---
 func _physics_process(_delta: float) -> void:
 	var input_vector: Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	if input_vector != Vector2.ZERO:
@@ -322,7 +395,7 @@ func _physics_process(_delta: float) -> void:
 		velocity = Vector2.ZERO
 	move_and_slide()
 
-# ----------------------------------------------------------- orb visuals ---
+# ---------------------------------------------------------- orb visuals ---
 func _update_orb_visuals(delta: float) -> void:
 	var total: int = orb_visuals.size()
 	if total == 0:
@@ -333,7 +406,7 @@ func _update_orb_visuals(delta: float) -> void:
 		max_glow = maxf(max_glow, ov.glow)
 	orbit_time += delta * orb_orbit_speed * orbit_speed_mult
 
-	# pass 2 — active slot assignments (moved up so active_count is ready)
+	# pass 1 — active slot assignments
 	var active_indices: Array[int] = []
 	for i in range(total):
 		if not orb_visuals[i].shattered and $Inventory.orbs[i].node_index != -1:
@@ -346,7 +419,7 @@ func _update_orb_visuals(delta: float) -> void:
 	else:
 		display_count = lerpf(display_count, float(active_count), minf(10.0 * delta, 1.0))
 
-	# pass 1 — resolve cooldowns
+	# pass 2 — resolve cooldowns
 	for i in range(total):
 		var ov: OrbVisual = orb_visuals[i]
 		if not ov.shattered:
@@ -354,14 +427,15 @@ func _update_orb_visuals(delta: float) -> void:
 		ov.cooldown_age += delta
 		if ov.cooldown_age < ov.cooldown:
 			continue
-		ov.shattered    = false
-		ov.reforming    = true
-		ov.reform_flash = orb_reform_flash
-		ov.cooldown_age = 0.0
-		ov.glow         = 0.0        # ← prevents brightness lock after reform
+		ov.shattered      = false
+		ov.reforming      = true
+		ov.reform_flash   = orb_reform_flash
+		ov.cooldown_age   = 0.0
+		ov.glow           = 0.0
+		ov.glow_target    = 0.0
 		ov.sprite.visible = false
 		for ability: AbilityData in $Inventory.orbs[i].abilities:
-			ability.reset_cooldown()  # ← ensures ability agrees it's ready
+			ability.reset_cooldown()
 			if ability is AbilityFocusMine:
 				(ability as AbilityFocusMine).reset_exploded()
 
@@ -369,6 +443,11 @@ func _update_orb_visuals(delta: float) -> void:
 	for i in range(total):
 		var ov:  OrbVisual = orb_visuals[i]
 		var orb: Orb       = $Inventory.orbs[i]
+
+		ov.glow = lerpf(ov.glow, ov.glow_target, minf(12.0 * delta, 1.0))
+		if absf(ov.glow - ov.glow_target) < 0.01:
+			ov.glow = ov.glow_target
+
 		if orb.node_index == -1 or ov.shattered:
 			ov.sprite.visible = false
 			continue
@@ -377,7 +456,6 @@ func _update_orb_visuals(delta: float) -> void:
 		ov.sprite.position = _angle_to_orbit_pos(ov.current_angle)
 		ov.sprite.scale    = Vector2.ONE
 		if ov.reforming:
-			# position is correct this frame — reveal next frame
 			ov.reforming = false
 			continue
 		if not ov.sprite.visible:
@@ -403,14 +481,14 @@ func _recalculate_orb_offsets() -> void:
 	for slot in range(count):
 		orb_visuals[active[slot]].angle_offset = (float(slot) / float(count)) * TAU
 
-# -------------------------------------------------------------- channeling ---
+# --------------------------------------------------------- channeling ---
 func _cancel_channel() -> void:
 	if channeling_orb_index < orb_visuals.size():
 		orb_visuals[channeling_orb_index].glow = 0.0
 	channeling_orb_index = -1
 	channel_charge       = 0.0
 	env_t                = 0.0
-	orbit_speed_mult = 1.0
+	orbit_speed_mult     = 1.0
 	_set_env(0.0)
 
 func _complete_channel() -> void:
@@ -430,7 +508,7 @@ func _complete_channel() -> void:
 	orbit_speed_mult     = 1.0
 	_set_env(0.0)
 
-# -------------------------------------------------------- forge interaction ---
+# ----------------------------------------------------- forge interaction ---
 func _try_open_forge() -> void:
 	if _nearby_forge == null:
 		Log("Error! _nearby_forge = null, while trying to forge")
@@ -449,7 +527,7 @@ func _on_forge_out_of_range(forge: Forge) -> void:
 	if _nearby_forge == forge:
 		_nearby_forge = null
 
-# ----------------------------------------------------------------- helpers ---
+# --------------------------------------------------------------- helpers ---
 func _set_env(t: float) -> void:
 	var env: Environment = %Environment.environment
 	env.glow_bloom       = lerpf(FOCUS_BLOOM_MIN, FOCUS_BLOOM_MAX, t)
@@ -460,6 +538,10 @@ func _trigger_connections(orb_index: int, delta: float) -> void:
 	if node_index == -1:
 		return
 	GraphManager.on_orb_fired(node_index, {}, $Inventory.orbs[orb_index])
+
+func heal(amount: int) -> void:
+	light += float(amount)
+	DamageNumbers.spawn_heal(global_position + Vector2(0, -28), amount)
 
 func Log(msg: Variant) -> void:
 	print("[player.gd] " + str(msg))

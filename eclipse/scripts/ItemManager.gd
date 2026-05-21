@@ -2,8 +2,9 @@
 extends Node
 
 const DROP_COUNTS: Dictionary = {
-	Util.tile.GOLD:   [1, 1],
-	Util.tile.COPPER: [1, 1],
+	Util.tile.GOLD:      [1, 1],
+	Util.tile.COPPER:    [1, 1],
+	Util.tile.LIGHT_ORB: [3, 5]
 }
 
 var _metal_map:    Dictionary      = {}   # Util.tile → MetalData
@@ -131,6 +132,11 @@ func _physics_process(delta: float) -> void:
 
 func _collect(item: Node) -> void:
 	var inventory: Node = player.get_node("Inventory")
+	if item.item_type == Util.tile.LIGHT_ORB:
+		player.heal(1)
+		dropped_items.erase(item)
+		item.queue_free()
+		return
 	if _metal_map.has(item.item_type):
 		var metal: MetalData = _metal_map[item.item_type]
 		inventory.add_metal(metal, 1)

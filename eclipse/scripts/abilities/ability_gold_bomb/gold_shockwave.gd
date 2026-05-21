@@ -10,14 +10,13 @@ const POOL_SIZE:        int   = 4
 static var _pool: Array[GoldShockwave] = []
 
 var _stats:       AbilityStats
-var _power:       float
-var _crit_chance: float
-var _is_mini:     bool = false
+var _orb_potency: float
+var _main_stats:  Array[String]
 var _tilemap:     Node = null
 var _active:      bool = false
 var _mining:      bool = false
+var _player:      CharacterBody2D = null
 
-# Pre-allocated once per instance in prewarm/acquire
 var _circle: CircleShape2D                 = CircleShape2D.new()
 var _query:  PhysicsShapeQueryParameters2D = PhysicsShapeQueryParameters2D.new()
 var _anim:   AnimatedSprite2D              = null
@@ -52,14 +51,14 @@ func _ready() -> void:
 		_anim.visible = false
 		_anim.frame   = 0
 
-func setup(stats: AbilityStats, power: float, crit_chance: float, is_mini: bool = false, tilemap: Node = null) -> void:
+func setup(stats: AbilityStats, orb_potency: float, player: CharacterBody2D, tilemap: Node = null, main_stats: Array[String] = []) -> void:
 	_stats       = stats
-	_power       = power
-	_crit_chance = crit_chance
-	_is_mini     = is_mini
+	_orb_potency = orb_potency
+	_main_stats  = main_stats
 	_tilemap     = tilemap
 	_active      = true
 	_mining      = false
+	_player      = player
 
 	if _anim != null:
 		_anim.frame   = 0
@@ -79,30 +78,27 @@ func _apply_hits(origin: Vector2) -> void:
 	_query.transform = Transform2D(0.0, origin)
 	var space        := get_world_2d().direct_space_state
 
-	var mini_spawned: bool = false
 	for hit in space.intersect_shape(_query, 32):
 		var body := hit["collider"] as Node2D
 		if not body is Enemy:
 			continue
-		var is_crit: bool  = _stats.roll_crit()
-		var damage:  float = _stats.get_power(is_crit) * _power
-		(body as Enemy).take_damage(int(damage))
-		if not _is_mini and not mini_spawned:
-			mini_spawned = true
-			_spawn_mini_shockwave(body.global_position)
+		var is_crit:      bool  = _stats.roll_crit(_player)
+		var scaled_power: float = _stats.get_stat("power", _orb_potency, _main_stats)
+		var damage:       float = scaled_power * (_stats.crit_damage if is_crit else 1.0)
+		(body as Enemy).take_damage(int(damage), is_crit)
 
 func _mine_tiles_async(origin: Vector2) -> void:
-	_mining        = true
-	var tile_size:  float    = _tilemap.TILE_SIZE.x
-	var map_center: Vector2i = _tilemap.world_to_map(origin)
-	var outer_tile: int      = int(MAX_RANGE / tile_size) + 1
-	var range_sq:   float    = MAX_RANGE * MAX_RANGE
-	var ops:        int      = 0        # renamed: counts actual tile operations
-	var removed:    Array[Vector2i] = []
+	_mining           = true
+	var tile_size:     float         = _tilemap.TILE_SIZE.x
+	var map_center:    Vector2i      = _tilemap.world_to_map(origin)
+	var outer_tile:    int           = int(MAX_RANGE / tile_size) + 1
+	var range_sq:      float         = MAX_RANGE * MAX_RANGE
+	var mining_power:  int           = int(_stats.get_stat("mining_power", _orb_potency, _main_stats))
+	var ops:           int           = 0
+	var removed:       Array[Vector2i] = []
 
 	for dx in range(-outer_tile, outer_tile + 1):
 		for dy in range(-outer_tile, outer_tile + 1):
-			# Fast early-outs — no yield, no ops count
 			if dx * dx + dy * dy > outer_tile * outer_tile:
 				continue
 			var map_pos: Vector2i = map_center + Vector2i(dx, dy)
@@ -113,7 +109,6 @@ func _mine_tiles_async(origin: Vector2) -> void:
 			if diff.x * diff.x + diff.y * diff.y > range_sq:
 				continue
 
-			# Only count + yield on tiles we actually touch
 			ops += 1
 			if ops >= TILES_PER_FRAME:
 				ops = 0
@@ -124,19 +119,13 @@ func _mine_tiles_async(origin: Vector2) -> void:
 					_mining = false
 					return
 
-			var died: bool = _tilemap.tile_health.get(map_pos, 1) <= _stats.mining_power
+			var died: bool = _tilemap.tile_health.get(map_pos, 1) <= mining_power
 			if died:
 				removed.append(map_pos)
-			_tilemap.damage_tile_silent(map_pos, _stats.mining_power)
+			_tilemap.damage_tile_silent(map_pos, mining_power)
 
 	_tilemap.flush_removed_tiles(removed)
 	_mining = false
-
-func _spawn_mini_shockwave(origin: Vector2) -> void:
-	var mini := GoldShockwave.acquire(get_parent())
-	mini.global_position = origin
-	mini.reset_physics_interpolation()
-	mini.setup(_stats, _power * 0.4, _crit_chance * 0.5, true, _tilemap)
 
 func _finish() -> void:
 	var tween := create_tween()

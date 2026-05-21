@@ -160,13 +160,15 @@ func _apply_modifier(modifier: Util.Modifier) -> void:
 
 # ── combat ────────────────────────────────────────────────────────────────────
 
-func take_damage(amount: int) -> void:
+func take_damage(amount: int, is_crit: bool = false) -> void:
 	var reduced: int = int(amount * (1.0 - data.damage_reduction))
 	health -= reduced
+	DamageNumbers.spawn(global_position + Vector2(0, -16), reduced, is_crit)
 	if health <= 0:
 		die()
 
 func die() -> void:
+	ItemManager.spawn_dropped_item(global_position, Util.tile.LIGHT_ORB)
 	emit_signal("died", self)
 	queue_free()
 
@@ -192,8 +194,11 @@ func apply_dot(dps: float, duration: float) -> void:
 	if reduced_dps <= 0.0:
 		return
 	if _status.has("dot"):
-		_status["dot"]["dps"]     += reduced_dps
-		_status["dot"]["duration"] = maxf(_status["dot"]["duration"], duration)
+		var incoming_weight: float  = reduced_dps * duration
+		var existing_weight: float  = _status["dot"]["dps"] * _status["dot"]["duration"]
+		if incoming_weight > existing_weight:
+			_status["dot"]["dps"]      = reduced_dps
+			_status["dot"]["duration"] = duration
 	else:
 		_status["dot"] = { "duration": duration, "dps": reduced_dps, "_accum": 0.0 }
 
