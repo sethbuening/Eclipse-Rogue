@@ -175,8 +175,6 @@ func _activate(ability: AbilityData, ctx: Dictionary) -> bool:
 	ability.activate(ctx)
 	if ctx["lock_movement"]:
 		movement_enabled = false
-	if ctx["activated"]:
-		light -= _ability_cost(ability)
 	return ctx["activated"]
 
 
@@ -302,35 +300,35 @@ func _handle_nonhold_ability(ability: AbilityData, orb_index: int) -> void:
 	var orb: Orb = $Inventory.orbs[orb_index]
 	if not Input.is_action_just_pressed(orb.input_action):
 		return
-	if not _can_afford(ability):
-		print("[orb %d] blocked: can't afford %s (cost %.1f, have %.1f)" % [
-			orb_index, ability.resource_path.get_file(), _ability_cost(ability), light])
-	elif _targeting_orb_index != -1:
+	if not _can_afford_orb(orb_index):
+		print("[orb %d] blocked: can't afford (cost %.1f, have %.1f)" % [
+			orb_index, _orb_cost(orb_index), light])
+		return
+	if _targeting_orb_index != -1:
 		print("[orb %d] blocked: another orb is in targeting mode (orb %d)" % [
 			orb_index, _targeting_orb_index])
-	else:
-		_ability_queue.append(ability)
+		return
+	_charge_orb(orb_index)
+	_ability_queue.append(ability)
 
 
 # Returns { completed, activated, orb_t } for a single hold ability this frame.
 func _handle_hold_ability(ability: AbilityData, delta: float,
 		orb_index: int, nonhold_fired: bool) -> Dictionary:
-	var orb:    Orb    = $Inventory.orbs[orb_index]
+	var orb:    Orb        = $Inventory.orbs[orb_index]
 	var result: Dictionary = { "completed": 0, "activated": false, "orb_t": 0.0 }
 
 	if Input.is_action_just_pressed(orb.input_action) and nonhold_fired:
-		print("[orb %d] blocked: hold ability skipped — nonhold already fired this press" % orb_index)
 		return result
 
-	if Input.is_action_pressed(orb.input_action) and _can_afford(ability):
+	if Input.is_action_pressed(orb.input_action):
+		if not _charge_orb(orb_index):
+			return result
 		var ctx := _make_context(delta, true, orb_index)
 		if _activate(ability, ctx):
 			result["completed"] = 1
 			result["activated"] = true
 		result["orb_t"] = ctx["orb_t"]
-	elif Input.is_action_just_pressed(orb.input_action) and not _can_afford(ability):
-		print("[orb %d] blocked: can't afford hold ability %s (cost %.1f, have %.1f)" % [
-			orb_index, ability.resource_path.get_file(), _ability_cost(ability), light])
 	elif Input.is_action_just_released(orb.input_action):
 		_activate(ability, _make_context(delta, false, orb_index))
 
@@ -440,6 +438,7 @@ func _tick_targeting(delta: float) -> void:
 	if cancel:
 		_clear_enemy_outlines()
 		_selected_enemies.clear()
+		_orb_paid.erase(_targeting_orb_index)
 		_ability_queue.pop_front()
 		_advance_ability_queue(delta)
 		return
@@ -485,6 +484,7 @@ func _finish_orb_activation(delta: float) -> void:
 	orb_visuals[_targeting_orb_index].glow_target = 1.0
 	shatter_orb(_targeting_orb_index)
 	_trigger_connections(_targeting_orb_index, delta)
+	_orb_paid.erase(_targeting_orb_index)   # ← reset for next use
 	_targeting_orb_index = -1
 	_queue_hold_pending  = false
 	_queue_any_activated = false
@@ -906,6 +906,22 @@ func _trigger_connections(orb_index: int, delta: float) -> void:
 		return
 	GraphManager.on_orb_fired(node_index, {}, $Inventory.orbs[orb_index])
 
+func _orb_cost(orb_index: int) -> float:
+	return _compute_orb_light_cost($Inventory.orbs[orb_index])
+
+func _can_afford_orb(orb_index: int) -> bool:
+	return light >= _orb_cost(orb_index)
+
+var _orb_paid: Dictionary = {}  # orb_index -> bool, reset each activation
+
+func _charge_orb(orb_index: int) -> bool:
+	if _orb_paid.get(orb_index, false):
+		return true
+	if not _can_afford_orb(orb_index):
+		return false
+	light -= _orb_cost(orb_index)
+	_orb_paid[orb_index] = true
+	return true
 
 func Log(msg: Variant) -> void:
 	print("[player.gd] " + str(msg))
