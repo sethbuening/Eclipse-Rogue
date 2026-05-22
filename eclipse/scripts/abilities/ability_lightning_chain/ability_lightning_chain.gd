@@ -6,12 +6,12 @@ const LightningChainScene := preload("res://scenes/abilities/lightning_chain.tsc
 func activate(context: Dictionary) -> void:
 	if not context.get("pressed", false):
 		return
-	var player:      Node2D = context["player"]
-	var orb_potency: float  = context.get("orb_potency", 1.0)
-
-	var first_target: Node2D = _find_nearest_target(player.global_position, get_stat("range"), [])
-	if first_target == null:
+	var player:      Node2D  = context["player"]
+	var orb_potency: float   = context.get("orb_potency", 1.0)
+	var targets:     Array   = context.get("targets", [])
+	if targets.is_empty():
 		return
+	var first_target: Node2D = targets[0]
 
 	var chain:    Array[Node2D] = [first_target]
 	var hit_set:  Array[Node2D] = [first_target]
@@ -48,6 +48,7 @@ func activate(context: Dictionary) -> void:
 	arc.setup(orb_spawn, chain, stats, orb_potency, main_stats, player)
 
 	context["orb_t"]   = 1.0
+	context["activated"] = true
 	stats.apply_to_player(player)
 
 func _find_nearest_target(origin: Vector2, radius: float, exclude: Array[Node2D]) -> Node2D:

@@ -1,20 +1,42 @@
 extends Node
-
-const MIN_NODES:         int   = 4
-const MAX_NODES:         int   = 4
-const MIN_NODE_DIST:     float = 120.0
-const GRAPH_RADIUS:      float = 300.0
-const CONNECTION_CHANCE: float = 0.4
+const MIN_NODES:        int   = 3
+const MAX_NODES:        int   = 3
+const MIN_NODE_DIST:    float = 120.0
+const GRAPH_RADIUS:     float = 300.0
+const MIN_CONNECTIONS:  int   = 1
+const MAX_CONNECTIONS:  int   = 1
 
 var graph: GraphData = GraphData.new()
 
 const STAT_POOL: Array[String] = [
-	"power", "crit_chance", "crit_damage", "aoe_radius",
-	"cooldown", "mining_power", "knockback", "shield_amount"
+	# core
+	"power", "cooldown", "duration", "range",
+	# speed
+	"cast_speed", "projectile_speed", "move_speed_bonus",
+	# area
+	"aoe_radius", "pierce",
+	# critical hits
+	"crit_chance", "crit_damage", "crit_aoe",
+	# light / resource
+	"light_cost", "light_on_hit", "light_on_crit",
+	# mining
+	"mining_power", "mining_radius", "ore_yield",
+	# enemy interaction
+	"knockback", "stun_duration", "slow_amount", "slow_duration", "dot_damage", "dot_duration",
+	# defensive
+	"damage_absorb", "reflect_chance", "shield_amount",
 ]
 
-# Stat values are multiplicative scalars applied as (base * stat_value).
-# Range 1.1–1.5 means +10% to +50% of the base stat value.
+# Stats where a lower value is better — the modifier is inverted so the node
+# still represents a buff even though the raw value decreases.
+const INVERSE_STATS: Array[String] = [
+	"cooldown",
+	"light_cost",
+]
+
+static func is_inverse(stat_name: String) -> bool:
+	return stat_name in INVERSE_STATS
+
 const STAT_VALUE_MIN: float = 1.1
 const STAT_VALUE_MAX: float = 1.5
 
@@ -46,19 +68,35 @@ func _place_nodes(count: int) -> void:
 		graph.nodes.append(node)
 
 func _generate_connections() -> void:
+	var node_count: int = graph.nodes.size()
+	if node_count < 2:
+		return
+
+	var target: int = mini(randi_range(MIN_CONNECTIONS, MAX_CONNECTIONS), node_count * (node_count - 1) / 2)
+
+	# Spanning tree first to guarantee all nodes are reachable.
 	var connected: Array[int] = [0]
-	var remaining: Array[int] = Array(range(1, graph.nodes.size()), TYPE_INT, "", null)
+	var remaining: Array[int] = Array(range(1, node_count), TYPE_INT, "", null)
 	remaining.shuffle()
 	for idx: int in remaining:
+		if graph.connections.size() >= target:
+			break
 		var from: int = connected[randi() % connected.size()]
 		_add_connection(from, idx)
 		connected.append(idx)
-	for a in range(graph.nodes.size()):
-		for b in range(a + 1, graph.nodes.size()):
-			if _already_connected(a, b):
-				continue
-			if randf() < CONNECTION_CHANCE:
-				_add_connection(a, b)
+
+	# Add extra connections until we hit the target.
+	var candidates: Array = []
+	for a in range(node_count):
+		for b in range(a + 1, node_count):
+			if not _already_connected(a, b):
+				candidates.append([a, b])
+	candidates.shuffle()
+
+	for pair in candidates:
+		if graph.connections.size() >= target:
+			break
+		_add_connection(pair[0], pair[1])
 
 func _add_connection(from: int, to: int) -> void:
 	var c          := GraphConnectionData.new()

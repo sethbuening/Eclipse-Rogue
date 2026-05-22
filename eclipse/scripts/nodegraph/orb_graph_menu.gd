@@ -3,6 +3,7 @@ extends CanvasLayer
 # ── references ────────────────────────────────────────────────────────────────
 var player: CharacterBody2D
 
+
 # ── ui state ──────────────────────────────────────────────────────────────────
 var selected_orb:          Orb     = null
 var dragging_orb:          Orb     = null
@@ -13,6 +14,9 @@ var pressed_inventory_orb: Orb     = null
 var inventory_press_pos:   Vector2 = Vector2.ZERO
 
 const DRAG_THRESHOLD: float = 8.0
+const MAX_ORB_SLOTS:  int   = 5
+
+const SLOT_LABELS: Array[String] = ["1", "2", "3", "4", "5"]
 
 # ── colors ────────────────────────────────────────────────────────────────────
 const COLOR_NODE_EMPTY:  Color = Color(0.2, 0.2, 0.3)
@@ -21,42 +25,71 @@ const COLOR_NODE_HOVER:  Color = Color(0.6, 0.8, 1.0)
 const COLOR_CONNECTION:  Color = Color(0.3, 0.8, 0.3)
 
 # ── graph sizing ──────────────────────────────────────────────────────────────
-const NODE_RADIUS:        float = 88.0
-const NODE_OUTLINE:       float = 3.0
-const CONNECTION_WIDTH:   float = 5.0
-const CONNECTION_FONT_SIZE: int = 18
-const NODE_FONT_SIZE:       int = 16
-const ORB_FONT_SIZE:        int = 14
-const ORB_ICON_SIZE:    Vector2 = Vector2(40, 40)
-const DRAG_ICON_SIZE:   Vector2 = Vector2(52, 52)
-const ARROW_SIZE:         float = 14.0
+const NODE_RADIUS:          float = 88.0
+const NODE_OUTLINE:         float = 3.0
+const CONNECTION_WIDTH:     float = 5.0
+const CONNECTION_FONT_SIZE: int   = 18
+const NODE_FONT_SIZE:       int   = 16
+const ORB_FONT_SIZE:        int   = 14
+const ORB_ICON_SIZE:        Vector2 = Vector2(40, 40)
+const DRAG_ICON_SIZE:       Vector2 = Vector2(52, 52)
+const ARROW_SIZE:           float = 14.0
+
+# ── orb bar sizing ────────────────────────────────────────────────────────────
+const ORB_CARD_W:   float   = 400.0
+const ORB_CARD_H:   float   = 190.0
+const ORB_CARD_PAD: float   = 10.0
+const ORB_BAR_LEFT: float   = 320.0    # gap from left edge — adjust to clear health bar
+const ORB_BAR_TOP:  float   = 16.0    # gap from screen top
+const ORB_TEX_SIZE: Vector2 = Vector2(56, 56)
+const KEY_CAP_SIZE: Vector2 = Vector2(72, 72)
 
 @onready var graph_canvas: Control = %GraphCanvas
 @onready var orb_list:     Control = %OrbList
+
+var dim_overlay: ColorRect = null
 
 # ── ready ─────────────────────────────────────────────────────────────────────
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	hide()
 	graph_canvas.draw.connect(_draw_graph)
-	%OrbList.set_anchors_and_offsets_preset(Control.PRESET_RIGHT_WIDE)
-	%OrbList.anchor_left   = 0.85
-	%OrbList.anchor_right  = 1.0
+
+	# Dim overlay — sits behind everything, shown only when menu is open.
+	dim_overlay             = ColorRect.new()
+	dim_overlay.color       = Color(0, 0, 0, 0.55)
+	dim_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	dim_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(dim_overlay)
+	move_child(dim_overlay, 0)
+	dim_overlay.hide()
+
+	# Anchor orb list down the left side, just right of the health bar.
+	%OrbList.anchor_left   = 0.0
+	%OrbList.anchor_right  = 0.0
 	%OrbList.anchor_top    = 0.0
 	%OrbList.anchor_bottom = 1.0
-	%OrbList.offset_left   = 0.0
-	%OrbList.offset_right  = 0.0
-	%OrbList.offset_top    = 0.0
+	%OrbList.offset_left   = ORB_BAR_LEFT
+	%OrbList.offset_right  = ORB_BAR_LEFT + ORB_CARD_W
+	%OrbList.offset_top    = ORB_BAR_TOP
 	%OrbList.offset_bottom = 0.0
+
+	var vbox := VBoxContainer.new()
+	vbox.alignment = BoxContainer.ALIGNMENT_BEGIN
+	vbox.add_theme_constant_override("separation", int(ORB_CARD_PAD))
+	vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	%OrbList.add_child(vbox)
 
 # ── open / close ──────────────────────────────────────────────────────────────
 func open() -> void:
 	_layout_nodes()
 	_rebuild_orb_list()
+	dim_overlay.show()
 	show()
 	get_tree().paused = true
 
 func close() -> void:
+	dim_overlay.hide()
 	hide()
 	get_tree().paused = false
 
@@ -68,8 +101,8 @@ func _layout_nodes() -> void:
 		return
 
 	for i in range(count):
-		var angle:        float = (float(i) / float(count)) * TAU
-		nodes[i].position       = Vector2(cos(angle), sin(angle)) * 540.0
+		var angle: float  = (float(i) / float(count)) * TAU
+		nodes[i].position = Vector2(cos(angle), sin(angle)) * 540.0
 
 	for _iter in range(200):
 		var forces: Array[Vector2] = []
@@ -90,7 +123,11 @@ func _layout_nodes() -> void:
 
 # ── input ─────────────────────────────────────────────────────────────────────
 func _input(event: InputEvent) -> void:
-	if Input.is_action_just_pressed("open_graph"):
+	if event.is_action_pressed("open_graph"):
+		if event is InputEventJoypadButton or event is InputEventJoypadMotion:
+			Util.last_input_device = Util.InputDevice.CONTROLLER
+		else:
+			Util.last_input_device = Util.InputDevice.KEYBOARD_MOUSE
 		if visible:
 			close()
 		else:
@@ -160,9 +197,8 @@ func _input(event: InputEvent) -> void:
 
 # ── process ───────────────────────────────────────────────────────────────────
 func _process(_delta: float) -> void:
-	if not visible:
-		return
-	graph_canvas.queue_redraw()
+	if visible:
+		graph_canvas.queue_redraw()
 
 # ── drawing ───────────────────────────────────────────────────────────────────
 func _draw_graph() -> void:
@@ -170,64 +206,57 @@ func _draw_graph() -> void:
 	var connections: Array[GraphConnectionData] = GraphManager.graph.connections
 	var origin:      Vector2                    = graph_canvas.size / 2.0
 
-	# ── connections ───────────────────────────────────────────────────────────
+	# connections
 	for conn: GraphConnectionData in connections:
-		var a: Vector2 = nodes[conn.from_node].position + origin
-		var b: Vector2 = nodes[conn.to_node].position   + origin
+		var a:    Vector2 = nodes[conn.from_node].position + origin
+		var b:    Vector2 = nodes[conn.to_node].position   + origin
 		graph_canvas.draw_line(a, b, COLOR_CONNECTION, CONNECTION_WIDTH)
 
-		var mid: Vector2 = (a + b) / 2.0
-		var dir: Vector2 = (b - a).normalized()
+		var mid:  Vector2 = (a + b) / 2.0
+		var dir:  Vector2 = (b - a).normalized()
 		var perp: Vector2 = Vector2(-dir.y, dir.x) * (ARROW_SIZE * 0.5)
 		graph_canvas.draw_colored_polygon(
 			PackedVector2Array([
 				mid + dir * ARROW_SIZE,
 				mid - dir * ARROW_SIZE + perp,
-				mid - dir * ARROW_SIZE - perp
+				mid - dir * ARROW_SIZE - perp,
 			]),
 			COLOR_CONNECTION
 		)
-
-		var charge_label: String = "charges (%d)" % conn.charge_stacks
 		graph_canvas.draw_string(
 			ThemeDB.fallback_font,
 			mid + Vector2(4, -4),
-			charge_label,
+			"charges (%d)" % conn.charge_stacks,
 			HORIZONTAL_ALIGNMENT_LEFT,
 			-1, CONNECTION_FONT_SIZE, COLOR_CONNECTION
 		)
 
-	# ── nodes ─────────────────────────────────────────────────────────────────
+	# nodes
 	for i in range(nodes.size()):
 		var node:   GraphNodeData = nodes[i]
 		var center: Vector2       = node.position + origin
 		var color:  Color
 
-		if i == hover_node:
-			color = COLOR_NODE_HOVER
-		elif node.placed_orb != null:
-			color = COLOR_NODE_FILLED
-		else:
-			color = COLOR_NODE_EMPTY
+		if i == hover_node:              color = COLOR_NODE_HOVER
+		elif node.placed_orb != null:    color = COLOR_NODE_FILLED
+		else:                            color = COLOR_NODE_EMPTY
 
 		graph_canvas.draw_circle(center, NODE_RADIUS, color)
 		graph_canvas.draw_arc(center, NODE_RADIUS, 0, TAU, 48, Color.WHITE, NODE_OUTLINE)
 
-		var stat_label: String = node.stat_name.replace("_", " ")
-		var value_label: String = "%s%.0f%%" % ["-" if node.stat_name == "cooldown" else "+", (node.stat_value - 1.0) * 100.0]
+		var sign_str: String = "-" if GraphManager.is_inverse(node.stat_name) else "+"
+		var pct_str:  String = "%s%.0f%%" % [sign_str, (node.stat_value - 1.0) * 100.0]
 		graph_canvas.draw_string(
 			ThemeDB.fallback_font,
 			center + Vector2(-NODE_RADIUS + 8, -10),
-			stat_label,
-			HORIZONTAL_ALIGNMENT_LEFT,
-			-1, NODE_FONT_SIZE, Color.WHITE
+			node.stat_name.replace("_", " "),
+			HORIZONTAL_ALIGNMENT_LEFT, -1, NODE_FONT_SIZE, Color.WHITE
 		)
 		graph_canvas.draw_string(
 			ThemeDB.fallback_font,
 			center + Vector2(-NODE_RADIUS + 8, 12),
-			value_label,
-			HORIZONTAL_ALIGNMENT_LEFT,
-			-1, NODE_FONT_SIZE, Color(0.8, 1.0, 0.6)
+			pct_str,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, NODE_FONT_SIZE, Color(0.8, 1.0, 0.6)
 		)
 
 		if node.placed_orb != null:
@@ -241,14 +270,13 @@ func _draw_graph() -> void:
 				ThemeDB.fallback_font,
 				center + Vector2(-NODE_RADIUS + 8, 32),
 				node.placed_orb.display_name,
-				HORIZONTAL_ALIGNMENT_LEFT,
-				-1, ORB_FONT_SIZE, Color(1, 1, 0.6)
+				HORIZONTAL_ALIGNMENT_LEFT, -1, ORB_FONT_SIZE, Color(1, 1, 0.6)
 			)
 
 		if selected_orb != null and i == hover_node:
 			graph_canvas.draw_arc(center, NODE_RADIUS + 6, 0, TAU, 48, Color(1.0, 0.85, 0.3), 4.0)
 
-	# ── floating drag icon ────────────────────────────────────────────────────
+	# floating drag icon
 	if dragging_orb != null:
 		var local_drag: Vector2 = graph_canvas.get_local_mouse_position()
 		if dragging_orb.sprite_texture != null:
@@ -261,8 +289,7 @@ func _draw_graph() -> void:
 			ThemeDB.fallback_font,
 			local_drag + Vector2(18, 4),
 			dragging_orb.display_name,
-			HORIZONTAL_ALIGNMENT_LEFT,
-			-1, NODE_FONT_SIZE, Color.WHITE
+			HORIZONTAL_ALIGNMENT_LEFT, -1, NODE_FONT_SIZE, Color.WHITE
 		)
 
 # ── orb placement ─────────────────────────────────────────────────────────────
@@ -281,6 +308,7 @@ func _remove_orb(node_index: int) -> void:
 	if node.placed_orb == null:
 		return
 	var orb: Orb = node.placed_orb
+	# reset the power of all abilities affected by the charge connection
 	for conn: GraphConnectionData in GraphManager.graph.connections:
 		if conn.charge_stacks == 0:
 			continue
@@ -301,23 +329,32 @@ func _remove_orb(node_index: int) -> void:
 	_rebuild_orb_list()
 
 func _apply_node_to_orb(node: GraphNodeData, orb: Orb) -> void:
-	var modifier       := OrbModifier.new()
-	modifier.stat_name  = node.stat_name
-	modifier.mod_type   = OrbModifier.ModType.MULTIPLICATIVE
-	modifier.value      = (1.0 / node.stat_value) if node.stat_name == "cooldown" else node.stat_value
+	var modifier      := OrbModifier.new()
+	modifier.stat_name = node.stat_name
+	modifier.mod_type  = OrbModifier.ModType.MULTIPLICATIVE
+	modifier.value     = (1.0 / node.stat_value) if GraphManager.is_inverse(node.stat_name) else node.stat_value
 	modifier.apply(orb)
- 
+
 func _unapply_node_from_orb(node: GraphNodeData, orb: Orb) -> void:
-	var modifier       := OrbModifier.new()
-	modifier.stat_name  = node.stat_name
-	modifier.mod_type   = OrbModifier.ModType.MULTIPLICATIVE
-	modifier.value      = (1.0 / node.stat_value) if node.stat_name == "cooldown" else node.stat_value
+	var modifier      := OrbModifier.new()
+	modifier.stat_name = node.stat_name
+	modifier.mod_type  = OrbModifier.ModType.MULTIPLICATIVE
+	modifier.value     = (1.0 / node.stat_value) if GraphManager.is_inverse(node.stat_name) else node.stat_value
 	modifier.unapply(orb)
 
-# ── orb list ──────────────────────────────────────────────────────────────────
+# ── orb list (left bar) ───────────────────────────────────────────────────────
 func _rebuild_orb_list() -> void:
-	for child in orb_list.get_children():
-		child.queue_free()
+	var vbox: VBoxContainer
+	if %OrbList.get_child_count() > 0:
+		vbox = %OrbList.get_child(0) as VBoxContainer
+		for child in vbox.get_children():
+			child.queue_free()
+	else:
+		vbox = VBoxContainer.new()
+		vbox.alignment = BoxContainer.ALIGNMENT_BEGIN
+		vbox.add_theme_constant_override("separation", int(ORB_CARD_PAD))
+		vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		%OrbList.add_child(vbox)
 
 	if player == null:
 		return
@@ -336,105 +373,114 @@ func _rebuild_orb_list() -> void:
 	for orb: Orb in inventory.orbs:
 		if placed.has(orb):
 			continue
+		vbox.add_child(_build_orb_card(orb, taken_slots, inventory))
 
-		var panel  := PanelContainer.new()
-		var hbox   := HBoxContainer.new()
-		var vbox   := VBoxContainer.new()
-		var tex    := TextureRect.new()
-		var label  := Label.new()
+# ── orb card ──────────────────────────────────────────────────────────────────
+func _build_orb_card(orb: Orb, taken_slots: Dictionary, inventory: Node) -> Control:
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(ORB_CARD_W, ORB_CARD_H)
 
-		tex.texture             = orb.sprite_texture
-		tex.custom_minimum_size = Vector2(48, 48)
-		tex.expand_mode         = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-		tex.stretch_mode        = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	if selected_orb == orb or dragging_orb == orb:
+		panel.add_theme_stylebox_override("panel", _make_highlight_style(Color(1.0, 0.85, 0.3, 0.3)))
 
-		label.text                 = orb.display_name
-		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		label.add_theme_font_size_override("font_size", 10)
+	var vbox := VBoxContainer.new()
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.add_theme_constant_override("separation", 4)
+	panel.add_child(vbox)
 
-		vbox.add_child(tex)
-		vbox.add_child(label)
-		hbox.add_child(vbox)
+	var tex := TextureRect.new()
+	tex.texture             = orb.sprite_texture
+	tex.custom_minimum_size = ORB_TEX_SIZE
+	tex.expand_mode         = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+	tex.stretch_mode        = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	vbox.add_child(tex)
 
-		var slot_vbox  := VBoxContainer.new()
-		var slot_label := Label.new()
-		slot_label.text = "slot"
-		slot_label.add_theme_font_size_override("font_size", 9)
-		slot_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		slot_vbox.add_child(slot_label)
+	var name_label := Label.new()
+	name_label.text                 = orb.display_name
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.add_theme_font_size_override("font_size", 12)
+	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vbox.add_child(name_label)
 
-		var slot_row := HBoxContainer.new()
-		for n in range(1, 8):
-			var action: String = "orb_%d" % n
-			var btn           := Button.new()
-			btn.text           = str(n)
-			btn.toggle_mode    = true
-			btn.button_pressed = (orb.input_action == action)
-			btn.custom_minimum_size = Vector2(22, 22)
-			btn.add_theme_font_size_override("font_size", 11)
+	var key_row := HBoxContainer.new()
+	key_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	key_row.add_theme_constant_override("separation", 3)
+	vbox.add_child(key_row)
 
-			if taken_slots.has(action) and taken_slots[action] != orb:
-				btn.modulate = Color(0.5, 0.5, 0.5)
+	for n in range(1, MAX_ORB_SLOTS + 1):
+		var action: String = "orb_%d" % n
+		key_row.add_child(_build_key_cap(orb, action, n, taken_slots, inventory))
 
-			var orb_ref:    Orb    = orb
-			var action_ref: String = action
-			btn.toggled.connect(func(pressed: bool) -> void:
-				if pressed:
-					for other: Orb in inventory.orbs:
-						if other != orb_ref and other.input_action == action_ref:
-							other.input_action = ""
-					orb_ref.input_action = action_ref
+	panel.mouse_filter = Control.MOUSE_FILTER_PASS
+	vbox.mouse_filter  = Control.MOUSE_FILTER_PASS
+	tex.mouse_filter   = Control.MOUSE_FILTER_PASS
+
+	var orb_ref: Orb = orb
+	panel.gui_input.connect(func(ev: InputEvent) -> void:
+		if ev is InputEventMouseButton:
+			var mb := ev as InputEventMouseButton
+			if mb.button_index == MOUSE_BUTTON_LEFT:
+				if mb.pressed:
+					pressed_inventory_orb = orb_ref
+					inventory_press_pos   = get_viewport().get_mouse_position()
+					selected_orb          = orb_ref
+					_rebuild_orb_list()
 				else:
-					if orb_ref.input_action == action_ref:
-						orb_ref.input_action = ""
-				_rebuild_orb_list()
-			)
-			slot_row.add_child(btn)
+					pressed_inventory_orb = null
+		elif ev is InputEventMouseMotion:
+			if pressed_inventory_orb == orb_ref and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+				var dist := inventory_press_pos.distance_to(get_viewport().get_mouse_position())
+				if dist >= DRAG_THRESHOLD:
+					dragging_orb          = orb_ref
+					selected_orb          = null
+					drag_origin_node      = -1
+					drag_pos              = get_viewport().get_mouse_position()
+					pressed_inventory_orb = null
+					_rebuild_orb_list()
+	)
 
-		slot_vbox.add_child(slot_row)
-		hbox.add_child(slot_vbox)
-		panel.add_child(hbox)
+	return panel
 
-		if selected_orb == orb or dragging_orb == orb:
-			panel.add_theme_stylebox_override("panel", _make_highlight_style(Color(1.0, 0.85, 0.3, 0.3)))
+# ── key cap ───────────────────────────────────────────────────────────────────
+func _build_key_cap(orb: Orb, action: String, slot_num: int,
+		taken_slots: Dictionary, inventory: Node) -> Button:
+	var btn             := Button.new()
+	btn.icon = Util.get_action_icon(
+		action,
+		orb.input_action == action
+	)
+	btn.text             = "" if btn.icon != null else str(slot_num)
+	btn.expand_icon      = true
+	btn.toggle_mode      = true
+	btn.button_pressed   = (orb.input_action == action)
+	btn.custom_minimum_size = KEY_CAP_SIZE
+	btn.icon_alignment   = HORIZONTAL_ALIGNMENT_CENTER
 
-		panel.mouse_filter = Control.MOUSE_FILTER_PASS
-		hbox.mouse_filter  = Control.MOUSE_FILTER_PASS
-		vbox.mouse_filter  = Control.MOUSE_FILTER_PASS
-		tex.mouse_filter   = Control.MOUSE_FILTER_PASS
-		label.mouse_filter = Control.MOUSE_FILTER_PASS
+	if taken_slots.has(action) and taken_slots[action] != orb:
+		btn.modulate = Color(0.45, 0.45, 0.45)
 
-		var orb_ref: Orb = orb
-		panel.gui_input.connect(func(ev: InputEvent) -> void:
-			if ev is InputEventMouseButton:
-				var mb := ev as InputEventMouseButton
-				if mb.button_index == MOUSE_BUTTON_LEFT:
-					if mb.pressed:
-						pressed_inventory_orb = orb_ref
-						inventory_press_pos   = get_viewport().get_mouse_position()
-						selected_orb          = orb_ref
-						_rebuild_orb_list()
-					else:
-						pressed_inventory_orb = null
-			elif ev is InputEventMouseMotion:
-				if pressed_inventory_orb == orb_ref and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
-					var dist := inventory_press_pos.distance_to(get_viewport().get_mouse_position())
-					if dist >= DRAG_THRESHOLD:
-						dragging_orb          = orb_ref
-						selected_orb          = null
-						drag_origin_node      = -1
-						drag_pos              = get_viewport().get_mouse_position()
-						pressed_inventory_orb = null
-						_rebuild_orb_list()
-		)
+	var orb_ref:    Orb    = orb
+	var action_ref: String = action
+	btn.toggled.connect(func(pressed: bool) -> void:
+		if pressed:
+			for other: Orb in inventory.orbs:
+				if other != orb_ref and other.input_action == action_ref:
+					other.input_action = ""
+			orb_ref.input_action = action_ref
+		else:
+			if orb_ref.input_action == action_ref:
+				orb_ref.input_action = ""
+		_rebuild_orb_list()
+	)
 
-		orb_list.add_child(panel)
+	return btn
 
+# ── helpers ───────────────────────────────────────────────────────────────────
 func _make_highlight_style(color: Color) -> StyleBoxFlat:
 	var style                       := StyleBoxFlat.new()
 	style.bg_color                   = color
-	style.corner_radius_top_left     = 4
-	style.corner_radius_top_right    = 4
-	style.corner_radius_bottom_left  = 4
-	style.corner_radius_bottom_right = 4
+	style.corner_radius_top_left     = 6
+	style.corner_radius_top_right    = 6
+	style.corner_radius_bottom_left  = 6
+	style.corner_radius_bottom_right = 6
 	return style

@@ -1,0 +1,36 @@
+[gd_scene format=3 uid="uid://3u75bkav35jp"]
+
+[ext_resource type="Script" uid="uid://dja4fblc4eckm" path="res://scripts/relics/relic_popup.gd" id="1_25hin"]
+
+[node name="RelicPopup" type="CanvasLayer" unique_id=1527728487]
+script = ExtResource("1_25hin")
+
+[node name="Panel" type="PanelContainer" parent="." unique_id=1826056671]
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -220.0
+offset_top = -100.0
+offset_right = -12.0
+offset_bottom = 181.0
+size_flags_vertical = 3
+
+[node name="VBox" type="VBoxContainer" parent="Panel" unique_id=64627981]
+custom_minimum_size = Vector2(0, 200)
+layout_mode = 2
+
+[node name="Icon" type="TextureRect" parent="Panel/VBox" unique_id=1031046543]
+layout_mode = 2
+stretch_mode = 2
+
+[node name="NameLabel" type="Label" parent="Panel/VBox" unique_id=1684470203]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="DescLabel" type="Label" parent="Panel/VBox" unique_id=1714799109]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 250)
+layout_mode = 2
+autowrap_mode = 3

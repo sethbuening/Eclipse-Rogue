@@ -7,6 +7,7 @@
 script = ExtResource("2_fp8kd")
 power = 100.0
 cooldown = 60.0
+range = 200.0
 aoe_radius = 40.0
 crit_chance = 0.05
 light_cost = 25.0
@@ -19,5 +20,6 @@ id = "Gold Bomb"
 display_name = "Gold Bomb"
 description = "Explodes a massive bomb sending out a shockwave, dealing damage with an increased crit chance."
 stats = SubResource("Resource_c856i")
+targeting_mode = 2
 main_stats = Array[String](["aoe_radius", "power"])
 metadata/_custom_type_script = "uid://db3d372f87vcx"

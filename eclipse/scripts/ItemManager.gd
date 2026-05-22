@@ -1,39 +1,70 @@
 # item_manager.gd
 extends Node
 
-const DROP_COUNTS: Dictionary = {
-	Util.tile.GOLD:      [1, 1],
-	Util.tile.COPPER:    [1, 1],
-	Util.tile.LIGHT_ORB: [3, 5]
-}
-
-var _metal_map:    Dictionary      = {}   # Util.tile → MetalData
 var dropped_items: Array[Node]     = []
 var player:        CharacterBody2D = null
 var game:          Node2D
 var tilemap_manager: Node
 
+var magnet_radius: float = 64.0
 const PICKUP_RADIUS: float = 8.0
-const MAGNET_RADIUS: float = 64.0
 const MAGNET_SPEED:  float = 315.0
 
 @export var dropped_item_scene: PackedScene = preload("res://scenes/DroppedItem.tscn")
 
-# ── ready ─────────────────────────────────────────────────────────────────────
+# ── relic/metal pool ────────────────────────────────────────────────────────────────
+# All RelicData resources loaded from res://relics/. TilemapManager draws
+# from this to assign relics to clusters at generation time.
+var _relic_pool: Array[RelicData] = []
 
 func _ready() -> void:
-	_load_metal_map()
+	_load_relic_pool()
+	_load_metal_pool()
 
-func _load_metal_map() -> void:
-	for res: Resource in Util.load_resources("res://data/metals/"):
-		if res is MetalData:
+func _load_relic_pool() -> void:
+	var resources: Array[Resource] = Util.load_resources("res://data/relics/")
+	for res in resources:
+		if res is RelicData:
+			_relic_pool.append(res as RelicData)
+	_relic_pool.shuffle()
+	print("[ItemManager] Loaded %d relics into pool" % _relic_pool.size())
+	
+var _metal_map: Dictionary = {}  # Util.tile → MetalData
+
+func _load_metal_pool() -> void:
+	var resources: Array[Resource] = Util.load_resources("res://data/metals/")
+	for res in resources:
+		if res is MetalData and res.tile_type != null:
 			_metal_map[res.tile_type] = res
-			Log("Loaded metal: " + res.display_name)
-		else:
-			push_warning("ItemManager: skipping non-MetalData resource: " + res.resource_path)
-	Log("Metal map built — %d metals loaded" % _metal_map.size())
 
 # ── spawning ──────────────────────────────────────────────────────────────────
+
+func spawn_light_orb(world_pos: Vector2) -> void:
+	var count: int = randi_range(3, 5)
+	for i in count:
+		_spawn_item(world_pos, DroppedItem.DropType.LIGHT_ORB, null)
+
+func spawn_metal_drop(world_pos: Vector2, metal: MetalData) -> void:
+	_spawn_item(world_pos, DroppedItem.DropType.METAL, metal)
+
+func _spawn_item(world_pos: Vector2, type: DroppedItem.DropType, metal: MetalData) -> void:
+	if dropped_item_scene == null:
+		return
+	var half_tile: float = tilemap_manager.TILE_SIZE.x / 2.0
+	var item: DroppedItem = dropped_item_scene.instantiate()
+	item.drop_type = type
+	item.metal     = metal
+	item.vel = Vector2(
+		(randf_range(-50.0, 50.0) + randf_range(-50.0, 50.0)) / 2.0,
+		(randf_range(-60.0, -10.0) + randf_range(-60.0, -10.0)) / 2.0
+	)
+	item.z_vel           = (randf_range(40.0, 120.0) + randf_range(40.0, 120.0)) / 2.0
+	item.pos             = _safe_spawn_pos(world_pos, half_tile, item.RADIUS)
+	add_child(item)
+	item.global_position = item.pos
+	item.reset_physics_interpolation()
+	item.visible         = true
+	dropped_items.append(item)
 
 func _safe_spawn_pos(world_pos: Vector2, half_tile: float, radius: float) -> Vector2:
 	for _attempt in range(10):
@@ -46,55 +77,21 @@ func _safe_spawn_pos(world_pos: Vector2, half_tile: float, radius: float) -> Vec
 			return candidate
 	return world_pos + Vector2(0, -half_tile - radius)
 
-func spawn_dropped_item(world_pos: Vector2, type: Util.tile) -> void:
-	if dropped_item_scene == null:
-		Log("WARNING: dropped_item_scene is null — cannot spawn item")
-		return
-	if not DROP_COUNTS.has(type):
-		return
-
-	var range:     Array = DROP_COUNTS[type]
-	var count:     int   = randi_range(range[0], range[1])
-	var half_tile: float = tilemap_manager.TILE_SIZE.x / 2.0
-
-	for i in count:
-		var item: Sprite2D = dropped_item_scene.instantiate()
-		item.item_type     = type
-		item.vel = Vector2(
-			(randf_range(-50.0, 50.0) + randf_range(-50.0, 50.0)) / 2.0,
-			(randf_range(-60.0, -10.0) + randf_range(-60.0, -10.0)) / 2.0
-		)
-		item.z_vel           = (randf_range(40.0, 120.0) + randf_range(40.0, 120.0)) / 2.0
-		item.pos             = _safe_spawn_pos(world_pos, half_tile, item.RADIUS)
-		add_child(item)
-		item.global_position = item.pos
-		item.reset_physics_interpolation()
-		item.visible         = true
-		dropped_items.append(item)
-
-	Log("Spawned " + str(count) + "x " + Util.tile.keys()[type] + " at " + str(world_pos) + " | total: " + str(dropped_items.size()))
-
 # ── physics ───────────────────────────────────────────────────────────────────
 
 func _physics_process(delta: float) -> void:
 	if player == null:
 		return
-
 	for item: Node in dropped_items.duplicate():
 		if not is_instance_valid(item):
 			dropped_items.erase(item)
 			continue
-
 		var dist: float = item.pos.distance_to(player.global_position)
-
 		if dist < PICKUP_RADIUS:
 			_collect(item)
 			continue
-
-		if dist < MAGNET_RADIUS:
-			var dir: Vector2 = (player.global_position - item.pos).normalized()
-			item.vel         = dir * MAGNET_SPEED
-
+		if dist < magnet_radius:
+			item.vel = (player.global_position - item.pos).normalized() * MAGNET_SPEED
 		if tilemap_manager != null:
 			var move_dir:  Vector2  = item.vel.normalized() if item.vel.length() > 0.01 else Vector2.ZERO
 			var check_pos: Vector2  = item.pos + move_dir * item.RADIUS + item.vel * delta
@@ -105,26 +102,22 @@ func _physics_process(delta: float) -> void:
 				var tile_half:   float   = tilemap_manager.TILE_SIZE.x / 2.0
 				if abs(diff.x) > abs(diff.y):
 					item.vel.x *= -item.BOUNCE
-					var sign_x: float = sign(diff.x)
-					item.pos.x = tile_center.x + (tile_half + item.RADIUS) * sign_x
+					item.pos.x  = tile_center.x + (tile_half + item.RADIUS) * sign(diff.x)
 				else:
 					item.vel.y *= -item.BOUNCE
-					var sign_y: float = sign(diff.y)
-					item.pos.y = tile_center.y + (tile_half + item.RADIUS) * sign_y
+					item.pos.y  = tile_center.y + (tile_half + item.RADIUS) * sign(diff.y)
 				if item.z <= 0.0:
 					item.vel *= 0.7
 			else:
 				item.pos += item.vel * delta
 		else:
 			item.pos += item.vel * delta
-
 		item.z_vel -= item.GRAVITY * delta
 		item.z     += item.z_vel * delta
 		if item.z < 0.0:
 			item.z     = 0.0
 			item.z_vel = -item.z_vel * item.BOUNCE
 			item.vel  *= 0.8
-
 		item.global_position = item.pos + Vector2(0, -item.z)
 		item.z_index         = tilemap_manager.get_z_for(item.pos)
 
@@ -132,20 +125,15 @@ func _physics_process(delta: float) -> void:
 
 func _collect(item: Node) -> void:
 	var inventory: Node = player.get_node("Inventory")
-	if item.item_type == Util.tile.LIGHT_ORB:
-		player.heal(1)
-		dropped_items.erase(item)
-		item.queue_free()
-		return
-	if _metal_map.has(item.item_type):
-		var metal: MetalData = _metal_map[item.item_type]
-		inventory.add_metal(metal, 1)
-		Log("Collected metal: " + metal.display_name + " | remaining: " + str(dropped_items.size()))
-	else:
-		inventory.add(item.item_type, 1)
-		Log("Collected " + Util.tile.keys()[item.item_type].to_lower() + " | remaining: " + str(dropped_items.size()))
+	match item.drop_type:
+		DroppedItem.DropType.LIGHT_ORB:
+			player.heal(1)
+		DroppedItem.DropType.METAL:
+			if item.metal != null:
+				inventory.add_metal(item.metal, 1)
+				Log("Collected: " + item.metal.display_name)
 	dropped_items.erase(item)
 	item.queue_free()
 
 func Log(msg: Variant) -> void:
-	print("[item_manager.gd] " + str(msg))
+	print("[ItemManager] " + str(msg))

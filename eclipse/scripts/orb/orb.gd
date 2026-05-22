@@ -15,6 +15,7 @@ var node_power_base:        float              = -1.0
 
 var node_index: int = -1
 var cooldown: float = 0.0
+var light_cost: float = 0.0
 var nonhold_fired: bool = false
 
 func _init() -> void:

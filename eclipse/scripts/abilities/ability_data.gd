@@ -10,35 +10,29 @@ enum TriggerType { ACTIVE, PASSIVE }
 @export var requires_hold: bool         = false
 @export var stats:         AbilityStats = AbilityStats.new()
 
+enum TargetingMode {
+	NONE,        # instant, no preview (dash, passive)
+	DIRECTION,   # shows a line/arrow from player to mouse (basic attack, drill)
+	AREA,        # shows a radius circle at cursor (bomb, seismic)
+	TILE,        # highlights tiles under cursor (focus mine)
+	POINT,       # click anywhere on the map, no enemy required (teleport)
+	ENEMY,       # click an enemy to select it; respects max_targets (tether, slow)
+	SELF_AREA,   # shows a radius circle around the player (shockwave, burst)
+}
+
+@export var targeting_mode: TargetingMode = TargetingMode.NONE
+
+## How many enemies must be selected before the ability fires.
+## Only used when targeting_mode == ENEMY.
+@export var max_targets: int = 1
+
 ## Stats listed here are multiplied by orb_potency when accessed via get_stat().
-## Set this in each subclass _init() or via the Inspector.
-## Example: ["power", "mining_radius"]
 @export var main_stats: Array[String] = []
 
-var _cooldown_remaining: float = 0.0
-var _orb_potency:        float = 1.0  # written by Orb before activate()
+var _orb_potency:        float = 1.0
 
-## Call this instead of stats.power etc. inside activate().
-## Automatically applies orb_potency multiplier to declared main_stats.
 func get_stat(stat_name: String) -> float:
 	return stats.get_stat(stat_name, _orb_potency, main_stats)
 
 func activate(context: Dictionary) -> void:
 	_orb_potency = context.get("orb_potency", 1.0)
-
-func tick_cooldown(delta: float) -> void:
-	_cooldown_remaining = maxf(0.0, _cooldown_remaining - delta)
-
-func is_ready() -> bool:
-	return _cooldown_remaining <= 0.0
-
-func start_cooldown() -> void:
-	_cooldown_remaining = stats.cooldown
-
-func cooldown_fraction() -> float:
-	if stats.cooldown <= 0.0:
-		return 1.0
-	return 1.0 - (_cooldown_remaining / stats.cooldown)
-
-func reset_cooldown() -> void:
-	_cooldown_remaining = 0.0

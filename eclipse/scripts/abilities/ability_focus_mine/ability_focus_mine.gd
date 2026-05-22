@@ -6,7 +6,7 @@ var charging:       bool            = false
 var exploded:       bool            = false
 var targeted_tiles: Array[Vector2i] = []
 
-const CHARGE_TIME:       float = 1.5
+const CHARGE_TIME:       float = 0.75
 const GUARANTEED_CRITS:  int   = 3
 
 func _init() -> void:

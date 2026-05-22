@@ -2,6 +2,7 @@ extends Node
 
 var map_seed: int
 
+# ══════════════════════════════════════════════════════════ exports ══
 @export_group("Proc Gen Parameters")
 @export_subgroup("Map Sizing")
 @export_multiline var note: String = "WIDTH and HEIGHT must be divisible by 16 since CHUNK_SIZE is WIDTH/16"
@@ -32,6 +33,10 @@ var map_seed: int
 @export var COPPER_MIN_RADIUS: int   = 3
 @export var COPPER_MAX_RADIUS: int   = 5
 
+@export_subgroup("Relic Generation")
+@export var relic_count: Vector2i = Vector2i(12, 15)
+@export var AncientContainerScene: PackedScene = preload("res://scenes/ancient_container.tscn")
+
 @export_subgroup("Rock Variation")
 @export var ROCK_VARIATION_THRESHOLD: float = 0.01
 @export var ROCK_VARIATION_FREQUENCY: float = 0.025
@@ -39,57 +44,81 @@ var map_seed: int
 @export var BUFFER_TILES: int = 32
 
 @export_group("Rendering")
-@export var tile_atlas:      Texture2D
-@export var ore_atlas:       Texture2D
+@export var tile_atlas:   Texture2D
+@export var ore_atlas:    Texture2D
+@export var relic_atlas:  Texture2D
+@export var ground_atlas: Texture2D
 @export var ATLAS_TILE_SIZE: Vector2i = Vector2i(32, 48)
 var SPRITE_OFFSET_Y: float = 0
 
-@export_subgroup("Bitmask Atlas Rows")
-@export var atlas_row_stone:       int = 0
-@export var atlas_variants_stone:  int = 2
-@export var atlas_row_rock:        int = 2
-@export var atlas_variants_rock:   int = 2
-@export var atlas_row_crystal:     int = 4
+@export_subgroup("Wall Atlas Rows")
+@export var atlas_row_stone:        int = 0
+@export var atlas_variants_stone:   int = 2
+@export var atlas_row_rock:         int = 2
+@export var atlas_variants_rock:    int = 2
+@export var atlas_row_crystal:      int = 4
 @export var atlas_variants_crystal: int = 1
 
+@export_subgroup("Ore Atlas Rows")
 @export var ore_row_gold:        int = 0
 @export var ore_variants_gold:   int = 1
 @export var ore_row_copper:      int = 1
 @export var ore_variants_copper: int = 1
 
-# ── noise ─────────────────────────────────────────────────────────────────────
-var chamber_noise:        FastNoiseLite = FastNoiseLite.new()
-var path_noise:           FastNoiseLite = FastNoiseLite.new()
-var rock_variation_noise: FastNoiseLite = FastNoiseLite.new()
+@export_subgroup("Relic Atlas Rows")
+@export var relic_atlas_row: int = 0
+
+@export_subgroup("Ground Atlas Rows")
+@export var ground_atlas_row_floor: int = 0   # air tiles — no bitmask, always column 0
+@export var ground_atlas_row_dirt:  int = 1   # under wall tiles — bitmask against other dirt
+
+# ══════════════════════════════════════════════════════════ noise ══
+var chamber_noise:        FastNoiseLite   = FastNoiseLite.new()
+var path_noise:           FastNoiseLite   = FastNoiseLite.new()
+var rock_variation_noise: FastNoiseLite   = FastNoiseLite.new()
 var rock_variation_tiles: Array[Vector2i] = []
 
-# ── tile data ─────────────────────────────────────────────────────────────────
-var tile_types:   Dictionary = {}
-var ore_types:    Dictionary = {}
-var tile_health:  Dictionary = {}
-var tile_shapes:  Dictionary = {}
-var tile_variant: Dictionary = {}
-var ore_variant:  Dictionary = {}
+# ══════════════════════════════════════════════════════════ tile data ══
+var tile_types:   Dictionary = {}   # Vector2i → Util.tile
+var ore_types:    Dictionary = {}   # Vector2i → Util.tile
+var tile_health:  Dictionary = {}   # Vector2i → int
+var tile_shapes:  Dictionary = {}   # Vector2i → CollisionShape2D
+var tile_variant: Dictionary = {}   # Vector2i → int
+var ore_variant:  Dictionary = {}   # Vector2i → int
 
+# ══════════════════════════════════════════════════════════ ground data ══
+# Parallel to tile_types but for the ground layer — every in-bounds position
+# inside the play circle gets an entry. Value is the atlas row (floor or dirt).
+var ground_types: Dictionary = {}   # Vector2i → int (ground_atlas_row_*)
+
+# ══════════════════════════════════════════════════════════ relic data ══
+var relic_tiles:         Dictionary = {}
+var _relic_cover_counts: Dictionary = {}
+var _relic_containers:   Dictionary = {}
+
+# ══════════════════════════════════════════════════════════ rendering ══
 var static_body: StaticBody2D
 
-# ── multimesh ─────────────────────────────────────────────────────────────────
-var multimesh:           MultiMesh
-var multimesh_instance:  MultiMeshInstance2D
-var tile_instance_index: Dictionary = {}
+class OverlayLayer:
+	var multimesh:   MultiMesh           = null
+	var instance:    MultiMeshInstance2D = null
+	var index:       Dictionary          = {}
+	var occluders:   Dictionary          = {}
+	var atlas:       Texture2D           = null
+	var z_offset:    int                 = 0
+	var has_data:    Callable
+	var get_uv_rect: Callable
+	var get_uv:      Callable
 
-var ore_multimesh:          MultiMesh
-var ore_multimesh_instance: MultiMeshInstance2D
-var ore_instance_index:     Dictionary = {}
+var _wall_layer:   OverlayLayer
+var _ore_layer:    OverlayLayer
+var _relic_layer:  OverlayLayer
+var _ground_layer: OverlayLayer
 
 var gold_tiles_added:   int = 0
 var copper_tiles_added: int = 0
 
-# ── occluder ──────────────────────────────────────────────────────────────────
-var occluder_sprites:     Dictionary = {}
-var ore_occluder_sprites: Dictionary = {}
-
-# ─────────────────────────────────────────────────────────────────── ready ───
+# ══════════════════════════════════════════════ ready / gen ══
 func _ready() -> void:
 	SPRITE_OFFSET_Y = (ATLAS_TILE_SIZE.y - TILE_SIZE.y) / 2.0
 	map_seed        = randi()
@@ -98,78 +127,103 @@ func _ready() -> void:
 	_setup_noise(path_noise,           PERLIN_PATH_FREQUENCY)
 	_setup_noise(rock_variation_noise, ROCK_VARIATION_FREQUENCY)
 
-	var tilemap: Array[Array] = []
+	var grid: Array[Array] = []
 	for x in range(WIDTH):
-		tilemap.append([])
+		grid.append([])
 		for y in range(HEIGHT):
-			tilemap[x].append(Util.tile.STONE)
+			grid[x].append(Util.tile.STONE)
 
-	generate_rock_variation(tilemap)
-	generate_ores(tilemap)
-	tilemap = generate_faults(tilemap)
-	generate_chamber_noise(tilemap)
-	generate_path_noise(tilemap)
+	generate_rock_variation(grid)
+	generate_ores(grid)
+	grid = generate_faults(grid)
+	generate_chamber_noise(grid)
+	generate_path_noise(grid)
 	for i in range(6):
-		tilemap = cellular_step(tilemap)
-	place_starting_area(tilemap)
+		grid = cellular_step(grid)
+	place_starting_area(grid)
 
+	_place_relic_tiles_on_grid(grid)
+
+	var play_radius: float = (WIDTH - BUFFER_TILES) / 2.0
 	for x in range(WIDTH):
 		for y in range(HEIGHT):
 			var dist: float = sqrt((x - WIDTH / 2.0) ** 2 + (y - HEIGHT / 2.0) ** 2)
-			if dist >= (WIDTH - BUFFER_TILES) / 2.0:
+			if dist >= play_radius:
 				continue
-			var t: Util.tile = tilemap[x][y]
+			var pos: Vector2i = Vector2i(x, y)
+			var t: Util.tile  = grid[x][y]
 			if t == null or t == Util.tile.AIR:
+				ground_types[pos] = ground_atlas_row_floor
 				continue
-			var map_pos: Vector2i = Vector2i(x, y)
 			if _is_ore(t):
-				ore_types[map_pos]    = t
-				tile_types[map_pos]   = Util.tile.STONE
-				ore_variant[map_pos]  = randi() % _ore_variant_count(t)
+				ore_types[pos]   = t
+				tile_types[pos]  = Util.tile.STONE
+				ore_variant[pos] = randi() % _ore_variant_count(t)
 				if t == Util.tile.COPPER: copper_tiles_added += 1
 				elif t == Util.tile.GOLD: gold_tiles_added   += 1
 			else:
-				tile_types[map_pos] = t
-			tile_health[map_pos]  = get_tile_max_health(t)
-			tile_variant[map_pos] = randi() % _base_variant_count(t)
+				tile_types[pos] = t
+			tile_health[pos]  = get_tile_max_health(t)
+			tile_variant[pos] = randi() % _base_variant_count(t)
+			ground_types[pos] = ground_atlas_row_dirt
 
-	print("Generated %d gold tiles"   % gold_tiles_added)
-	print("Generated %d copper tiles" % copper_tiles_added)
+	for pos in relic_tiles.keys():
+		if not tile_types.has(pos):
+			relic_tiles.erase(pos)
+			_relic_cover_counts.erase(pos)
+
+	print("Generated %d gold tiles, %d copper tiles" % [gold_tiles_added, copper_tiles_added])
 
 	_setup_rendering()
+	_spawn_relic_containers.call_deferred()
 	_initial_df_bake()
 	_build_collision()
-	_setup_occluder()
+	_setup_occluders()
 
 func _setup_noise(noise: FastNoiseLite, frequency: float) -> void:
 	noise.noise_type = FastNoiseLite.TYPE_PERLIN
 	noise.seed       = map_seed
 	noise.frequency  = frequency
 
-# ──────────────────────────────────────────────────────────────── bitmask ───
-func _get_bitmask(map_pos: Vector2i) -> int:
+# ══════════════════════════════════════════════════════════ bitmask ══
+
+# General bitmask: fires the supplied predicate against the 4 NESW neighbours.
+# Bit layout: N=1, E=2, S=4, W=8  (matches the original wall bitmask).
+func _bitmask_for(pos: Vector2i, predicate: Callable) -> int:
 	var mask: int = 0
-	if not is_air(map_pos + Vector2i( 0, -1)): mask |= 1
-	if not is_air(map_pos + Vector2i( 1,  0)): mask |= 2
-	if not is_air(map_pos + Vector2i( 0,  1)): mask |= 4
-	if not is_air(map_pos + Vector2i(-1,  0)): mask |= 8
+	if predicate.call(pos + Vector2i( 0, -1)): mask |= 1
+	if predicate.call(pos + Vector2i( 1,  0)): mask |= 2
+	if predicate.call(pos + Vector2i( 0,  1)): mask |= 4
+	if predicate.call(pos + Vector2i(-1,  0)): mask |= 8
 	return mask
 
-func _base_atlas_uv(map_pos: Vector2i) -> Rect2:
-	if not tile_types.has(map_pos) or not tile_variant.has(map_pos):
-		return Rect2()
-	var t:        Util.tile = tile_types[map_pos]
-	var variant:  int       = tile_variant[map_pos]
-	var base_row: int       = _base_row_for(t) + variant
-	var bitmask:  int       = _get_bitmask(map_pos)
-	return _uv_for(bitmask, base_row, tile_atlas)
+# Wall bitmask: neighbour is solid (not air)
+func _get_bitmask(pos: Vector2i) -> int:
+	return _bitmask_for(pos, func(nb: Vector2i) -> bool: return not is_air(nb))
 
-func _ore_atlas_uv(map_pos: Vector2i) -> Rect2:
-	var t:        Util.tile = ore_types[map_pos]
-	var variant:  int       = ore_variant[map_pos]
-	var base_row: int       = _ore_row_for(t) + variant
-	var bitmask:  int       = _get_bitmask(map_pos)
-	return _uv_for(bitmask, base_row, ore_atlas)
+# Ground bitmask: neighbour is dirt (has a wall tile above it on the ground layer)
+func _get_ground_bitmask(pos: Vector2i) -> int:
+	return _bitmask_for(pos, func(nb: Vector2i) -> bool:
+		return ground_types.get(nb, ground_atlas_row_floor) == ground_atlas_row_dirt)
+
+func _wall_atlas_uv(pos: Vector2i) -> Rect2:
+	if not tile_types.has(pos) or not tile_variant.has(pos):
+		return Rect2()
+	var base_row: int = _wall_row_for(tile_types[pos]) + tile_variant[pos]
+	return _uv_for(_get_bitmask(pos), base_row, tile_atlas)
+
+func _ore_atlas_uv(pos: Vector2i) -> Rect2:
+	var base_row: int = _ore_row_for(ore_types[pos]) + ore_variant[pos]
+	return _uv_for(_get_bitmask(pos), base_row, ore_atlas)
+
+func _relic_atlas_uv(pos: Vector2i) -> Rect2:
+	return _uv_for(_get_bitmask(pos), relic_atlas_row, relic_atlas)
+
+func _ground_atlas_uv(pos: Vector2i) -> Rect2:
+	var is_dirt: bool = ground_types.get(pos, 0) == ground_atlas_row_dirt
+	var row: int = ground_atlas_row_dirt if is_dirt else ground_atlas_row_floor
+	var col: int = _get_ground_bitmask(pos) if is_dirt else 0
+	return _uv_for(col, row, ground_atlas)
 
 func _uv_for(col: int, row: int, atlas: Texture2D) -> Rect2:
 	var atlas_px:  Vector2 = Vector2(atlas.get_size()) if atlas else Vector2(512.0, 192.0)
@@ -177,7 +231,7 @@ func _uv_for(col: int, row: int, atlas: Texture2D) -> Rect2:
 	var uv_size:   Vector2 = Vector2(ATLAS_TILE_SIZE) / atlas_px
 	return Rect2(uv_origin, uv_size)
 
-func _base_row_for(t: Util.tile) -> int:
+func _wall_row_for(t: Util.tile) -> int:
 	match t:
 		Util.tile.STONE:   return atlas_row_stone
 		Util.tile.ROCK:    return atlas_row_rock
@@ -206,12 +260,59 @@ func _ore_variant_count(t: Util.tile) -> int:
 func _is_ore(t: Util.tile) -> bool:
 	return t == Util.tile.GOLD or t == Util.tile.COPPER
 
-# ─────────────────────────────────────────────────────────────── rendering ───
+# ══════════════════════════════════════════════════════════ rendering ══
 func _make_quad_mesh() -> QuadMesh:
-	var quad: QuadMesh = QuadMesh.new()
+	var quad := QuadMesh.new()
 	@warning_ignore("integer_division")
 	quad.size = Vector2(TILE_SIZE) + Vector2(0, TILE_SIZE.y / 2)
 	return quad
+
+func _make_multimesh_instance(mm: MultiMesh, atlas: Texture2D, z: int) -> MultiMeshInstance2D:
+	var inst          := MultiMeshInstance2D.new()
+	inst.scale         = get_parent().scale
+	inst.multimesh     = mm
+	inst.texture       = atlas
+	inst.z_index       = z
+	inst.z_as_relative = false
+	var mat           := ShaderMaterial.new()
+	mat.shader         = preload("res://scripts/MultiMesh.gdshader")
+	mat.set_shader_parameter("atlas",       atlas)
+	mat.set_shader_parameter("sprite_size", Vector2(ATLAS_TILE_SIZE))
+	inst.material      = mat
+	return inst
+
+func _make_multimesh(count: int) -> MultiMesh:
+	var mm             := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_2D
+	mm.use_colors       = true
+	mm.use_custom_data  = true
+	mm.mesh             = _make_quad_mesh()
+	mm.instance_count   = count
+	return mm
+
+func _write_layer_instance(layer: OverlayLayer, idx: int, pos: Vector2i) -> void:
+	var t := Transform2D.IDENTITY
+	t.origin = _world_origin(pos)
+	layer.multimesh.set_instance_transform_2d(idx, t)
+	layer.multimesh.set_instance_color(idx, Color(1, 1, 1, 0.0 if is_air(pos + Vector2i(0, 1)) else 1.0))
+	var uv: Rect2 = layer.get_uv.call(pos)
+	layer.multimesh.set_instance_custom_data(idx, Color(uv.position.x, uv.position.y, uv.size.x, uv.size.y))
+
+# Ground layer needs the +16 y offset for 32×48 tiles and is always fully opaque.
+func _write_ground_instance(idx: int, pos: Vector2i) -> void:
+	var t := Transform2D.IDENTITY
+	t.origin = _world_origin(pos) + Vector2(0, 16)
+	_ground_layer.multimesh.set_instance_transform_2d(idx, t)
+	_ground_layer.multimesh.set_instance_color(idx, Color.WHITE)
+	var uv: Rect2 = _ground_atlas_uv(pos)
+	_ground_layer.multimesh.set_instance_custom_data(idx, Color(uv.position.x, uv.position.y, uv.size.x, uv.size.y))
+
+func _hide_layer_instance(layer: OverlayLayer, pos: Vector2i) -> void:
+	if not layer.index.has(pos) or layer.multimesh == null:
+		return
+	var t := Transform2D.IDENTITY
+	t.origin = Vector2(-999999, -999999)
+	layer.multimesh.set_instance_transform_2d(layer.index[pos], t)
 
 func _setup_rendering() -> void:
 	static_body                 = StaticBody2D.new()
@@ -220,147 +321,164 @@ func _setup_rendering() -> void:
 	static_body.scale           = get_parent().scale
 	add_child(static_body)
 
-	multimesh                  = MultiMesh.new()
-	multimesh.transform_format = MultiMesh.TRANSFORM_2D
-	multimesh.use_colors       = true
-	multimesh.use_custom_data  = true
-	multimesh.mesh             = _make_quad_mesh()
-	multimesh.instance_count   = tile_types.size()
+	# ── ground layer ──────────────────────────────────────────────────
+	_ground_layer          = OverlayLayer.new()
+	_ground_layer.atlas    = ground_atlas
+	_ground_layer.z_offset = -1
+	_ground_layer.has_data = func(pos: Vector2i) -> bool: return ground_types.has(pos)
+	_ground_layer.get_uv   = func(pos: Vector2i) -> Rect2: return _ground_atlas_uv(pos)
+	_ground_layer.get_uv_rect = func(pos: Vector2i) -> Rect2:
+		var row: int = ground_types.get(pos, ground_atlas_row_floor)
+		var col: int = _get_ground_bitmask(pos) if row == ground_atlas_row_dirt else 0
+		return Rect2(Vector2(col * ATLAS_TILE_SIZE.x, row * ATLAS_TILE_SIZE.y), Vector2(ATLAS_TILE_SIZE))
 
-	multimesh_instance               = MultiMeshInstance2D.new()
-	multimesh_instance.scale         = get_parent().scale
-	multimesh_instance.multimesh     = multimesh
-	multimesh_instance.texture       = tile_atlas
-	multimesh_instance.z_index       = -1
-	multimesh_instance.z_as_relative = false
+	if ground_atlas != null and not ground_types.is_empty():
+		_ground_layer.multimesh = _make_multimesh(ground_types.size())
+		_ground_layer.instance  = _make_multimesh_instance(_ground_layer.multimesh, ground_atlas, -4096)
+		_ground_layer.instance.material.set_shader_parameter("darkness_power", 0.0)
+		add_child(_ground_layer.instance)
 
-	var mat := ShaderMaterial.new()
-	mat.shader = preload("res://scripts/MultiMesh.gdshader")
-	mat.set_shader_parameter("atlas",       tile_atlas)
-	mat.set_shader_parameter("sprite_size", Vector2(ATLAS_TILE_SIZE))
-	multimesh_instance.material = mat
-	add_child(multimesh_instance)
+		var sorted_ground: Array = ground_types.keys()
+		sorted_ground.sort_custom(func(a: Vector2i, b: Vector2i): return a.y < b.y)
+		for i in sorted_ground.size():
+			_ground_layer.index[sorted_ground[i]] = i
+			_write_ground_instance(i, sorted_ground[i])
+	
+	var floor_count: int = 0
+	var dirt_count:  int = 0
+	for pos in ground_types:
+		if ground_types[pos] == ground_atlas_row_floor: floor_count += 1
+		elif ground_types[pos] == ground_atlas_row_dirt: dirt_count += 1
+	print("ground_types: %d floor, %d dirt" % [floor_count, dirt_count])
 
-	ore_multimesh                  = MultiMesh.new()
-	ore_multimesh.transform_format = MultiMesh.TRANSFORM_2D
-	ore_multimesh.use_colors       = true
-	ore_multimesh.use_custom_data  = true
-	ore_multimesh.mesh             = _make_quad_mesh()
-	ore_multimesh.instance_count   = ore_types.size()
+	# sample one dirt tile and print its UV
+	for pos in ground_types:
+		if ground_types[pos] == ground_atlas_row_dirt:
+			var uv := _ground_atlas_uv(pos)
+			print("sample dirt pos=%s uv=%s" % [pos, uv])
+			break
 
-	ore_multimesh_instance               = MultiMeshInstance2D.new()
-	ore_multimesh_instance.scale         = get_parent().scale
-	ore_multimesh_instance.multimesh     = ore_multimesh
-	ore_multimesh_instance.texture       = ore_atlas
-	ore_multimesh_instance.z_index       = -1
-	ore_multimesh_instance.z_as_relative = false
+	# ── walls ─────────────────────────────────────────────────────────
+	_wall_layer          = OverlayLayer.new()
+	_wall_layer.atlas    = tile_atlas
+	_wall_layer.z_offset = 0
+	_wall_layer.has_data = func(pos: Vector2i) -> bool: return tile_types.has(pos)
+	_wall_layer.get_uv   = func(pos: Vector2i) -> Rect2: return _wall_atlas_uv(pos)
+	_wall_layer.get_uv_rect = func(pos: Vector2i) -> Rect2:
+		if not tile_types.has(pos) or not tile_variant.has(pos): return Rect2()
+		var row: int = _wall_row_for(tile_types[pos]) + tile_variant[pos]
+		return Rect2(Vector2(_get_bitmask(pos) * ATLAS_TILE_SIZE.x, row * ATLAS_TILE_SIZE.y), Vector2(ATLAS_TILE_SIZE))
 
-	var ore_mat := ShaderMaterial.new()
-	ore_mat.shader = preload("res://scripts/MultiMesh.gdshader")
-	ore_mat.set_shader_parameter("atlas",       ore_atlas)
-	ore_mat.set_shader_parameter("sprite_size", Vector2(ATLAS_TILE_SIZE))
-	ore_multimesh_instance.material = ore_mat
-	add_child(ore_multimesh_instance)
+	_wall_layer.multimesh = _make_multimesh(tile_types.size())
+	_wall_layer.instance  = _make_multimesh_instance(_wall_layer.multimesh, tile_atlas, -1)
+	add_child(_wall_layer.instance)
 
-	var sorted_tiles: Array = tile_types.keys()
-	sorted_tiles.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y < b.y)
-	var idx: int = 0
-	for map_pos: Vector2i in sorted_tiles:
-		tile_instance_index[map_pos] = idx
-		_write_base_instance(idx, map_pos)
-		idx += 1
+	var sorted_walls: Array = tile_types.keys()
+	sorted_walls.sort_custom(func(a: Vector2i, b: Vector2i): return a.y < b.y)
+	for i in sorted_walls.size():
+		_wall_layer.index[sorted_walls[i]] = i
+		_write_layer_instance(_wall_layer, i, sorted_walls[i])
+
+	# ── ore overlay ───────────────────────────────────────────────────
+	_ore_layer          = OverlayLayer.new()
+	_ore_layer.atlas    = ore_atlas
+	_ore_layer.z_offset = 1
+	_ore_layer.has_data = func(pos: Vector2i) -> bool: return ore_types.has(pos)
+	_ore_layer.get_uv   = func(pos: Vector2i) -> Rect2: return _ore_atlas_uv(pos)
+	_ore_layer.get_uv_rect = func(pos: Vector2i) -> Rect2:
+		if not ore_types.has(pos) or not ore_variant.has(pos): return Rect2()
+		var row: int = _ore_row_for(ore_types[pos]) + ore_variant[pos]
+		return Rect2(Vector2(_get_bitmask(pos) * ATLAS_TILE_SIZE.x, row * ATLAS_TILE_SIZE.y), Vector2(ATLAS_TILE_SIZE))
+
+	_ore_layer.multimesh = _make_multimesh(ore_types.size())
+	_ore_layer.instance  = _make_multimesh_instance(_ore_layer.multimesh, ore_atlas, -1)
+	add_child(_ore_layer.instance)
 
 	var sorted_ores: Array = ore_types.keys()
-	sorted_ores.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y < b.y)
-	idx = 0
-	for map_pos: Vector2i in sorted_ores:
-		ore_instance_index[map_pos] = idx
-		_write_ore_instance(idx, map_pos)
-		idx += 1
+	sorted_ores.sort_custom(func(a: Vector2i, b: Vector2i): return a.y < b.y)
+	for i in sorted_ores.size():
+		_ore_layer.index[sorted_ores[i]] = i
+		_write_layer_instance(_ore_layer, i, sorted_ores[i])
 
-func _world_origin(map_pos: Vector2i) -> Vector2:
+	# ── relic overlay ─────────────────────────────────────────────────
+	_relic_layer          = OverlayLayer.new()
+	_relic_layer.atlas    = relic_atlas
+	_relic_layer.z_offset = 2
+	_relic_layer.has_data = func(pos: Vector2i) -> bool: return relic_tiles.has(pos)
+	_relic_layer.get_uv   = func(pos: Vector2i) -> Rect2: return _relic_atlas_uv(pos)
+	_relic_layer.get_uv_rect = func(pos: Vector2i) -> Rect2:
+		if not relic_tiles.has(pos): return Rect2()
+		return Rect2(Vector2(_get_bitmask(pos) * ATLAS_TILE_SIZE.x, relic_atlas_row * ATLAS_TILE_SIZE.y), Vector2(ATLAS_TILE_SIZE))
+
+	if relic_atlas != null and not relic_tiles.is_empty():
+		_relic_layer.multimesh = _make_multimesh(relic_tiles.size())
+		_relic_layer.instance  = _make_multimesh_instance(_relic_layer.multimesh, relic_atlas, -1)
+		add_child(_relic_layer.instance)
+
+		var sorted_relics: Array = relic_tiles.keys()
+		sorted_relics.sort_custom(func(a: Vector2i, b: Vector2i): return a.y < b.y)
+		for i in sorted_relics.size():
+			_relic_layer.index[sorted_relics[i]] = i
+			_write_layer_instance(_relic_layer, i, sorted_relics[i])
+
+func _world_origin(pos: Vector2i) -> Vector2:
 	@warning_ignore("integer_division")
-	var local_pos: Vector2 = Vector2((map_pos - Vector2i(WIDTH / 2, HEIGHT / 2)) * TILE_SIZE) + Vector2(TILE_SIZE) / 2.0
-	local_pos.y -= SPRITE_OFFSET_Y
-	return local_pos
+	var local: Vector2 = Vector2((pos - Vector2i(WIDTH / 2, HEIGHT / 2)) * TILE_SIZE) + Vector2(TILE_SIZE) / 2.0
+	local.y -= SPRITE_OFFSET_Y
+	return local
 
-func _write_base_instance(idx: int, map_pos: Vector2i) -> void:
-	var t: Transform2D = Transform2D.IDENTITY
-	t.origin = _world_origin(map_pos)
-	multimesh.set_instance_transform_2d(idx, t)
-	var has_side: bool = is_air(map_pos + Vector2i(0, 1))
-	multimesh.set_instance_color(idx, Color(1.0, 1.0, 1.0, 0.0 if has_side else 1.0))
-	var uv: Rect2 = _base_atlas_uv(map_pos)
-	multimesh.set_instance_custom_data(idx, Color(uv.position.x, uv.position.y, uv.size.x, uv.size.y))
+func _write_wall_instance(idx: int, pos: Vector2i)  -> void: _write_layer_instance(_wall_layer,  idx, pos)
+func _write_ore_instance(idx: int, pos: Vector2i)   -> void: _write_layer_instance(_ore_layer,   idx, pos)
+func _write_relic_instance(idx: int, pos: Vector2i) -> void: _write_layer_instance(_relic_layer, idx, pos)
 
-func _write_ore_instance(idx: int, map_pos: Vector2i) -> void:
-	var t: Transform2D = Transform2D.IDENTITY
-	t.origin = _world_origin(map_pos)
-	ore_multimesh.set_instance_transform_2d(idx, t)
-	var has_side: bool = is_air(map_pos + Vector2i(0, 1))
-	ore_multimesh.set_instance_color(idx, Color(1.0, 1.0, 1.0, 0.0 if has_side else 1.0))
-	var uv: Rect2 = _ore_atlas_uv(map_pos)
-	ore_multimesh.set_instance_custom_data(idx, Color(uv.position.x, uv.position.y, uv.size.x, uv.size.y))
+func _hide_wall_instance(pos: Vector2i)  -> void: _hide_layer_instance(_wall_layer,  pos)
+func _hide_ore_instance(pos: Vector2i)   -> void: _hide_layer_instance(_ore_layer,   pos)
+func _hide_relic_instance(pos: Vector2i) -> void: _hide_layer_instance(_relic_layer, pos)
 
-func _hide_instance(map_pos: Vector2i) -> void:
-	if not tile_instance_index.has(map_pos):
-		return
-	var t := Transform2D.IDENTITY
-	t.origin = Vector2(-999999, -999999)
-	multimesh.set_instance_transform_2d(tile_instance_index[map_pos], t)
-
-func _hide_ore_instance(map_pos: Vector2i) -> void:
-	if not ore_instance_index.has(map_pos):
-		return
-	var t := Transform2D.IDENTITY
-	t.origin = Vector2(-999999, -999999)
-	ore_multimesh.set_instance_transform_2d(ore_instance_index[map_pos], t)
-
-func _redraw_neighbors(map_pos: Vector2i) -> void:
-	for neighbor: Vector2i in [
-		map_pos + Vector2i( 0, -1),
-		map_pos + Vector2i( 1,  0),
-		map_pos + Vector2i( 0,  1),
-		map_pos + Vector2i(-1,  0),
-	]:
-		if not tile_types.has(neighbor):
+func _redraw_neighbors(pos: Vector2i) -> void:
+	for nb: Vector2i in [pos + Vector2i(0,-1), pos + Vector2i(1,0), pos + Vector2i(0,1), pos + Vector2i(-1,0)]:
+		# Ground neighbours always need a redraw since removing a dirt tile changes their bitmask
+		if _ground_layer.index.has(nb):
+			_write_ground_instance(_ground_layer.index[nb], nb)
+		if not tile_types.has(nb):
 			continue
-		if tile_instance_index.has(neighbor) and not occluder_sprites.has(neighbor):
-			_write_base_instance(tile_instance_index[neighbor], neighbor)
-		if ore_instance_index.has(neighbor) and not ore_occluder_sprites.has(neighbor):
-			_write_ore_instance(ore_instance_index[neighbor], neighbor)
-		if occluder_sprites.has(neighbor):
-			occluder_sprites[neighbor].region_rect = _get_occluder_rect(neighbor)
-		if ore_occluder_sprites.has(neighbor):
-			ore_occluder_sprites[neighbor].region_rect = _get_ore_occluder_rect(neighbor)
+		if _wall_layer.index.has(nb) and not _wall_layer.occluders.has(nb):
+			_write_layer_instance(_wall_layer, _wall_layer.index[nb], nb)
+		if _ore_layer.index.has(nb) and not _ore_layer.occluders.has(nb):
+			_write_layer_instance(_ore_layer, _ore_layer.index[nb], nb)
+		if _relic_layer.index.has(nb) and not _relic_layer.occluders.has(nb):
+			_write_layer_instance(_relic_layer, _relic_layer.index[nb], nb)
+		if _wall_layer.occluders.has(nb):
+			_wall_layer.occluders[nb].region_rect = _wall_layer.get_uv_rect.call(nb)
+		if _ore_layer.occluders.has(nb):
+			_ore_layer.occluders[nb].region_rect = _ore_layer.get_uv_rect.call(nb)
+		if _relic_layer.occluders.has(nb):
+			_relic_layer.occluders[nb].region_rect = _relic_layer.get_uv_rect.call(nb)
 
 func get_tile_uv(t: Util.tile) -> Rect2:
-	return _uv_for(0, _base_row_for(t), tile_atlas)
+	return _uv_for(0, _wall_row_for(t), tile_atlas)
 
-func set_tile_color(map_pos: Vector2i, color: Color) -> void:
-	if tile_instance_index.has(map_pos):
-		multimesh.set_instance_color(tile_instance_index[map_pos], color)
-	if ore_instance_index.has(map_pos):
-		ore_multimesh.set_instance_color(ore_instance_index[map_pos], color)
-	if occluder_sprites.has(map_pos):
-		var sprite_color: Color = Color(
-			(color.r - 1.0) * 0.38 + 1.0,
-			(color.g - 1.0) * 0.38 + 1.0,
-			(color.b - 1.0) * 0.38 + 1.0
-		)
-		occluder_sprites[map_pos].modulate = sprite_color
-	if ore_occluder_sprites.has(map_pos):
-		var sprite_color: Color = Color(
-			(color.r - 1.0) * 0.38 + 1.0,
-			(color.g - 1.0) * 0.38 + 1.0,
-			(color.b - 1.0) * 0.38 + 1.0
-		)
-		ore_occluder_sprites[map_pos].modulate = sprite_color
+func set_tile_color(pos: Vector2i, color: Color) -> void:
+	if _wall_layer.index.has(pos):
+		_wall_layer.multimesh.set_instance_color(_wall_layer.index[pos], color)
+	if _ore_layer.index.has(pos):
+		_ore_layer.multimesh.set_instance_color(_ore_layer.index[pos], color)
+	var side_color := Color(
+		(color.r - 1.0) * 0.38 + 1.0,
+		(color.g - 1.0) * 0.38 + 1.0,
+		(color.b - 1.0) * 0.38 + 1.0
+	)
+	if _wall_layer.occluders.has(pos):
+		_wall_layer.occluders[pos].modulate = side_color
+	if _ore_layer.occluders.has(pos):
+		_ore_layer.occluders[pos].modulate = side_color
+	if _relic_layer.occluders.has(pos):
+		_relic_layer.occluders[pos].modulate = side_color
 
-func get_tile_color(map_pos: Vector2i) -> Color:
-	if not tile_instance_index.has(map_pos):
+func get_tile_color(pos: Vector2i) -> Color:
+	if not _wall_layer.index.has(pos):
 		return Color.WHITE
-	return multimesh.get_instance_color(tile_instance_index[map_pos])
+	return _wall_layer.multimesh.get_instance_color(_wall_layer.index[pos])
 
 func get_z_for(world_pos: Vector2) -> int:
 	var tile_row:    int   = world_to_map(world_pos).y
@@ -368,92 +486,77 @@ func get_z_for(world_pos: Vector2) -> int:
 	var within_tile: int   = int((world_pos.y - tile_top) / float(TILE_SIZE.y) * 8.0)
 	return clampi(tile_row * 10 + clampi(within_tile, 0, 9), -4096, 4096)
 
-# ─────────────────────────────────────────────────────────────── occluder ───
-func _get_occluder_rect(map_pos: Vector2i) -> Rect2:
-	if not tile_types.has(map_pos) or not tile_variant.has(map_pos):
-		return Rect2()
-	var t:        Util.tile = tile_types[map_pos]
-	var variant:  int       = tile_variant[map_pos]
-	var base_row: int       = _base_row_for(t) + variant
-	var bitmask:  int       = _get_bitmask(map_pos)
-	return Rect2(Vector2(bitmask * ATLAS_TILE_SIZE.x, base_row * ATLAS_TILE_SIZE.y), Vector2(ATLAS_TILE_SIZE))
+# ══════════════════════════════════════════════════════════ occluders ══
+func _setup_occluders() -> void:
+	for pos: Vector2i in tile_types.keys():
+		if is_air(pos + Vector2i(0, -1)):
+			_add_occluder_sprite(pos)
 
-func _get_ore_occluder_rect(map_pos: Vector2i) -> Rect2:
-	if not ore_types.has(map_pos) or not ore_variant.has(map_pos):
-		return Rect2()
-	var t:        Util.tile = ore_types[map_pos]
-	var variant:  int       = ore_variant[map_pos]
-	var base_row: int       = _ore_row_for(t) + variant
-	var bitmask:  int       = _get_bitmask(map_pos)
-	return Rect2(Vector2(bitmask * ATLAS_TILE_SIZE.x, base_row * ATLAS_TILE_SIZE.y), Vector2(ATLAS_TILE_SIZE))
-
-func _setup_occluder() -> void:
-	for map_pos: Vector2i in tile_types.keys():
-		if is_air(map_pos + Vector2i(0, -1)):
-			_add_occluder_sprite(map_pos)
-
-func _add_occluder_sprite(map_pos: Vector2i) -> void:
-	if occluder_sprites.has(map_pos):
+func _add_occluder_sprite(pos: Vector2i) -> void:
+	if _wall_layer.occluders.has(pos):
 		return
-	_hide_instance(map_pos)
-	_hide_ore_instance(map_pos)
+	_hide_wall_instance(pos)
+	_hide_ore_instance(pos)
+	_hide_relic_instance(pos)
 
-	var world_center: Vector2 = map_to_world(map_pos)
-	var sprite             := Sprite2D.new()
-	sprite.texture          = tile_atlas
-	sprite.region_enabled   = true
-	sprite.region_rect      = _get_occluder_rect(map_pos)
-	sprite.z_as_relative    = false
-	sprite.z_index          = map_pos.y * 10
-	sprite.position         = Vector2(world_center.x, world_center.y - SPRITE_OFFSET_Y - ATLAS_TILE_SIZE.y / 2.0)
-	sprite.offset           = Vector2(0, ATLAS_TILE_SIZE.y / 2.0)
-	occluder_sprites[map_pos] = sprite
-	get_parent().add_child.call_deferred(sprite)
+	var world_center:  Vector2 = map_to_world(pos)
+	var sprite_pos:    Vector2 = Vector2(world_center.x, world_center.y - SPRITE_OFFSET_Y - ATLAS_TILE_SIZE.y / 2.0)
+	var sprite_offset: Vector2 = Vector2(0, ATLAS_TILE_SIZE.y / 2.0)
 
-	if ore_types.has(map_pos):
-		var ore_sprite            := Sprite2D.new()
-		ore_sprite.texture         = ore_atlas
-		ore_sprite.region_enabled  = true
-		ore_sprite.region_rect     = _get_ore_occluder_rect(map_pos)
-		ore_sprite.z_as_relative   = false
-		ore_sprite.z_index         = map_pos.y * 10 + 1
-		ore_sprite.position        = sprite.position
-		ore_sprite.offset          = sprite.offset
-		ore_occluder_sprites[map_pos] = ore_sprite
+	var _make_sprite: Callable = func(atlas: Texture2D, rect: Rect2, z_off: int) -> Sprite2D:
+		var s           := Sprite2D.new()
+		s.texture        = atlas
+		s.region_enabled = true
+		s.region_rect    = rect
+		s.z_as_relative  = false
+		s.z_index        = pos.y * 10 + z_off
+		s.position       = sprite_pos
+		s.offset         = sprite_offset
+		return s
+
+	var wall_sprite: Sprite2D = _make_sprite.call(tile_atlas, _wall_layer.get_uv_rect.call(pos), 0)
+	_wall_layer.occluders[pos] = wall_sprite
+	get_parent().add_child.call_deferred(wall_sprite)
+
+	if ore_types.has(pos):
+		var ore_sprite: Sprite2D = _make_sprite.call(ore_atlas, _ore_layer.get_uv_rect.call(pos), 1)
+		_ore_layer.occluders[pos] = ore_sprite
 		get_parent().add_child.call_deferred(ore_sprite)
 
-func _remove_occluder_sprite(map_pos: Vector2i) -> void:
-	if not occluder_sprites.has(map_pos):
+	if relic_tiles.has(pos) and relic_atlas != null:
+		var relic_sprite: Sprite2D = _make_sprite.call(relic_atlas, _relic_layer.get_uv_rect.call(pos), 2)
+		_relic_layer.occluders[pos] = relic_sprite
+		get_parent().add_child.call_deferred(relic_sprite)
+
+func _remove_occluder_sprite(pos: Vector2i) -> void:
+	if not _wall_layer.occluders.has(pos):
 		return
-	occluder_sprites[map_pos].queue_free()
-	occluder_sprites.erase(map_pos)
-	if ore_occluder_sprites.has(map_pos):
-		ore_occluder_sprites[map_pos].queue_free()
-		ore_occluder_sprites.erase(map_pos)
-	if tile_types.has(map_pos):
-		_write_base_instance(tile_instance_index[map_pos], map_pos)
-	if ore_types.has(map_pos):
-		_write_ore_instance(ore_instance_index[map_pos], map_pos)
+	for layer: OverlayLayer in [_wall_layer, _ore_layer, _relic_layer]:
+		if layer.occluders.has(pos):
+			layer.occluders[pos].queue_free()
+			layer.occluders.erase(pos)
+		if layer.has_data.call(pos) and layer.index.has(pos):
+			_write_layer_instance(layer, layer.index[pos], pos)
 
 func update_occluder_depths(_player: Node2D) -> void:
 	pass
 
-# ─────────────────────────────────────────────────────────────── collision ───
+# ══════════════════════════════════════════════════════════ collision ══
 func _build_collision() -> void:
-	for map_pos: Vector2i in tile_types.keys():
-		_add_collision_shape(map_pos)
+	for pos: Vector2i in tile_types.keys():
+		_add_collision_shape(pos)
 
-func _add_collision_shape(map_pos: Vector2i) -> void:
-	var shape: RectangleShape2D = RectangleShape2D.new()
-	shape.size                  = Vector2(TILE_SIZE)
-	var col: CollisionShape2D   = CollisionShape2D.new()
-	col.shape                   = shape
+func _add_collision_shape(pos: Vector2i) -> void:
+	var shape     := RectangleShape2D.new()
+	shape.size     = Vector2(TILE_SIZE)
+	var col       := CollisionShape2D.new()
+	col.shape      = shape
 	@warning_ignore("integer_division")
-	col.position = Vector2((map_pos - Vector2i(WIDTH / 2, HEIGHT / 2)) * TILE_SIZE) + Vector2(TILE_SIZE) / 2.0
+	col.position   = Vector2((pos - Vector2i(WIDTH / 2, HEIGHT / 2)) * TILE_SIZE) + Vector2(TILE_SIZE) / 2.0
 	static_body.add_child(col)
-	tile_shapes[map_pos] = col
+	tile_shapes[pos] = col
 
-# ──────────────────────────────────────────────────────────────── mining ────
+# ══════════════════════════════════════════════════════════ mining ══
 func get_tile_max_health(t: Util.tile) -> int:
 	match t:
 		Util.tile.STONE:   return 2
@@ -464,168 +567,196 @@ func get_tile_max_health(t: Util.tile) -> int:
 		_:                 return 3
 
 func world_to_map(world_pos: Vector2) -> Vector2i:
-	var local_pos: Vector2 = world_pos / get_parent().scale
+	var local: Vector2 = world_pos / get_parent().scale
 	@warning_ignore("integer_division")
-	return Vector2i((local_pos / Vector2(TILE_SIZE)).floor()) + Vector2i(WIDTH / 2, HEIGHT / 2)
+	return Vector2i((local / Vector2(TILE_SIZE)).floor()) + Vector2i(WIDTH / 2, HEIGHT / 2)
 
-func map_to_world(map_pos: Vector2i) -> Vector2:
+func map_to_world(pos: Vector2i) -> Vector2:
 	@warning_ignore("integer_division")
-	var local_pos: Vector2 = Vector2((map_pos - Vector2i(WIDTH / 2, HEIGHT / 2)) * TILE_SIZE) + Vector2(TILE_SIZE) / 2.0
-	return local_pos * get_parent().scale
+	var local: Vector2 = Vector2((pos - Vector2i(WIDTH / 2, HEIGHT / 2)) * TILE_SIZE) + Vector2(TILE_SIZE) / 2.0
+	return local * get_parent().scale
 
-func tile_exists(map_pos: Vector2i) -> bool:
-	return tile_types.has(map_pos)
+func tile_exists(pos: Vector2i) -> bool:
+	return tile_types.has(pos)
 
-func is_air(map_pos: Vector2i) -> bool:
-	return not tile_types.has(map_pos)
+func is_air(pos: Vector2i) -> bool:
+	return not tile_types.has(pos)
 
-func _drop_ore(map_pos: Vector2i) -> void:
-	if not ore_types.has(map_pos):
+func _drop_ore(pos: Vector2i) -> void:
+	if not ore_types.has(pos):
 		return
-	ItemManager.spawn_dropped_item(map_to_world(map_pos), ore_types[map_pos])
+	var metal: MetalData = ItemManager._metal_map.get(ore_types[pos], null)
+	if metal != null:
+		ItemManager.spawn_metal_drop(map_to_world(pos), metal)
 
-# Standard single-tile damage with particles — used by player mining tool etc.
-func damage_tile(map_pos: Vector2i, damage: int = 1) -> void:
-	if not tile_health.has(map_pos):
+func damage_tile(pos: Vector2i, damage: int = 1) -> void:
+	if not tile_health.has(pos):
 		return
-	var world_pos:  Vector2   = map_to_world(map_pos)
-	var base_type:  Util.tile = tile_types[map_pos]
+	var world_pos: Vector2   = map_to_world(pos)
+	var base_type: Util.tile = tile_types[pos]
 	ParticleManager.spawn_mine_dust(world_pos, base_type)
 	ParticleManager.spawn_debris(world_pos, base_type)
-	tile_health[map_pos] -= damage
-	if tile_health[map_pos] <= 0:
-		if ore_types.has(map_pos):
-			ParticleManager.spawn_ore_rubble(world_pos, base_type, ore_types[map_pos])
-			_drop_ore(map_pos)
-		remove_tile(map_pos)
+	tile_health[pos] -= damage
+	if tile_health[pos] <= 0:
+		if ore_types.has(pos):
+			ParticleManager.spawn_ore_rubble(world_pos, base_type, ore_types[pos])
+			_drop_ore(pos)
+		remove_tile(pos)
 
-# Silent damage used by bomb — no particles, no DF/nav update (flush handles that)
-func damage_tile_silent(map_pos: Vector2i, damage: int = 1) -> bool:
-	if not tile_health.has(map_pos):
+func damage_tile_silent(pos: Vector2i, damage: int = 1) -> bool:
+	if not tile_health.has(pos):
 		return false
-	tile_health[map_pos] -= damage
-	if tile_health[map_pos] <= 0:
-		if ore_types.has(map_pos):
-			_drop_ore(map_pos)
-		_remove_tile_silent(map_pos)
+	tile_health[pos] -= damage
+	if tile_health[pos] <= 0:
+		if ore_types.has(pos):
+			_drop_ore(pos)
+		_remove_tile_silent(pos)
 		return true
 	return false
 
-func _remove_tile_silent(map_pos: Vector2i) -> void:
-	if not tile_types.has(map_pos):
+func _remove_tile_silent(pos: Vector2i) -> void:
+	if not tile_types.has(pos):
 		return
-	tile_health.erase(map_pos)
-	tile_types.erase(map_pos)
-	tile_variant.erase(map_pos)
-	tile_shapes[map_pos].disabled = true
+	tile_health.erase(pos)
+	tile_types.erase(pos)
+	tile_variant.erase(pos)
+	tile_shapes[pos].disabled = true
 
-	if ore_types.has(map_pos):
-		_hide_ore_instance(map_pos)
-		ore_types.erase(map_pos)
-		ore_variant.erase(map_pos)
+	if ore_types.has(pos):
+		_hide_ore_instance(pos)
+		ore_types.erase(pos)
+		ore_variant.erase(pos)
 
-	if occluder_sprites.has(map_pos):
-		_remove_occluder_sprite(map_pos)
+	if relic_tiles.has(pos):
+		_hide_relic_instance(pos)
+		_check_relic_reveal(pos)
+		relic_tiles.erase(pos)
+
+	if _wall_layer.occluders.has(pos):
+		_remove_occluder_sprite(pos)
 	else:
-		_hide_instance(map_pos)
+		_hide_wall_instance(pos)
 
-# Called once after all silent removals — batches all expensive consequences
 func flush_removed_tiles(removed: Array[Vector2i]) -> void:
 	if removed.is_empty():
 		return
-
 	var t0 := Time.get_ticks_usec()
-
 	var nav_touched: Dictionary = {}
 	var df_touched:  Dictionary = {}
-
-	for map_pos in removed:
-		var below: Vector2i = map_pos + Vector2i(0, 1)
-		if tile_types.has(below) and not occluder_sprites.has(below):
+	for pos in removed:
+		var below: Vector2i = pos + Vector2i(0, 1)
+		if tile_types.has(below) and not _wall_layer.occluders.has(below):
 			_add_occluder_sprite(below)
-		_redraw_neighbors(map_pos)
-		nav_touched[Vector2i(map_pos.x / NavManager.chunk_size, map_pos.y / NavManager.chunk_size)] = true
-		df_touched[Vector2i(map_pos.x / DF_CHUNK_SIZE, map_pos.y / DF_CHUNK_SIZE)] = true
-
+		_redraw_neighbors(pos)
+		nav_touched[Vector2i(pos.x / NavManager.chunk_size, pos.y / NavManager.chunk_size)] = true
+		df_touched[Vector2i(pos.x / DF_CHUNK_SIZE, pos.y / DF_CHUNK_SIZE)] = true
 	var t1 := Time.get_ticks_usec()
-
 	for chunk in nav_touched:
 		NavManager._dirty_chunks[chunk] = NavManager.REBAKE_DELAY
-
 	var t2 := Time.get_ticks_usec()
-
 	for chunk in df_touched:
 		if not _df_dirty_chunks.has(chunk):
 			_df_dirty_chunks.append(chunk)
 	_request_df_update()
-
 	var t3 := Time.get_ticks_usec()
 
-	print("flush: occluder+redraw=%dµs  nav=%dµs  df=%dµs  tiles=%d" % [t1-t0, t2-t1, t3-t2, removed.size()])
-
-func remove_tile(map_pos: Vector2i) -> void:
-	if not tile_types.has(map_pos):
+func remove_tile(pos: Vector2i) -> void:
+	if not tile_types.has(pos):
 		return
+	tile_health.erase(pos)
+	tile_types.erase(pos)
+	tile_variant.erase(pos)
+	tile_shapes[pos].disabled = true
 
-	tile_health.erase(map_pos)
-	tile_types.erase(map_pos)
-	tile_variant.erase(map_pos)
-	tile_shapes[map_pos].disabled = true
+	NavManager.on_tile_removed(pos)
 
-	NavManager.on_tile_removed(map_pos)
+	if ore_types.has(pos):
+		_hide_ore_instance(pos)
+		ore_types.erase(pos)
+		ore_variant.erase(pos)
 
-	if ore_types.has(map_pos):
-		_hide_ore_instance(map_pos)
-		ore_types.erase(map_pos)
-		ore_variant.erase(map_pos)
+	if relic_tiles.has(pos):
+		_hide_relic_instance(pos)
+		_check_relic_reveal(pos)
+		relic_tiles.erase(pos)
 
-	if occluder_sprites.has(map_pos):
-		_remove_occluder_sprite(map_pos)
+	if _wall_layer.occluders.has(pos):
+		_remove_occluder_sprite(pos)
 	else:
-		_hide_instance(map_pos)
+		_hide_wall_instance(pos)
 
-	var below: Vector2i = map_pos + Vector2i(0, 1)
-	if tile_types.has(below) and not occluder_sprites.has(below):
+	var below: Vector2i = pos + Vector2i(0, 1)
+	if tile_types.has(below) and not _wall_layer.occluders.has(below):
 		_add_occluder_sprite(below)
 
-	_redraw_neighbors(map_pos)
-	_mark_chunk_dirty(map_pos)
+	_redraw_neighbors(pos)
+	_mark_chunk_dirty(pos)
 	_request_df_update()
 
 func in_bounds(loc: Vector2i) -> bool:
 	return loc.x >= 0 and loc.x < WIDTH and loc.y >= 0 and loc.y < HEIGHT
 
-# ───────────────────────────────────────────────────────────────── proc gen ──
+# ══════════════════════════════════════════════════════ relic reveal ══
+func _check_relic_reveal(pos: Vector2i) -> void:
+	if not _relic_cover_counts.has(pos):
+		return
+	var entry: Dictionary = _relic_cover_counts[pos]
+	_relic_cover_counts.erase(pos)
+	entry["remaining"] -= 1
+	if entry["remaining"] <= 0:
+		var container: AncientContainer = _relic_containers.get(entry["center"], null)
+		if container != null:
+			container.set_interactable(true)
+
+func _spawn_relic_container(center: Vector2i, relic: RelicData) -> void:
+	var container: AncientContainer = AncientContainerScene.instantiate()
+	container.relic = relic
+	var world_tl: Vector2 = map_to_world(center)
+	var world_br: Vector2 = map_to_world(center + Vector2i(1, 1))
+	get_parent().add_child(container)
+	container.global_position = (world_tl + world_br) * 0.5
+	container.set_interactable(false)
+	_relic_containers[center] = container
+
+func _spawn_relic_containers() -> void:
+	var seen: Dictionary = {}
+	for pos: Vector2i in relic_tiles:
+		var entry: Dictionary = _relic_cover_counts[pos]
+		var center: Vector2i  = entry["center"]
+		if seen.has(center):
+			continue
+		seen[center] = true
+		_spawn_relic_container(center, entry["relic"])
+		print("Spawned a relic at %d, %d" % [center.x, center.y])
+
+# ══════════════════════════════════════════════════════════ proc gen ══
 func generate_chamber_noise(grid: Array) -> void:
 	for x in range(WIDTH):
 		for y in range(HEIGHT):
-			var perlin_value: float = chamber_noise.get_noise_2d(x, y)
-			var dist:         float = sqrt((x - WIDTH / 2.0) ** 2 + (y - HEIGHT / 2.0) ** 2)
-			var dist_n:       float = dist / ((WIDTH - BUFFER_TILES) / 2.0)
-			var bonus:        float = 0.0
+			var dist:   float = sqrt((x - WIDTH / 2.0) ** 2 + (y - HEIGHT / 2.0) ** 2)
+			var dist_n: float = dist / ((WIDTH - BUFFER_TILES) / 2.0)
+			var bonus:  float = 0.0
 			if dist > (WIDTH - BUFFER_TILES) / 3.0:
 				bonus = (1.0 - PERLIN_CHAMBER_THRESHOLD) * dist_n
-			if perlin_value > (PERLIN_CHAMBER_THRESHOLD + bonus) and is_replaceable(grid[x][y]):
+			if chamber_noise.get_noise_2d(x, y) > (PERLIN_CHAMBER_THRESHOLD + bonus) and is_replaceable(grid[x][y]):
 				grid[x][y] = Util.tile.AIR
 
 func generate_path_noise(grid: Array) -> void:
 	for x in range(WIDTH):
 		for y in range(HEIGHT):
-			var perlin_value: float = path_noise.get_noise_2d(x, y)
-			var dist:         float = sqrt((x - WIDTH / 2.0) ** 2 + (y - HEIGHT / 2.0) ** 2)
-			var dist_n:       float = dist / ((WIDTH - BUFFER_TILES) / 2.0)
-			var bonus:        float = 0.0
+			var dist:   float = sqrt((x - WIDTH / 2.0) ** 2 + (y - HEIGHT / 2.0) ** 2)
+			var dist_n: float = dist / ((WIDTH - BUFFER_TILES) / 2.0)
+			var bonus:  float = 0.0
 			if dist > 2.0 * (WIDTH - BUFFER_TILES) / 5.0:
 				bonus = PERLIN_PATH_THRESHOLD * dist_n
-			if absf(perlin_value) < (PERLIN_PATH_THRESHOLD - bonus) and is_replaceable(grid[x][y]):
+			if absf(path_noise.get_noise_2d(x, y)) < (PERLIN_PATH_THRESHOLD - bonus) and is_replaceable(grid[x][y]):
 				grid[x][y] = Util.tile.AIR
 
 func count_neighbors(grid: Array, x: int, y: int) -> int:
 	var count: int = 0
 	for nx in range(x - 1, x + 2):
 		for ny in range(y - 1, y + 2):
-			if nx == x and ny == y:
-				continue
+			if nx == x and ny == y: continue
 			if nx >= 0 and nx < WIDTH and ny >= 0 and ny < HEIGHT:
 				if grid[nx][ny] == Util.tile.AIR:
 					count += 1
@@ -645,13 +776,11 @@ func cellular_step(grid: Array) -> Array[Array]:
 						for _y in range(-1, 2):
 							var nx: int = x + _x
 							var ny: int = y + _y
-							if nx < 0 or nx >= WIDTH or ny < 0 or ny >= HEIGHT:
-								continue
+							if nx < 0 or nx >= WIDTH or ny < 0 or ny >= HEIGHT: continue
 							if grid[nx][ny] != Util.tile.AIR and grid[nx][ny] != grid[x][y]:
 								neighbor_value = grid[nx][ny]
 								break
-						if neighbor_value != null:
-							break
+						if neighbor_value != null: break
 					new_grid[x].append(neighbor_value if neighbor_value != null else null)
 				else:
 					new_grid[x].append(grid[x][y])
@@ -664,12 +793,12 @@ func cellular_step(grid: Array) -> Array[Array]:
 
 func place_starting_area(grid: Array) -> void:
 	@warning_ignore("integer_division")
-	var x_mid: int = WIDTH  / 2
+	var cx: int = WIDTH  / 2
 	@warning_ignore("integer_division")
-	var y_mid: int = HEIGHT / 2
-	for x in range(x_mid - STARTING_AREA_RADIUS, x_mid + STARTING_AREA_RADIUS + 1):
-		for y in range(y_mid - STARTING_AREA_RADIUS, y_mid + STARTING_AREA_RADIUS + 1):
-			if sqrt((x - x_mid) ** 2 + (y - y_mid) ** 2) <= STARTING_AREA_RADIUS:
+	var cy: int = HEIGHT / 2
+	for x in range(cx - STARTING_AREA_RADIUS, cx + STARTING_AREA_RADIUS + 1):
+		for y in range(cy - STARTING_AREA_RADIUS, cy + STARTING_AREA_RADIUS + 1):
+			if sqrt((x - cx) ** 2 + (y - cy) ** 2) <= STARTING_AREA_RADIUS:
 				grid[x][y] = Util.tile.AIR
 
 func generate_ores(grid: Array) -> void:
@@ -691,35 +820,30 @@ func place_gold(grid: Array) -> void:
 			if points.size() < 2:
 				continue
 			if randf() < 0.5:
-				points.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.x < b.x)
+				points.sort_custom(func(a: Vector2i, b: Vector2i): return a.x < b.x)
 			else:
-				points.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y < b.y)
+				points.sort_custom(func(a: Vector2i, b: Vector2i): return a.y < b.y)
 			for i in range(points.size() - 1):
 				var line: Array[Vector2] = bresenham_line(points[i], points[i + 1])
 				if randf() < 0.35 and line.size() > 2:
-					var branch_start: Vector2 = line[randi_range(1, line.size() - 2)]
-					line.append_array(generate_branch(Vector2i(branch_start)))
+					line.append_array(generate_branch(Vector2i(line[randi_range(1, line.size() - 2)])))
 				for p: Vector2 in line:
 					var tx: int = chunk_x * CHUNK_SIZE + int(p.x)
 					var ty: int = chunk_y * CHUNK_SIZE + int(p.y)
-					if tx < 0 or tx >= WIDTH or ty < 0 or ty >= HEIGHT:
-						continue
-					if grid[tx][ty] != Util.tile.AIR:
+					if tx >= 0 and tx < WIDTH and ty >= 0 and ty < HEIGHT and grid[tx][ty] != Util.tile.AIR:
 						grid[tx][ty] = Util.tile.GOLD
 
 func bresenham_line(a: Vector2, b: Vector2) -> Array[Vector2]:
 	var x0: int = int(a.x); var y0: int = int(a.y)
 	var x1: int = int(b.x); var y1: int = int(b.y)
 	var tiles: Array[Vector2] = []
-	var dx:  int = abs(x1 - x0)
-	var dy:  int = -abs(y1 - y0)
-	var sx:  int = 1 if x0 < x1 else -1
-	var sy:  int = 1 if y0 < y1 else -1
+	var dx: int = abs(x1 - x0); var dy: int = -abs(y1 - y0)
+	var sx: int = 1 if x0 < x1 else -1
+	var sy: int = 1 if y0 < y1 else -1
 	var err: int = dx + dy
 	while true:
 		tiles.append(Vector2(x0, y0))
-		if x0 == x1 and y0 == y1:
-			break
+		if x0 == x1 and y0 == y1: break
 		var e2: int = 2 * err
 		if e2 >= dy: err += dy; x0 += sx
 		if e2 <= dx: err += dx; y0 += sy
@@ -739,18 +863,17 @@ func generate_branch(origin: Vector2, length: int = 4, turn_chance: float = 0.5)
 func generate_rock_variation(grid: Array) -> void:
 	for x in range(WIDTH):
 		for y in range(HEIGHT):
-			var perlin_value: float = rock_variation_noise.get_noise_2d(x, y)
-			var dist:         float = sqrt((x - WIDTH / 2.0) ** 2 + (y - HEIGHT / 2.0) ** 2)
-			var dist_n:       float = dist / ((WIDTH - BUFFER_TILES) / 2.0)
-			var bonus:        float = 0.0
+			var dist:   float = sqrt((x - WIDTH / 2.0) ** 2 + (y - HEIGHT / 2.0) ** 2)
+			var dist_n: float = dist / ((WIDTH - BUFFER_TILES) / 2.0)
+			var bonus:  float = 0.0
 			if dist >= WIDTH / 2.0:
 				bonus = (1.0 - ROCK_VARIATION_THRESHOLD) * dist_n
-			if perlin_value > (ROCK_VARIATION_THRESHOLD + bonus):
+			if rock_variation_noise.get_noise_2d(x, y) > (ROCK_VARIATION_THRESHOLD + bonus):
 				grid[x][y] = Util.tile.ROCK
 				rock_variation_tiles.append(Vector2i(x, y))
 
 func generate_faults(grid: Array) -> Array[Array]:
-	var new_grid:    Array[Array] = []
+	var new_grid: Array[Array] = []
 	var fault_point: Vector2i
 	if rock_variation_tiles.is_empty():
 		@warning_ignore("integer_division")
@@ -789,8 +912,7 @@ func generate_faults(grid: Array) -> Array[Array]:
 		if dist < radius and dist > radius - 16.0:
 			candidates.append(Vector2i(x, y))
 	for i in range(2):
-		if candidates.is_empty():
-			break
+		if candidates.is_empty(): break
 		var loc: Vector2i = candidates.pop_at(randi_range(0, candidates.size() - 1))
 		if new_grid[loc.x][loc.y] != Util.tile.AIR:
 			new_grid[loc.x][loc.y] = Util.tile.CRYSTAL
@@ -800,15 +922,11 @@ func generate_faults(grid: Array) -> Array[Array]:
 func place_copper(grid: Array) -> void:
 	for chunk_x in range(0, WIDTH, CHUNK_SIZE):
 		for chunk_y in range(0, HEIGHT, CHUNK_SIZE):
-			if randf() > COPPER_CHANCE:
-				continue
+			if randf() > COPPER_CHANCE: continue
 			var seeds: Array[Vector2i] = []
 			for x in range(chunk_x, chunk_x + CHUNK_SIZE):
 				for y in range(chunk_y, chunk_y + CHUNK_SIZE):
-					if x >= WIDTH or y >= HEIGHT:
-						continue
-					if grid[x][y] == null:
-						continue
+					if x >= WIDTH or y >= HEIGHT or grid[x][y] == null: continue
 					if randf() < COPPER_ADD_CHANCE:
 						seeds.append(Vector2i(x, y))
 			for center: Vector2i in seeds:
@@ -818,21 +936,57 @@ func place_copper(grid: Array) -> void:
 					for dy in range(-ry, ry + 1):
 						var px: int = center.x + dx
 						var py: int = center.y + dy
-						if px < 0 or px >= WIDTH or py < 0 or py >= HEIGHT:
-							continue
+						if px < 0 or px >= WIDTH or py < 0 or py >= HEIGHT: continue
 						var nx: float = float(dx) / float(rx)
 						var ny: float = float(dy) / float(ry)
 						if nx * nx + ny * ny <= 1.0 and grid[px][py] != Util.tile.AIR:
 							grid[px][py] = Util.tile.COPPER
 
+func _place_relic_tiles_on_grid(grid: Array) -> void:
+	if ItemManager._relic_pool.is_empty():
+		printerr("Warning! No relics exist to be loaded!")
+		return
+	var target:   int = randi_range(relic_count.x, relic_count.y)
+	var placed:   int = 0
+	var attempts: int = 0
+
+	var play_radius: float = (WIDTH - BUFFER_TILES) / 2.0
+	var cx: float = WIDTH  / 2.0
+	var cy: float = HEIGHT / 2.0
+
+	while placed < target and attempts < 5000:
+		attempts += 1
+		var x: int = randi_range(BUFFER_TILES + 4, WIDTH  - BUFFER_TILES - 4)
+		var y: int = randi_range(BUFFER_TILES + 4, HEIGHT - BUFFER_TILES - 4)
+		var cluster: Array[Vector2i] = [Vector2i(x,y), Vector2i(x+1,y), Vector2i(x,y+1), Vector2i(x+1,y+1)]
+		var valid: bool = true
+		for pos in cluster:
+			if pos.x >= WIDTH or pos.y >= HEIGHT:
+				valid = false; break
+			if sqrt((pos.x - cx) ** 2 + (pos.y - cy) ** 2) >= play_radius:
+				valid = false; break
+			var t: Variant = grid[pos.x][pos.y]
+			if t != Util.tile.STONE and t != Util.tile.ROCK:
+				valid = false; break
+			if relic_tiles.has(pos):
+				valid = false; break
+		if not valid: continue
+		var relic: RelicData = ItemManager._relic_pool.pick_random()
+		var entry: Dictionary = { "relic": relic, "remaining": 4, "center": Vector2i(x, y) }
+		for pos in cluster:
+			relic_tiles[pos]         = relic
+			_relic_cover_counts[pos] = entry
+		placed += 1
+	print("Placed %d relic clusters" % placed)
+
 func is_replaceable(t: Variant) -> bool:
 	return t != null and t != Util.tile.AIR and t != Util.tile.CRYSTAL and t != Util.tile.COPPER
 
-# ── distance field ────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════ distance field ══
 var _df_texture:      ImageTexture    = ImageTexture.new()
 var _df_thread:       Thread          = Thread.new()
 var _df_pending:      Image           = null
-var _df_pending_rect: Rect2i         = Rect2i()
+var _df_pending_rect: Rect2i          = Rect2i()
 var _df_dirty_chunks: Array[Vector2i] = []
 var _df_running:      bool            = false
 
@@ -842,10 +996,8 @@ const DF_MAX_DEPTH:  float = 5.0
 var _df_image: Image = null
 
 func _initial_df_bake() -> void:
-	var img:  Image          = Image.create(WIDTH, HEIGHT, false, Image.FORMAT_RF)
-	var dist: Array          = []
-	dist.resize(WIDTH * HEIGHT)
-	dist.fill(-1.0)
+	var img:  Image = Image.create(WIDTH, HEIGHT, false, Image.FORMAT_RF)
+	var dist: Array = []; dist.resize(WIDTH * HEIGHT); dist.fill(-1.0)
 	var queue: Array[Vector2i] = []
 	for x in range(WIDTH):
 		for y in range(HEIGHT):
@@ -858,10 +1010,8 @@ func _initial_df_bake() -> void:
 		var cur: Vector2i = queue[i]; i += 1
 		for d in dirs:
 			var nb: Vector2i = cur + d
-			if nb.x < 0 or nb.y < 0 or nb.x >= WIDTH or nb.y >= HEIGHT:
-				continue
-			if dist[nb.y * WIDTH + nb.x] >= 0.0:
-				continue
+			if nb.x < 0 or nb.y < 0 or nb.x >= WIDTH or nb.y >= HEIGHT: continue
+			if dist[nb.y * WIDTH + nb.x] >= 0.0: continue
 			dist[nb.y * WIDTH + nb.x] = dist[cur.y * WIDTH + cur.x] + 1.0
 			queue.append(nb)
 	for x in range(WIDTH):
@@ -873,16 +1023,30 @@ func _initial_df_bake() -> void:
 
 func _set_df_shader_params() -> void:
 	var world_origin: Vector2 = map_to_world(Vector2i(0, 0)) - Vector2(TILE_SIZE) / 2.0
-	for mat: ShaderMaterial in [multimesh_instance.material, ore_multimesh_instance.material]:
+	var wall_mats: Array[ShaderMaterial] = [
+		_wall_layer.instance.material,
+		_ore_layer.instance.material,
+	]
+	if _relic_layer.instance != null:
+		wall_mats.append(_relic_layer.instance.material)
+	for mat: ShaderMaterial in wall_mats:
 		mat.set_shader_parameter("distance_field",   _df_texture)
 		mat.set_shader_parameter("map_size",         Vector2(WIDTH, HEIGHT))
 		mat.set_shader_parameter("map_world_origin", world_origin)
 		mat.set_shader_parameter("tile_world_size",  float(TILE_SIZE.x))
 		mat.set_shader_parameter("max_depth",        DF_MAX_DEPTH)
 		mat.set_shader_parameter("darkness_power",   1.0)
+	if _ground_layer.instance != null:
+		var mat: ShaderMaterial = _ground_layer.instance.material
+		mat.set_shader_parameter("distance_field",   _df_texture)
+		mat.set_shader_parameter("map_size",         Vector2(WIDTH, HEIGHT))
+		mat.set_shader_parameter("map_world_origin", world_origin)
+		mat.set_shader_parameter("tile_world_size",  float(TILE_SIZE.x))
+		mat.set_shader_parameter("max_depth",        DF_MAX_DEPTH)
+		mat.set_shader_parameter("darkness_power",   0.0)
 
-func _mark_chunk_dirty(map_pos: Vector2i) -> void:
-	var chunk: Vector2i = Vector2i(map_pos.x / DF_CHUNK_SIZE, map_pos.y / DF_CHUNK_SIZE)
+func _mark_chunk_dirty(pos: Vector2i) -> void:
+	var chunk: Vector2i = Vector2i(pos.x / DF_CHUNK_SIZE, pos.y / DF_CHUNK_SIZE)
 	if not _df_dirty_chunks.has(chunk):
 		_df_dirty_chunks.append(chunk)
 
@@ -892,8 +1056,7 @@ func _request_df_update() -> void:
 	_df_running = true
 	var dirty_copy: Array[Vector2i] = _df_dirty_chunks.duplicate()
 	_df_dirty_chunks.clear()
-	var image_snapshot: Image = _df_image.duplicate()
-	_df_thread.start(_compute_df_threaded.bind(dirty_copy, tile_types.duplicate(), image_snapshot))
+	_df_thread.start(_compute_df_threaded.bind(dirty_copy, tile_types.duplicate(), _df_image.duplicate()))
 
 func _compute_df_threaded(dirty_chunks: Array[Vector2i], snapshot: Dictionary, base_img: Image) -> void:
 	var min_tile := Vector2i(WIDTH, HEIGHT)
@@ -906,31 +1069,25 @@ func _compute_df_threaded(dirty_chunks: Array[Vector2i], snapshot: Dictionary, b
 		max_tile.y = maxi(max_tile.y, (chunk.y + 1) * DF_CHUNK_SIZE + margin)
 	min_tile = min_tile.clamp(Vector2i.ZERO, Vector2i(WIDTH - 1, HEIGHT - 1))
 	max_tile = max_tile.clamp(Vector2i.ZERO, Vector2i(WIDTH - 1, HEIGHT - 1))
-
 	var rw: int = max_tile.x - min_tile.x + 1
 	var rh: int = max_tile.y - min_tile.y + 1
 	var dist: Array = []; dist.resize(rw * rh); dist.fill(-1.0)
 	var queue: Array[Vector2i] = []
-
 	for x in range(rw):
 		for y in range(rh):
 			if not snapshot.has(min_tile + Vector2i(x, y)):
 				dist[y * rw + x] = 0.0
 				queue.append(Vector2i(x, y))
-
 	var dirs: Array[Vector2i] = [Vector2i(1,0), Vector2i(-1,0), Vector2i(0,1), Vector2i(0,-1)]
 	var i: int = 0
 	while i < queue.size():
 		var cur: Vector2i = queue[i]; i += 1
 		for d in dirs:
 			var nb: Vector2i = cur + d
-			if nb.x < 0 or nb.y < 0 or nb.x >= rw or nb.y >= rh:
-				continue
-			if dist[nb.y * rw + nb.x] >= 0.0:
-				continue
+			if nb.x < 0 or nb.y < 0 or nb.x >= rw or nb.y >= rh: continue
+			if dist[nb.y * rw + nb.x] >= 0.0: continue
 			dist[nb.y * rw + nb.x] = dist[cur.y * rw + cur.x] + 1.0
 			queue.append(nb)
-
 	var patch: Image = Image.create(rw, rh, false, Image.FORMAT_RF)
 	for x in range(rw):
 		for y in range(rh):
@@ -938,26 +1095,21 @@ func _compute_df_threaded(dirty_chunks: Array[Vector2i], snapshot: Dictionary, b
 			var new_val: float = clampf((d - 1.0) / DF_MAX_DEPTH, 0.0, 1.0) if d >= 0.0 else 0.0
 			var old_val: float = base_img.get_pixel(min_tile.x + x, min_tile.y + y).r
 			patch.set_pixel(x, y, Color(new_val if new_val < old_val else old_val, 0, 0, 1))
-
 	_df_pending      = patch
 	_df_pending_rect = Rect2i(min_tile, Vector2i(rw, rh))
 
 func _process(_delta: float) -> void:
 	if _df_pending != null and not _df_thread.is_alive():
 		_df_thread.wait_to_finish()
-		
 		var t0 := Time.get_ticks_usec()
 		_df_image.blit_rect(_df_pending, Rect2i(Vector2i.ZERO, _df_pending_rect.size), _df_pending_rect.position)
 		var t1 := Time.get_ticks_usec()
-		
 		_df_pending      = null
 		_df_pending_rect = Rect2i()
 		_df_running      = false
-		
 		if not _df_dirty_chunks.is_empty():
 			_request_df_update()
 		else:
 			var t2 := Time.get_ticks_usec()
 			_df_texture.update(_df_image)
 			var t3 := Time.get_ticks_usec()
-			print("df _process: blit=%dµs  upload=%dµs" % [t1-t0, t3-t2])

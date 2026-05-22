@@ -24,7 +24,7 @@ func _ready() -> void:
 		DisplayServer.window_get_size().y / 50
 	)
 	NavManager.build(%TilemapManager)
-	$Forge.init()
+	$Forge.init(%Player)
 
 func _process(delta: float) -> void:
 	_process_debug_messages(delta)
@@ -75,8 +75,8 @@ func _build_debug_text(fps: int, env: Environment, player: CharacterBody2D) -> S
 
 	# ── ore collection counts ─────────────────────────────────────────────────
 	var inventory: Node = %Player.get_node("Inventory")
-	for item_type: Util.tile in inventory.items:
-		lines.append(Util.tile.keys()[item_type] + " collected: " + str(inventory.get_quantity(item_type)))
+	for relic: RelicData in inventory.relics:
+		lines.append(relic.display_name + " x" + str(inventory.get_relic_quantity(relic)))
 	for metal: MetalData in inventory.metals:
 		lines.append(metal.display_name + " collected: " + str(inventory.get_metal_quantity(metal)))
 

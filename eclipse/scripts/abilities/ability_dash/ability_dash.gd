@@ -8,10 +8,9 @@ func activate(context: Dictionary) -> void:
 	if not context.get("pressed", false):
 		return
 	var player: CharacterBody2D = context["player"]
-	var input:  Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
-	if input == Vector2.ZERO:
-		return
-	var dir:   Vector2 = input.normalized()
+	var input: Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	var dir:   Vector2 = input.normalized() if input != Vector2.ZERO \
+		else Vector2(player.direction)
 	@warning_ignore("shadowed_global_identifier")
 	var range: float   = get_stat("range")
 

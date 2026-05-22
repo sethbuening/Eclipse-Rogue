@@ -43,6 +43,8 @@ func setup(
 		var damage:       float = scaled_power * (_stats.crit_damage if is_crit else 1.0)
 		if previous_was_crit:
 			damage *= 1.15
+		var arc_mult: float = E_Insulator.get_arc_multiplier(hop_from, enemy.global_position)
+		damage *= arc_mult
 		_apply_hit(enemy, damage, is_crit, hop_from)
 		previous_was_crit = is_crit
 		hop_from          = enemy.global_position

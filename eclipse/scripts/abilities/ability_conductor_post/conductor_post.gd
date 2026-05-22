@@ -35,6 +35,7 @@ func _ready() -> void:
 	_anim        = $AnimatedSprite2D
 	if has_node("ChargeLight"):
 		_charge_light = $ChargeLight
+	add_to_group("conductor_posts")
 
 func setup(
 	stats:       AbilityStats,

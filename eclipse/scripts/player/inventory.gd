@@ -1,36 +1,36 @@
 # inventory.gd
 extends Node
 
-signal item_added(item_type: Util.tile, quantity: int)
-signal item_removed(item_type: Util.tile, quantity: int)
+signal relic_added(relic: RelicData, quantity: int)
+signal relic_removed(relic: RelicData, quantity: int)
 signal orb_added(orb: Orb)
 signal orb_removed(orb: Orb)
 signal metal_added(metal: MetalData, quantity: int)
 signal metal_removed(metal: MetalData, quantity: int)
 
-var items:  Dictionary = {}   # Util.tile → int
+var relics: Dictionary = {}   # Util.tile → int
 var orbs:   Array[Orb] = []
 var metals: Dictionary = {}   # MetalData → int
 
-# ── items ─────────────────────────────────────────────────────────────────────
-func add(item_type: Util.tile, quantity: int = 1) -> void:
-	items[item_type] = items.get(item_type, 0) + quantity
-	emit_signal("item_added", item_type, quantity)
+# ── relics ────────────────────────────────────────────────────────────────────
+func add_relic(relic: RelicData, quantity: int = 1) -> void:
+	relics[relic] = relics.get(relic, 0) + quantity
+	emit_signal("relic_added", relic, quantity)
 
-func remove(item_type: Util.tile, quantity: int = 1) -> bool:
-	if items.get(item_type, 0) < quantity:
+func remove_relic(relic: RelicData, quantity: int = 1) -> bool:
+	if relics.get(relic, 0) < quantity:
 		return false
-	items[item_type] -= quantity
-	if items[item_type] <= 0:
-		items.erase(item_type)
-	emit_signal("item_removed", item_type, quantity)
+	relics[relic] -= quantity
+	if relics[relic] <= 0:
+		relics.erase(relic)
+	emit_signal("relic_removed", relic, quantity)
 	return true
 
-func has(item_type: Util.tile, quantity: int = 1) -> bool:
-	return items.get(item_type, 0) >= quantity
+func has_relic(relic: RelicData, quantity: int = 1) -> bool:
+	return relics.get(relic, 0) >= quantity
 
-func get_quantity(item_type: Util.tile) -> int:
-	return items.get(item_type, 0)
+func get_relic_quantity(relic: RelicData) -> int:
+	return relics.get(relic, 0)
 
 # ── metals ────────────────────────────────────────────────────────────────────
 func add_metal(metal: MetalData, quantity: int = 1) -> void:

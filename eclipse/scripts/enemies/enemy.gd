@@ -44,6 +44,8 @@ func _ready() -> void:
 	sep_area.body_entered.connect(_on_sep_body_entered)
 	sep_area.body_exited.connect(_on_sep_body_exited)
 	add_child(sep_area)
+	
+	add_to_group("enemies")
 
 func initialize(p: CharacterBody2D, modifier: Util.Modifier = Util.Modifier.NONE) -> void:
 	data   = data.duplicate()
@@ -168,7 +170,7 @@ func take_damage(amount: int, is_crit: bool = false) -> void:
 		die()
 
 func die() -> void:
-	ItemManager.spawn_dropped_item(global_position, Util.tile.LIGHT_ORB)
+	ItemManager.spawn_light_orb(global_position)
 	emit_signal("died", self)
 	queue_free()
 

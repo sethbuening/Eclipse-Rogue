@@ -1,0 +1,12 @@
+[gd_scene format=3 uid="uid://d1wn3gcqhrs24"]
+
+[ext_resource type="Script" uid="uid://ewgiqam2dm4o" path="res://scripts/relics/ancient_container.gd" id="1_ogdum"]
+[ext_resource type="Texture2D" uid="uid://mxlbl6vyo274" path="res://art/tempatlascontainer.png" id="2_kuub3"]
+
+[node name="AncientContainer" type="Node2D" unique_id=280248280]
+z_index = -4095
+z_as_relative = false
+script = ExtResource("1_ogdum")
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=2110370997]
+texture = ExtResource("2_kuub3")

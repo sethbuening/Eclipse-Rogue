@@ -19,6 +19,8 @@ extends Resource
 @export var attack_range:     float   = 16.0
 @export var attack_cooldown:  float   = 1.0
 @export var projectile_speed: float   = 0.0
+@export var crit_chance: float = 0.0
+@export var crit_damage_mult: float = 3.0
 
 @export_group("Separation")
 @export var sep_radius: float         = 64.0

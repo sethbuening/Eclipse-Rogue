@@ -46,15 +46,15 @@ func _ready() -> void:
 
 # ── open / close ──────────────────────────────────────────────────────────────
 func open(p: Node2D, f: Forge) -> void:
-	player        = p
-	forge         = f
+	player = p
+	forge  = f
 	staged_orbs   = []
 	staged_metals = {}
 	forge.forge_complete.connect(_on_forge_complete, CONNECT_ONE_SHOT)
-	print("metal_inventory_list node: ", metal_inventory_list)
-	print("orb_inventory_list node: ", orb_inventory_list)
-	var inventory: Node = player.get_node("Inventory")
-	print("metals in inventory: ", inventory.metals.size())
+	var inventory: Node = player.get_node_or_null("Inventory")
+	if inventory == null:
+		push_error("ForgeUI: player has no Inventory node!")
+		return
 	_show_input_screen()
 	show()
 	get_tree().paused = true

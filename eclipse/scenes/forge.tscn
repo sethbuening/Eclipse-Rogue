@@ -36,15 +36,6 @@ shape = SubResource("CircleShape2D_huql2")
 position = Vector2(0, -14)
 texture = ExtResource("2_ebsuy")
 
-[node name="InteractPrompt" type="Label" parent="." unique_id=365850337]
-visible = false
-offset_left = -35.0
-offset_top = -64.0
-offset_right = 32.0
-offset_bottom = -41.0
-text = "[E] Forge"
-horizontal_alignment = 1
-
 [node name="NavObstacle" type="Node2D" parent="." unique_id=892351366 node_paths=PackedStringArray("collision_source")]
 script = ExtResource("3_cc85a")
 collision_source = NodePath("../StaticBody2D/CollisionShape2D")

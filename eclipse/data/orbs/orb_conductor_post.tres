@@ -3,12 +3,13 @@
 [ext_resource type="Script" uid="uid://crg63cnpq5g5p" path="res://scripts/abilities/ability_data.gd" id="1_rn5g3"]
 [ext_resource type="Resource" uid="uid://rw4t27v7hnty" path="res://data/abilities/ability_conductor_post.tres" id="2_metvl"]
 [ext_resource type="Script" uid="uid://coa8uhnocedee" path="res://scripts/orb/orb.gd" id="2_q6vmh"]
+[ext_resource type="Resource" uid="uid://cm12yj011wi28" path="res://data/abilities/ability_lightning_chain.tres" id="3_2ewfk"]
 [ext_resource type="Texture2D" uid="uid://dxg2wdayt8uye" path="res://art/orbs/orb_malachite.png" id="4_metvl"]
 
 [resource]
 script = ExtResource("2_q6vmh")
 id = "Conductor Post"
 display_name = "Conductor Post"
-abilities = Array[ExtResource("1_rn5g3")]([ExtResource("2_metvl")])
+abilities = Array[ExtResource("1_rn5g3")]([ExtResource("2_metvl"), ExtResource("3_2ewfk")])
 sprite_texture = ExtResource("4_metvl")
 metadata/_custom_type_script = "uid://coa8uhnocedee"

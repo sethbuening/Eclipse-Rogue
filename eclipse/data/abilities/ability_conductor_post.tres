@@ -7,7 +7,7 @@
 script = ExtResource("2_0ctuv")
 cooldown = 20.0
 duration = 15.0
-range = 25.0
+range = 75.0
 aoe_radius = 150.0
 light_cost = 20.0
 mining_power = 3
@@ -24,5 +24,6 @@ id = "Conductor Post"
 display_name = "Conductor Post"
 description = "Place down a conductor post, which boosts lightning abilitys within its range. It also deals damage over time and slows down enemies within its range."
 stats = SubResource("Resource_b8uhw")
+targeting_mode = 4
 main_stats = Array[String](["range", "dot_damage", "mining_power", "slow_amount", "slow_duration"])
 metadata/_custom_type_script = "uid://4wmm8s042rpx"

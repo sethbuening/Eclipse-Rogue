@@ -57,6 +57,7 @@ text = "Your Orbs"
 
 [node name="Orbs" type="ScrollContainer" parent="RootPanel/InputScreen/VBoxContainer/HBoxContainer/Inventory" unique_id=2022042804]
 layout_mode = 2
+horizontal_scroll_mode = 0
 
 [node name="OrbInventoryList" type="VBoxContainer" parent="RootPanel/InputScreen/VBoxContainer/HBoxContainer/Inventory/Orbs" unique_id=179529281]
 unique_name_in_owner = true
@@ -67,8 +68,8 @@ layout_mode = 2
 text = "Your Metals"
 
 [node name="ScrollContainer" type="ScrollContainer" parent="RootPanel/InputScreen/VBoxContainer/HBoxContainer/Inventory" unique_id=6058515]
-custom_minimum_size = Vector2(0, 150)
 layout_mode = 2
+horizontal_scroll_mode = 0
 
 [node name="MetalInventoryList" type="VBoxContainer" parent="RootPanel/InputScreen/VBoxContainer/HBoxContainer/Inventory/ScrollContainer" unique_id=756333204]
 unique_name_in_owner = true

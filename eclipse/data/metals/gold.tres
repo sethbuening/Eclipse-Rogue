@@ -2,8 +2,9 @@
 
 [ext_resource type="Script" uid="uid://crg63cnpq5g5p" path="res://scripts/abilities/ability_data.gd" id="1_yy8mg"]
 [ext_resource type="Script" uid="uid://ccvg8ff4amw77" path="res://scripts/enemies/enemy_data.gd" id="2_hq3t7"]
+[ext_resource type="Resource" uid="uid://b47jee0yea42p" path="res://data/enemies/angel.tres" id="3_oetwj"]
 [ext_resource type="Script" uid="uid://t08klcxdsebx" path="res://scripts/forging/metal_data.gd" id="3_q3unc"]
-[ext_resource type="Texture2D" uid="uid://bvtprvkbu4pgx" path="res://art/orbs/orb_gold.png" id="4_hq3t7"]
+[ext_resource type="Texture2D" uid="uid://qec7emg2av70" path="res://art/items/gold_item.png" id="4_hq3t7"]
 
 [resource]
 script = ExtResource("3_q3unc")
@@ -13,5 +14,6 @@ rarity = 2
 tile_type = 3
 stat_names = Array[String](["crit_chance", "crit_damage", "crit_aoe"])
 stat_amounts = Array[float]([1.0, 0.1, 5.0])
+enemy_pool = Array[ExtResource("2_hq3t7")]([ExtResource("3_oetwj"), null])
 sprite_texture = ExtResource("4_hq3t7")
 metadata/_custom_type_script = "uid://t08klcxdsebx"

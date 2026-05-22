@@ -32,21 +32,21 @@ func _physics_process(delta: float) -> void:
 	_angle  += data.orbit_speed * delta
 	position = Vector2(cos(_angle), sin(_angle)) * data.orbit_radius
 
-func _process(delta: float) -> void:
-	if not _alive:
-		return
-	_bob_time += data.bob_speed * delta
-	if has_node("fracture"):
-		$fracture.position.y  = sin(_bob_time + _bob_offset_1) * data.bob_amplitude
-	if has_node("fracture2"):
-		$fracture2.position.y = sin(_bob_time + _bob_offset_2) * data.bob_amplitude
-	if has_node("fracture3"):
-		$fracture3.position.y = sin(_bob_time + _bob_offset_3) * data.bob_amplitude
-	var line_bob: float = sin(_bob_time + _bob_offset_1) * data.bob_amplitude
-	if has_node("line"):
-		$line.position.y  =  line_bob
-	if has_node("line2"):
-		$line2.position.y = -line_bob
+#func _process(delta: float) -> void:
+	#if not _alive:
+		#return
+	#_bob_time += data.bob_speed * delta
+	#if has_node("fracture"):
+		#$fracture.position.y  = sin(_bob_time + _bob_offset_1) * data.bob_amplitude
+	#if has_node("fracture2"):
+		#$fracture2.position.y = sin(_bob_time + _bob_offset_2) * data.bob_amplitude
+	#if has_node("fracture3"):
+		#$fracture3.position.y = sin(_bob_time + _bob_offset_3) * data.bob_amplitude
+	#var line_bob: float = sin(_bob_time + _bob_offset_1) * data.bob_amplitude
+	#if has_node("line"):
+		#$line.position.y  =  line_bob
+	#if has_node("line2"):
+		#$line2.position.y = -line_bob
 
 # ── combat ────────────────────────────────────────────────────────────────────
 

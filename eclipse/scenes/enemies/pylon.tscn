@@ -33,13 +33,16 @@ texture = ExtResource("4_34vf4")
 offset = Vector2(0, -31)
 
 [node name="fracture" type="Sprite2D" parent="." unique_id=518850049]
+visible = false
 texture = ExtResource("3_qgvmf")
 offset = Vector2(0, -31)
 
 [node name="fracture2" type="Sprite2D" parent="." unique_id=644450306]
+visible = false
 texture = ExtResource("4_pxw3q")
 offset = Vector2(0, -31)
 
 [node name="fracture3" type="Sprite2D" parent="." unique_id=1915778990]
+visible = false
 texture = ExtResource("5_1t44a")
 offset = Vector2(0, -31)

@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="RelicUmbralFocus" format=3 uid="uid://bn5bfsbkjlvjd"]
+
+[ext_resource type="Texture2D" uid="uid://dq0pje7k1u07w" path="res://art/temprelic.png" id="1_bg6ks"]
+[ext_resource type="Script" uid="uid://ct1uxglbo6ohw" path="res://scripts/relics/relic_unbral_focus.gd" id="1_hq322"]
+
+[resource]
+script = ExtResource("1_hq322")
+id = "Umbral Focus"
+display_name = "Umbral Focus"
+description = "orb_potency increases for all equipped orbs when your light level is below 35%"
+icon = ExtResource("1_bg6ks")
+metadata/_custom_type_script = "uid://ct1uxglbo6ohw"
