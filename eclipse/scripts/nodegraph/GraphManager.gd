@@ -34,7 +34,7 @@ const INVERSE_STATS: Array[String] = [
 	"light_cost",
 ]
 
-static func is_inverse(stat_name: String) -> bool:
+func is_inverse(stat_name: String) -> bool:
 	return stat_name in INVERSE_STATS
 
 const STAT_VALUE_MIN: float = 1.1

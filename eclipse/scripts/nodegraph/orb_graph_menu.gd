@@ -18,6 +18,8 @@ const MAX_ORB_SLOTS:  int   = 5
 
 const SLOT_LABELS: Array[String] = ["1", "2", "3", "4", "5"]
 
+var orb_display_order: Array[Orb] = []
+
 # ── colors ────────────────────────────────────────────────────────────────────
 const COLOR_NODE_EMPTY:  Color = Color(0.2, 0.2, 0.3)
 const COLOR_NODE_FILLED: Color = Color(0.4, 0.6, 0.9)
@@ -34,6 +36,11 @@ const ORB_FONT_SIZE:        int   = 14
 const ORB_ICON_SIZE:        Vector2 = Vector2(40, 40)
 const DRAG_ICON_SIZE:       Vector2 = Vector2(52, 52)
 const ARROW_SIZE:           float = 14.0
+
+var node_input_icon_size := Vector2(72, 72)  # was 32×32
+var node_input_icon_pos  := Vector2(NODE_RADIUS - 40, -NODE_RADIUS - 4)
+# there are two extra variables I could possibly create to define the increased 
+# size of the background dark box and its offset from the input key
 
 # ── orb bar sizing ────────────────────────────────────────────────────────────
 const ORB_CARD_W:   float   = 400.0
@@ -83,6 +90,9 @@ func _ready() -> void:
 # ── open / close ──────────────────────────────────────────────────────────────
 func open() -> void:
 	_layout_nodes()
+	if orb_display_order.is_empty():
+		var inventory: Node = player.get_node("Inventory")
+		orb_display_order = inventory.orbs.duplicate()
 	_rebuild_orb_list()
 	dim_overlay.show()
 	show()
@@ -162,10 +172,23 @@ func _input(event: InputEvent) -> void:
 						selected_orb = null
 						_rebuild_orb_list()
 			else:
+				# released an orb after dragging it
 				var clicked := GraphManager.graph.get_node_at(graph_mouse, NODE_RADIUS)
 				if dragging_orb != null:
 					if clicked != -1:
-						_place_orb(clicked, dragging_orb)
+						var target_node: GraphNodeData = GraphManager.graph.nodes[clicked]
+						if target_node.placed_orb != null and clicked != drag_origin_node:
+							# swap
+							var displaced: Orb = target_node.placed_orb
+							_remove_orb(clicked)
+							_place_orb(clicked, dragging_orb)
+							if drag_origin_node != -1:
+								_place_orb(drag_origin_node, displaced)
+							else:
+								# dragged from inventory — displaced orb goes to list
+								pass
+						else:
+							_place_orb(clicked, dragging_orb)
 					elif drag_origin_node != -1:
 						_place_orb(drag_origin_node, dragging_orb)
 					dragging_orb     = null
@@ -223,12 +246,13 @@ func _draw_graph() -> void:
 			]),
 			COLOR_CONNECTION
 		)
+		var perp_offset: Vector2 = Vector2(-dir.y, dir.x) * 18.0
 		graph_canvas.draw_string(
 			ThemeDB.fallback_font,
-			mid + Vector2(4, -4),
+			mid + perp_offset,
 			"charges (%d)" % conn.charge_stacks,
 			HORIZONTAL_ALIGNMENT_LEFT,
-			-1, CONNECTION_FONT_SIZE, COLOR_CONNECTION
+			-1, CONNECTION_FONT_SIZE, Color.WHITE
 		)
 
 	# nodes
@@ -272,6 +296,30 @@ func _draw_graph() -> void:
 				node.placed_orb.display_name,
 				HORIZONTAL_ALIGNMENT_LEFT, -1, ORB_FONT_SIZE, Color(1, 1, 0.6)
 			)
+			# Draw the input icon for orbs placed on a node
+			var icon: Texture2D = Util.get_action_icon(node.placed_orb.input_action, true)
+			if icon != null:
+				
+				
+				# background pill
+				graph_canvas.draw_rect(
+					Rect2(center + node_input_icon_pos - Vector2(3, 3), node_input_icon_size + Vector2(6, 6)),
+					Color(0, 0, 0, 0.65)
+				)
+				graph_canvas.draw_texture_rect(icon, Rect2(center + node_input_icon_pos, node_input_icon_size), false)
+			else:
+				var slot_label: String = node.placed_orb.input_action.trim_prefix("orb_")
+				var label_pos  := center + Vector2(NODE_RADIUS - 28, -NODE_RADIUS + 20)
+				graph_canvas.draw_rect(
+					Rect2(label_pos - Vector2(3, -14), Vector2(24, 20)),
+					Color(0, 0, 0, 0.65)
+				)
+				graph_canvas.draw_string(
+					ThemeDB.fallback_font,
+					label_pos,
+					"[%s]" % slot_label,
+					HORIZONTAL_ALIGNMENT_LEFT, -1, NODE_FONT_SIZE, Color(1.0, 0.85, 0.3)
+				)
 
 		if selected_orb != null and i == hover_node:
 			graph_canvas.draw_arc(center, NODE_RADIUS + 6, 0, TAU, 48, Color(1.0, 0.85, 0.3), 4.0)
@@ -308,7 +356,6 @@ func _remove_orb(node_index: int) -> void:
 	if node.placed_orb == null:
 		return
 	var orb: Orb = node.placed_orb
-	# reset the power of all abilities affected by the charge connection
 	for conn: GraphConnectionData in GraphManager.graph.connections:
 		if conn.charge_stacks == 0:
 			continue
@@ -323,6 +370,9 @@ func _remove_orb(node_index: int) -> void:
 					ability.stats.power -= conn.charge_stacks * 0.1
 			conn.charge_stacks = 0
 	_unapply_node_from_orb(node, orb)
+	# move to end so it returns there in the orb list
+	orb_display_order.erase(orb)
+	orb_display_order.append(orb)
 	node.placed_orb.node_index = -1
 	node.placed_orb            = null
 	player._recalculate_orb_offsets()
@@ -370,7 +420,7 @@ func _rebuild_orb_list() -> void:
 		if orb.input_action != "":
 			taken_slots[orb.input_action] = orb
 
-	for orb: Orb in inventory.orbs:
+	for orb: Orb in orb_display_order:
 		if placed.has(orb):
 			continue
 		vbox.add_child(_build_orb_card(orb, taken_slots, inventory))
