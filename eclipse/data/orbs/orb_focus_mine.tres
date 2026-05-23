@@ -2,7 +2,6 @@
 
 [ext_resource type="Script" uid="uid://crg63cnpq5g5p" path="res://scripts/abilities/ability_data.gd" id="1_slcuo"]
 [ext_resource type="Resource" uid="uid://bqon3yj0asjp7" path="res://data/abilities/ability_focus_mine.tres" id="2_pir03"]
-[ext_resource type="Resource" uid="uid://bwviao7jgq6es" path="res://data/abilities/ability_dash.tres" id="3_e0wb8"]
 [ext_resource type="Script" uid="uid://coa8uhnocedee" path="res://scripts/orb/orb.gd" id="3_pir03"]
 [ext_resource type="Texture2D" uid="uid://dxg2wdayt8uye" path="res://art/orbs/orb_malachite.png" id="4_pir03"]
 
@@ -10,7 +9,7 @@
 script = ExtResource("3_pir03")
 id = "0"
 display_name = "Malachite Orb"
-abilities = Array[ExtResource("1_slcuo")]([ExtResource("2_pir03"), ExtResource("3_e0wb8")])
+abilities = Array[ExtResource("1_slcuo")]([ExtResource("2_pir03")])
 sprite_texture = ExtResource("4_pir03")
 input_action = "attack_interact"
 metadata/_custom_type_script = "uid://coa8uhnocedee"

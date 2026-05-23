@@ -1,6 +1,5 @@
 extends CharacterBody2D
 
-
 # ================================================================== exports ==
 
 @export_group("Procedural Animation")
@@ -26,14 +25,20 @@ const starting_orb_4: Orb = preload("res://data/orbs/orb_conductor_post.tres")
 
 # ================================================================ constants ==
 
-const FOCUS_BLOOM_MIN:     float = 0.0
-const FOCUS_BLOOM_MAX:     float = 0.75
-const FOCUS_GLOW_MIN:      float = 0.3
-const FOCUS_GLOW_MAX:      float = 1.25
-const FOCUS_DECAY:         float = 4.0
-const CHANNEL_TIME:        float = 5.0
-const CHANNEL_LIGHT_COST:  float = 0.80  # fraction of current light
-const CHANNEL_POWER_BONUS: float = 0.5
+const FOCUS_BLOOM_MIN:      float = 0.0
+const FOCUS_BLOOM_MAX:      float = 0.75
+const FOCUS_GLOW_MIN:       float = 0.3
+const FOCUS_GLOW_MAX:       float = 1.25
+const FOCUS_DECAY:          float = 4.0
+const CHANNEL_TIME:         float = 5.0
+const CHANNEL_LIGHT_COST:   float = 0.80
+const CHANNEL_POWER_BONUS:  float = 0.5
+
+const ABILITY_STAGGER_SEC:  float = 0.05
+const ENEMY_SEARCH_WAIT:    float = 1
+const TILE_SEARCH_WAIT:     float = 1
+
+const JOYSTICK_CURSOR_RADIUS: float = 160.0
 
 
 # ================================================================= textures ==
@@ -100,6 +105,7 @@ class OrbVisual:
 	var reforming:     bool  = false
 
 var orb_visuals:      Array[OrbVisual] = []
+var _orb_visual_map: Dictionary = {}   # Orb → OrbVisual
 var orbit_time:       float            = 0.0
 var orbit_speed_mult: float            = 1.0
 
@@ -110,24 +116,43 @@ var channeling_orb_index: int   = -1
 var channel_charge:       float = 0.0
 
 
-# ================================================================ targeting ==
+# ============================================================ auto-targeting ==
 
-var _targeting_orb_index: int                = -1
-var _ability_queue:        Array[AbilityData] = []
-var _selected_enemies:     Array[Node]        = []
-var _hovered_enemy:        Node               = null
-var _queue_hold_pending:   bool               = false
-var _queue_any_activated:  bool               = false
+class PendingActivation:
+	var orb_index:     int
+	var abilities:     Array[AbilityData]
+	var stagger_timer: float = 0.0
+	var search_timer:  float = 0.0
+	var any_activated: bool  = false
+
+var _pending: Array[PendingActivation] = []
+
+var _range_flash_radius: float = 0.0
+var _range_flash_phase:  float = 0.0
 
 
 # ================================================================== forging ==
 
 var _nearby_forge: Forge = null
 
+# ================================================================== drawing ==
+
+var _top_canvas: CanvasLayer = null
+var _top_draw:   Node2D      = null
 
 # ==================================================================== ready ==
 
 func _ready() -> void:
+	# setup the canvas for the player draw function
+	_top_canvas        = CanvasLayer.new()
+	_top_canvas.layer  = 1          # above everything else
+	_top_canvas.follow_viewport_enabled = true
+	_top_canvas.follow_viewport_scale   = 1.0
+	add_child(_top_canvas)
+	_top_draw = Node2D.new()
+	_top_draw.draw.connect(_on_top_draw)
+	_top_canvas.add_child(_top_draw)
+
 	add_to_group("player")
 	$Inventory.orb_added.connect(_on_orb_added)
 	$Inventory.orb_removed.connect(_on_orb_removed)
@@ -141,9 +166,10 @@ func _ready() -> void:
 # ================================================================== process ==
 
 func _process(delta: float) -> void:
-	time             += delta
-	z_index           = %TilemapManager.get_z_for(global_position)
-	movement_enabled  = true
+	_top_draw.queue_redraw()
+	time            += delta
+	z_index          = %TilemapManager.get_z_for(global_position)
+	movement_enabled = true
 
 	$head.offset = head_offset + Vector2(0, round(bob_amount * sin(time * 2.0)))
 	$body.offset = body_offset + Vector2(0, round(bob_amount * sin(time * 2.0 + 0.5)))
@@ -171,87 +197,167 @@ func _physics_process(_delta: float) -> void:
 
 # ================================================================ abilities ==
 
-func _activate(ability: AbilityData, ctx: Dictionary) -> bool:
-	ability.activate(ctx)
-	if ctx["lock_movement"]:
-		movement_enabled = false
-	if ctx["activated"]:
-		light -= _ability_cost(ability)
-	return ctx["activated"]
-
-
 func _tick_abilities(delta: float) -> void:
+	# if we're channeling, don't check to activate any orbs
 	if channeling_orb_index != -1:
 		return
 
-	# If an orb is in targeting mode, tick its hold abilities in parallel with the queue.
-	if _targeting_orb_index >= 0:
-		_tick_targeting_hold_abilities(delta)
-
-	if _ability_queue.size() > 0:
-		_tick_targeting(delta)
-		queue_redraw()
-		return
-
-	var max_orb_t: float    = 0.0
 	var orbs:      Array[Orb] = $Inventory.orbs
+	var max_orb_t: float      = 0.0
 
-	for i in range(orbs.size()):
-		# Skip orbs already being handled by the targeting queue.
-		if i == _targeting_orb_index:
-			continue
-
-		var orb: Orb = orbs[i]
-
-		if not _orb_is_usable(i):
-			_log_blocked_orb(i, orb)
-			continue
-
-		var hold_count:      int   = _count_hold_abilities(orb)
-		var has_hold:        bool  = hold_count > 0
-		var holds_completed: int   = 0
-		var hold_t_sum:      float = 0.0
-		var orb_activated:   bool  = false
-		var any_activated:   bool  = false
-
-		for ability: AbilityData in orb.abilities:
-			match ability.trigger_type:
-				AbilityData.TriggerType.PASSIVE:
-					_activate(ability, _make_context(delta, false, i))
-
-				AbilityData.TriggerType.ACTIVE:
-					if not ability.requires_hold:
-						_handle_nonhold_ability(ability, i)
-					else:
-						var result := _handle_hold_ability(ability, delta, i, orb.nonhold_fired)
-						holds_completed += result["completed"]
-						any_activated    = any_activated or result["activated"]
-						hold_t_sum      += result["orb_t"]
-
-		# Open the ability queue if a non-hold ability was just queued.
-		var queue_just_opened: bool = false
-		if _ability_queue.size() > 0 and _targeting_orb_index == -1:
-			_targeting_orb_index = i
-			queue_just_opened    = true
-			_queue_any_activated = false
-			if has_hold:
-				orb.nonhold_fired = true
-			_advance_ability_queue(delta)
-
-		if not queue_just_opened:
-			orb_activated = _resolve_orb_glow(i, orb, has_hold, hold_count, holds_completed,
-				hold_t_sum, any_activated)
-
-		max_orb_t = maxf(max_orb_t, orb_visuals[i].glow)
-
-		if orb_activated:
-			shatter_orb(i)
-			_trigger_connections(i, delta)
-
+	_queue_new_orb_presses(orbs)
+	_tick_passive_and_hold_abilities(orbs, delta, max_orb_t)
+	_advance_pending_activations(delta)
 	_update_body_glow(max_orb_t)
 
 
-# Returns a context dictionary for an ability activation.
+# Checks each orb's input action this frame and enqueues a PendingActivation
+# for any newly pressed orb that is usable and affordable.
+func _queue_new_orb_presses(orbs: Array[Orb]) -> void:
+	for i in range(orbs.size()):
+		var orb: Orb = orbs[i]
+		if not _orb_is_usable(i):
+			_log_blocked_orb(i, orb)
+			continue
+		if not Input.is_action_just_pressed(orb.input_action):
+			continue
+		if _orb_already_pending(i):
+			continue
+
+		# add the orb to the list of pending orb activations
+		var pa          := PendingActivation.new()
+		pa.orb_index     = i
+		pa.stagger_timer = 0.0
+		pa.search_timer  = 0.0
+		pa.any_activated = false
+		for ability: AbilityData in orb.abilities:
+			if ability.trigger_type == AbilityData.TriggerType.ACTIVE and not ability.requires_hold:
+				pa.abilities.append(ability)
+		_pending.append(pa)
+
+
+func _orb_already_pending(orb_index: int) -> bool:
+	for p: PendingActivation in _pending:
+		if p.orb_index == orb_index:
+			return true
+	return false
+
+
+# Ticks all passive abilities every frame, and hold abilities while their
+# input is held. Updates max_orb_t for body glow.
+func _tick_passive_and_hold_abilities(orbs: Array[Orb], delta: float, max_orb_t: float) -> void:
+	for i in range(orbs.size()):
+		if not _orb_is_usable(i):
+			continue
+		var orb: Orb = orbs[i]
+		for ability: AbilityData in orb.abilities:
+			if ability.trigger_type == AbilityData.TriggerType.PASSIVE:
+				_activate_free(ability, _make_context(delta, false, i))
+			elif ability.trigger_type == AbilityData.TriggerType.ACTIVE and ability.requires_hold:
+				_tick_hold_ability(ability, delta, i)
+		max_orb_t = maxf(max_orb_t, orb_visuals[i].glow)
+
+
+# Each frame, steps every pending activation forward:
+# - Respects the stagger timer between abilities on the same orb.
+# - Calls Util.resolve_target() to find a world position for the ability.
+# - If a target is found, fires the ability immediately.
+# - If not, runs a grace-period timer; skips the ability when it expires.
+func _advance_pending_activations(delta: float) -> void:
+	var finished:      Array[PendingActivation] = []
+	var flashing_range: float                   = 0.0
+
+	for pa: PendingActivation in _pending:
+		if pa.abilities.is_empty():
+			finished.append(pa)
+			continue
+
+		pa.stagger_timer -= delta
+		if pa.stagger_timer > 0.0:
+			continue
+
+		var ability: AbilityData            = pa.abilities[0]
+		var range:   float                  = _get_orb_range(ability)
+		var aim:     Vector2                = _get_aim_position(range)
+		var result:  Util.TargetingResult   = Util.resolve_target(
+			ability.targeting_type, self, %TilemapManager, aim, range)
+
+		if result.found:
+			_fire_ability(pa, ability, result, delta)
+		else:
+			flashing_range = _tick_grace_period(pa, ability, delta, flashing_range)
+
+	_update_range_flash(flashing_range, delta)
+
+	for pa: PendingActivation in finished:
+		if pa.any_activated:
+			shatter_orb(pa.orb_index)
+			_trigger_connections(pa.orb_index, delta)
+		_pending.erase(pa)
+
+
+# Fires one ability from a pending activation, deducting light on first fire.
+func _fire_ability(pa: PendingActivation, ability: AbilityData,
+		result: Util.TargetingResult, delta: float) -> void:
+	var ctx           := _make_context(delta, true, pa.orb_index)
+	ctx["target_pos"]  = result.position
+	ctx["targets"]     = result.targets
+	if _activate_free(ability, ctx):
+		if not pa.any_activated:
+			light -= _orb_cost(pa.orb_index)
+		pa.any_activated = true
+	_advance_ability_queue(pa)
+
+
+# Counts down the grace period for a pending ability that found no target.
+# Returns an updated flashing_range so the range arc can pulse on screen.
+# Skips (pops) the ability when the timer expires.
+func _tick_grace_period(pa: PendingActivation, ability: AbilityData,
+		delta: float, flashing_range: float) -> float:
+	var wait: float = TILE_SEARCH_WAIT \
+		if ability.targeting_type == Util.TargetingType.TILE \
+		else ENEMY_SEARCH_WAIT
+	if pa.search_timer <= 0.0:
+		pa.search_timer = wait
+	pa.search_timer -= delta
+	flashing_range = maxf(flashing_range, _get_orb_range(ability))
+	if pa.search_timer <= 0.0:
+		_advance_ability_queue(pa)
+	return flashing_range
+
+
+func _update_range_flash(flashing_range: float, delta: float) -> void:
+	if flashing_range != _range_flash_radius:
+		_range_flash_radius = flashing_range
+		queue_redraw()
+	if _range_flash_radius > 0.0:
+		_range_flash_phase += delta * TAU * 3.0
+		queue_redraw()
+	if Util.last_input_device == Util.InputDevice.CONTROLLER:
+		queue_redraw()
+
+
+func _tick_hold_ability(ability: AbilityData, delta: float, orb_index: int) -> void:
+	var orb: Orb = $Inventory.orbs[orb_index]
+	if Input.is_action_pressed(orb.input_action):
+		var aim: Vector2  = _get_aim_position(_get_orb_range(ability))
+		var ctx           := _make_context(delta, true, orb_index)
+		ctx["target_pos"]  = aim
+		if _activate_free(ability, ctx):
+			orb_visuals[orb_index].glow_target = 1.0
+			shatter_orb(orb_index)
+			_trigger_connections(orb_index, delta)
+	elif Input.is_action_just_released(orb.input_action):
+		_activate_free(ability, _make_context(delta, false, orb_index))
+		orb_visuals[orb_index].glow_target = 0.0
+
+func _advance_ability_queue(pa: PendingActivation) -> void:
+	pa.abilities.pop_front()
+	pa.stagger_timer = ABILITY_STAGGER_SEC
+	pa.search_timer  = 0.0
+
+# ── context / cost helpers ─────────────────────────────────────────────────
+
 func _make_context(delta: float, pressed: bool, orb_index: int) -> Dictionary:
 	return {
 		"player":        self,
@@ -264,25 +370,41 @@ func _make_context(delta: float, pressed: bool, orb_index: int) -> Dictionary:
 		"orb_shattered": orb_visuals[orb_index].shattered,
 		"orb_index":     orb_index,
 		"potency":       $Inventory.orbs[orb_index].orb_potency,
+		"target_pos":    Vector2.ZERO,
+		"targets":       [],
 	}
 
 
-func _ability_cost(ability: AbilityData) -> float:
-	return ability.stats.light_cost if ability.stats and "light_cost" in ability.stats else 0.0
+func _activate_free(ability: AbilityData, ctx: Dictionary) -> bool:
+	ability.activate(ctx)
+	if ctx["lock_movement"]:
+		movement_enabled = false
+	return ctx["activated"]
 
 
-func _can_afford(ability: AbilityData) -> bool:
-	return light >= _ability_cost(ability)
+func _get_orb_range(ability: AbilityData) -> float:
+	return ability.stats.range if ability.stats and "range" in ability.stats else 0.0
+
+
+func _orb_cost(orb_index: int) -> float:
+	return _compute_orb_light_cost($Inventory.orbs[orb_index])
+
+
+func _can_afford_orb(orb_index: int) -> bool:
+	return light >= _orb_cost(orb_index)
 
 
 func _orb_is_usable(i: int) -> bool:
 	var orb: Orb = $Inventory.orbs[i]
-	return orb.node_index != -1 and not orb_visuals[i].shattered and orb.input_action != ""
+	return orb.node_index != -1 and not orb_visuals[i].shattered and orb.input_action != "" and _can_afford_orb(i)
 
 
 func _log_blocked_orb(i: int, orb: Orb) -> void:
 	if orb.input_action == "" or not Input.is_action_just_pressed(orb.input_action):
 		return
+	if not _can_afford_orb(i):
+		print("[orb %d] blocked: can't afford (cost %.1f, have %.1f)" % [
+			i, _orb_cost(i), light])
 	if orb.node_index == -1:
 		print("[orb %d] blocked: not placed in graph" % i)
 	elif orb_visuals[i].shattered:
@@ -290,248 +412,30 @@ func _log_blocked_orb(i: int, orb: Orb) -> void:
 			orb_visuals[i].cooldown - orb_visuals[i].cooldown_age])
 
 
-func _count_hold_abilities(orb: Orb) -> int:
-	var count: int = 0
-	for ability: AbilityData in orb.abilities:
-		if ability.trigger_type == AbilityData.TriggerType.ACTIVE and ability.requires_hold:
-			count += 1
-	return count
-
-
-func _handle_nonhold_ability(ability: AbilityData, orb_index: int) -> void:
-	var orb: Orb = $Inventory.orbs[orb_index]
-	if not Input.is_action_just_pressed(orb.input_action):
-		return
-	if not _can_afford(ability):
-		print("[orb %d] blocked: can't afford %s (cost %.1f, have %.1f)" % [
-			orb_index, ability.resource_path.get_file(), _ability_cost(ability), light])
-	elif _targeting_orb_index != -1:
-		print("[orb %d] blocked: another orb is in targeting mode (orb %d)" % [
-			orb_index, _targeting_orb_index])
-	else:
-		_ability_queue.append(ability)
-
-
-# Returns { completed, activated, orb_t } for a single hold ability this frame.
-func _handle_hold_ability(ability: AbilityData, delta: float,
-		orb_index: int, nonhold_fired: bool) -> Dictionary:
-	var orb:    Orb    = $Inventory.orbs[orb_index]
-	var result: Dictionary = { "completed": 0, "activated": false, "orb_t": 0.0 }
-
-	if Input.is_action_just_pressed(orb.input_action) and nonhold_fired:
-		print("[orb %d] blocked: hold ability skipped — nonhold already fired this press" % orb_index)
-		return result
-
-	if Input.is_action_pressed(orb.input_action) and _can_afford(ability):
-		var ctx := _make_context(delta, true, orb_index)
-		if _activate(ability, ctx):
-			result["completed"] = 1
-			result["activated"] = true
-		result["orb_t"] = ctx["orb_t"]
-	elif Input.is_action_just_pressed(orb.input_action) and not _can_afford(ability):
-		print("[orb %d] blocked: can't afford hold ability %s (cost %.1f, have %.1f)" % [
-			orb_index, ability.resource_path.get_file(), _ability_cost(ability), light])
-	elif Input.is_action_just_released(orb.input_action):
-		_activate(ability, _make_context(delta, false, orb_index))
-
-	return result
-
-
-# Resolves glow state and returns true if the orb should shatter this frame.
-func _resolve_orb_glow(i: int, orb: Orb, has_hold: bool, hold_count: int,
-		holds_completed: int, hold_t_sum: float, any_activated: bool) -> bool:
-	if not has_hold:
-		return false
-
-	var released: bool = Input.is_action_just_released(orb.input_action)
-
-	if released and orb.nonhold_fired:
-		orb.nonhold_fired = false
-		if any_activated:
-			orb_visuals[i].glow_target = 1.0
-			return true
-		orb_visuals[i].glow_target = 0.0  # ← activated but nothing fired; reset
-	elif holds_completed >= hold_count and hold_count > 0 and any_activated:
-		orb_visuals[i].glow_target = 1.0
-		orb.nonhold_fired          = false
-		return true
-	elif Input.is_action_pressed(orb.input_action):
-		orb_visuals[i].glow_target = hold_t_sum / float(hold_count)
-	elif released:
-		orb_visuals[i].glow_target = 0.0
-
-	return false
-
-
 func _update_body_glow(t: float) -> void:
 	var glow: Color = Color(lerpf(1.0, 2.0, t), lerpf(1.0, 2.0, t), lerpf(1.0, 2.0, t))
-	var c:    Color = glow if t > 0.0 else Color.WHITE
-	%body.self_modulate = c
-	%head.self_modulate = c
+	%body.self_modulate = glow if t > 0.0 else Color.WHITE
+	%head.self_modulate = glow if t > 0.0 else Color.WHITE
 
 
-# ================================================================ targeting ==
+# ================================================================= aiming ====
 
-func _advance_ability_queue(delta: float) -> void:
-	# Immediately fire all NONE-targeting abilities in the queue.
-	while _ability_queue.size() > 0:
-		var ability: AbilityData = _ability_queue[0]
-		if ability.targeting_mode != AbilityData.TargetingMode.NONE:
-			queue_redraw()
-			return
-		_ability_queue.pop_front()
-		if _can_afford(ability):
-			var ctx := _make_context(delta, true, _targeting_orb_index)
-			if _activate(ability, ctx):
-				_queue_any_activated = true
-
-	# Queue is empty — check if we still need to wait for a hold ability.
-	var queued_orb: Orb = $Inventory.orbs[_targeting_orb_index]
-	if _count_hold_abilities(queued_orb) > 0:
-		_queue_hold_pending = true
-	elif _queue_any_activated:
-		_finish_orb_activation(delta)
+func _get_aim_position(range: float = 0.0) -> Vector2:
+	var joy: Vector2 = Input.get_vector("aim_left", "aim_right", "aim_up", "aim_down")
+	var world_target: Vector2
+	if joy.length() > 0.1:
+		world_target = global_position + joy.normalized() * (joy.length() * JOYSTICK_CURSOR_RADIUS)
 	else:
-		_targeting_orb_index = -1
-		queue_redraw()
+		world_target = get_global_mouse_position()
+	if range > 0.0:
+		var offset: Vector2 = world_target - global_position
+		if offset.length() > range:
+			world_target = global_position + offset.normalized() * range
+	return world_target
 
 
-func _tick_targeting_hold_abilities(delta: float) -> void:
-	var queued_orb:     Orb   = $Inventory.orbs[_targeting_orb_index]
-	var hold_count:     int   = 0
-	var holds_completed: int  = 0
-	var hold_t_sum:     float = 0.0
-
-	for ability: AbilityData in queued_orb.abilities:
-		if ability.trigger_type != AbilityData.TriggerType.ACTIVE or not ability.requires_hold:
-			continue
-		hold_count += 1
-		if Input.is_action_pressed(queued_orb.input_action) and _can_afford(ability):
-			var ctx := _make_context(delta, true, _targeting_orb_index)
-			if _activate(ability, ctx):
-				holds_completed      += 1
-				_queue_any_activated  = true
-			hold_t_sum += ctx["orb_t"]
-		elif Input.is_action_just_released(queued_orb.input_action):
-			_activate(ability, _make_context(delta, false, _targeting_orb_index))
-
-	if hold_count > 0 and Input.is_action_pressed(queued_orb.input_action):
-		orb_visuals[_targeting_orb_index].glow_target = hold_t_sum / float(hold_count)
-
-	if _queue_hold_pending:
-		var hold_done: bool = holds_completed >= hold_count and hold_count > 0
-		var released:  bool = Input.is_action_just_released(queued_orb.input_action)
-		if hold_done or released:
-			_queue_hold_pending = false
-			_finish_orb_activation(delta)
-
-
-func _tick_targeting(delta: float) -> void:
-	if _ability_queue.size() == 0:
-		return
-
-	var ability:    AbilityData               = _ability_queue[0]
-	var orb_action: String                    = $Inventory.orbs[_targeting_orb_index].input_action
-	var mode:       AbilityData.TargetingMode = ability.targeting_mode
-	var target:     Vector2                   = _get_clamped_target(ability)
-
-	var cancel: bool = Input.is_action_just_pressed("cancel") \
-		or (orb_action != "" and Input.is_action_just_pressed(orb_action))
-	if cancel:
-		_clear_enemy_outlines()
-		_selected_enemies.clear()
-		_ability_queue.pop_front()
-		_advance_ability_queue(delta)
-		return
-
-	if mode == AbilityData.TargetingMode.ENEMY:
-		_tick_enemy_targeting(ability, delta)
-		return
-
-	if Input.is_action_just_pressed("confirm"):
-		var ctx          := _make_context(delta, true, _targeting_orb_index)
-		ctx["target_pos"] = target
-		if _activate(ability, ctx):
-			_queue_any_activated = true
-		_ability_queue.pop_front()
-		_advance_ability_queue(delta)
-
-
-func _tick_enemy_targeting(ability: AbilityData, delta: float) -> void:
-	var hovered: Node = _find_hovered_enemy(ability)
-	_set_hovered_enemy(hovered)
-
-	if not Input.is_action_just_pressed("confirm") or hovered == null:
-		return
-	if hovered in _selected_enemies:
-		return
-
-	_selected_enemies.append(hovered)
-	if hovered.has_method("set_outline"):
-		hovered.set_outline(true)
-
-	if _selected_enemies.size() >= ability.max_targets:
-		var ctx       := _make_context(delta, true, _targeting_orb_index)
-		ctx["targets"] = _selected_enemies.duplicate()
-		if _activate(ability, ctx):
-			_queue_any_activated = true
-		_clear_enemy_outlines()
-		_selected_enemies.clear()
-		_ability_queue.pop_front()
-		_advance_ability_queue(delta)
-
-
-func _finish_orb_activation(delta: float) -> void:
-	orb_visuals[_targeting_orb_index].glow_target = 1.0
-	shatter_orb(_targeting_orb_index)
-	_trigger_connections(_targeting_orb_index, delta)
-	_targeting_orb_index = -1
-	_queue_hold_pending  = false
-	_queue_any_activated = false
-	queue_redraw()
-
-
-func _find_hovered_enemy(ability: AbilityData) -> Node:
-	var mouse:  Vector2 = get_global_mouse_position()
-	var range:  float   = ability.stats.range if ability.stats and "range" in ability.stats else 0.0
-	var best_d: float   = 32.0
-	var result: Node    = null
-
-	var groups: Array[String] = ["enemies"]
-	if ability is AbilityLightningChain:
-		groups.append("conductor_posts")
-
-	for group in groups:
-		for target in get_tree().get_nodes_in_group(group):
-			if range > 0.0 and target.global_position.distance_to(global_position) > range:
-				continue
-			var d: float = target.global_position.distance_to(mouse)
-			if d < best_d:
-				best_d = d
-				result = target
-	return result
-
-
-func _set_hovered_enemy(enemy: Node) -> void:
-	if _hovered_enemy == enemy:
-		return
-	_set_outline(_hovered_enemy, false)
-	_hovered_enemy = enemy
-	_set_outline(_hovered_enemy, true)
-
-
-func _set_outline(node: Node, enabled: bool) -> void:
-	if node and node not in _selected_enemies and node.has_method("set_outline"):
-		node.set_outline(enabled)
-
-
-func _clear_enemy_outlines() -> void:
-	for enemy in _selected_enemies:
-		if enemy and enemy.has_method("set_outline"):
-			enemy.set_outline(false)
-	if _hovered_enemy and _hovered_enemy.has_method("set_outline"):
-		_hovered_enemy.set_outline(false)
-	_hovered_enemy = null
+func _get_right_stick() -> Vector2:
+	return Input.get_vector("aim_left", "aim_right", "aim_up", "aim_down")
 
 
 # ================================================================ channeling ==
@@ -558,7 +462,6 @@ func _tick_channel(delta: float) -> void:
 	if not channel_held:
 		return
 
-	# Pick an orb to begin channeling when the player holds channel + orb button.
 	ParticleManager.spawn_focus_particles(global_position, 0.02)
 	for i in range($Inventory.orbs.size()):
 		var orb: Orb = $Inventory.orbs[i]
@@ -604,7 +507,6 @@ func _update_orb_visuals(delta: float) -> void:
 
 	orbit_time += delta * orb_orbit_speed * orbit_speed_mult
 
-	# Reform any orbs whose cooldown has expired.
 	for i in range(orb_visuals.size()):
 		var ov: OrbVisual = orb_visuals[i]
 		if not ov.shattered:
@@ -623,7 +525,6 @@ func _update_orb_visuals(delta: float) -> void:
 			if ability is AbilityFocusMine:
 				(ability as AbilityFocusMine).reset_exploded()
 
-	# Update position, glow, and brightness for each orb sprite.
 	for i in range(orb_visuals.size()):
 		var ov:  OrbVisual = orb_visuals[i]
 		var orb: Orb       = $Inventory.orbs[i]
@@ -640,7 +541,6 @@ func _update_orb_visuals(delta: float) -> void:
 		ov.sprite.position = _angle_to_orbit_pos(ov.current_angle)
 		ov.sprite.scale    = Vector2.ONE
 
-		# Skip one frame after reform so physics interpolation resets cleanly.
 		if ov.reforming:
 			ov.reforming = false
 			continue
@@ -677,8 +577,8 @@ func _recalculate_orb_offsets() -> void:
 # ============================================================= orb management ==
 
 func _on_orb_added(orb: Orb) -> void:
-	var ov:              OrbVisual = OrbVisual.new()
-	ov.sprite                      = Sprite2D.new()
+	var ov          := OrbVisual.new()
+	ov.sprite        = Sprite2D.new()
 	ov.sprite.texture              = orb.sprite_texture
 	ov.sprite.centered             = true
 	ov.sprite.visible              = false
@@ -686,15 +586,16 @@ func _on_orb_added(orb: Orb) -> void:
 	ov.sprite.z_index              = 4096
 	add_child(ov.sprite)
 	orb_visuals.append(ov)
+	_orb_visual_map[orb] = ov        # ← track by reference
 	_auto_assign_slot(orb)
 
-
 func _on_orb_removed(orb: Orb) -> void:
-	var idx: int = $Inventory.orbs.find(orb)
-	if idx == -1 or idx >= orb_visuals.size():
+	if not _orb_visual_map.has(orb):
 		return
-	orb_visuals[idx].sprite.queue_free()
-	orb_visuals.remove_at(idx)
+	var ov: OrbVisual = _orb_visual_map[orb]
+	ov.sprite.queue_free()
+	orb_visuals.erase(ov)            # erase by value, no index math
+	_orb_visual_map.erase(orb)
 
 
 func _on_relic_added(relic: RelicData, _qty: int) -> void:
@@ -732,7 +633,6 @@ func shatter_orb(orb_index: int) -> void:
 	ov.cooldown       = _compute_orb_cooldown(orb)
 	ov.sprite.visible = false
 	ov.current_angle  = orbit_time + (float(orb_index) / float(orb_visuals.size())) * TAU
-	light            -= _compute_orb_light_cost(orb)
 	ParticleManager.spawn_focus_spark(global_position + ov.sprite.position)
 
 
@@ -842,63 +742,19 @@ func _dev_reset_cooldowns() -> void:
 
 # ===================================================================== draw ==
 
-func _draw() -> void:
-	if _ability_queue.size() == 0:
-		return
+func _on_top_draw() -> void:
+	if _range_flash_radius > 0.0:
+		var alpha: float = lerpf(0.15, 0.55, sin(_range_flash_phase) * 0.5 + 0.5)
+		_top_draw.draw_arc(
+			global_position, _range_flash_radius, 0.0, TAU, 48,
+			Color(1.0, 0.3, 0.2, alpha), 1.5)
 
-	var ability:      AbilityData               = _ability_queue[0]
-	var mode:         AbilityData.TargetingMode = ability.targeting_mode
-	var range:        float                     = ability.stats.range \
-		if ability.stats and "range" in ability.stats else 0.0
-	var target_local: Vector2                   = to_local(_get_clamped_target(ability))
-
-	if range > 0.0 and mode != AbilityData.TargetingMode.SELF_AREA \
-					and mode != AbilityData.TargetingMode.DIRECTION \
-					and mode != AbilityData.TargetingMode.NONE:
-		draw_arc(Vector2.ZERO, range, 0, TAU, 64, Color(1.0, 1.0, 1.5, 0.18), 1.0)
-
-	match mode:
-		AbilityData.TargetingMode.AREA:
-			draw_arc(target_local, ability.stats.aoe_radius, 0, TAU, 48,
-				Color(1.5, 1.5, 2.0, 0.5), 1.0)
-		AbilityData.TargetingMode.SELF_AREA:
-			draw_arc(Vector2.ZERO, ability.stats.aoe_radius, 0, TAU, 48,
-				Color(1.5, 1.5, 2.0, 0.5), 1.0)
-		AbilityData.TargetingMode.DIRECTION:
-			var local_mouse: Vector2 = get_local_mouse_position()
-			var dir:         Vector2 = local_mouse.normalized()
-			var draw_range:  float   = minf(ability.stats.range, local_mouse.length()) \
-				if range > 0.0 else ability.stats.range
-			draw_line(Vector2.ZERO, dir * draw_range, Color(1.5, 1.5, 2.0, 0.5), 1.0)
-		AbilityData.TargetingMode.POINT:
-			draw_arc(target_local, 6.0, 0, TAU, 16, Color(1.5, 1.5, 2.0, 0.5), 1.0)
-		AbilityData.TargetingMode.ENEMY:
-			for enemy in _selected_enemies:
-				if enemy:
-					draw_line(Vector2.ZERO, to_local(enemy.global_position),
-						Color(1.5, 1.5, 2.0, 0.4), 1.0)
-			if _hovered_enemy and _hovered_enemy not in _selected_enemies:
-				draw_line(Vector2.ZERO, to_local(_hovered_enemy.global_position),
-					Color(1.5, 1.5, 2.0, 0.25), 1.0)
-			var remaining: int = ability.max_targets - _selected_enemies.size()
-			if remaining > 0:
-				draw_string(ThemeDB.fallback_font, get_local_mouse_position() + Vector2(10, -10),
-					"x%d" % remaining, HORIZONTAL_ALIGNMENT_LEFT, -1, 12,
-					Color(1.5, 1.5, 2.0, 0.8))
-
+	var joy: Vector2 = _get_right_stick()
+	if Util.last_input_device == Util.InputDevice.CONTROLLER and joy.length() > 0.1:
+		var cursor_world: Vector2 = _get_aim_position()
+		_top_draw.draw_arc(cursor_world, 3.0, 0.0, TAU, 16, Color(1.0, 1.0, 1.0, 1.0), 0.5)
 
 # =================================================================== helpers ==
-
-func _get_clamped_target(ability: AbilityData) -> Vector2:
-	var mouse:  Vector2 = get_global_mouse_position()
-	var range:  float   = ability.stats.range if ability.stats and "range" in ability.stats else 0.0
-	if range <= 0.0:
-		return mouse
-	var offset: Vector2 = mouse - global_position
-	if offset.length() > range:
-		offset = offset.normalized() * range
-	return global_position + offset
-
 
 func _trigger_connections(orb_index: int, delta: float) -> void:
 	var node_index: int = $Inventory.orbs[orb_index].node_index

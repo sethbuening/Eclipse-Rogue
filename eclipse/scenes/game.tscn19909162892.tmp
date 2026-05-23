@@ -60,6 +60,14 @@ atlas_variants_rock = 1
 [node name="Player" parent="." unique_id=341096909 instance=ExtResource("1_uwrxv")]
 unique_name_in_owner = true
 z_as_relative = false
+head_offset = null
+body_offset = null
+bob_amount = null
+orb_orbit_center = null
+orb_orbit_radius = null
+orb_orbit_speed = null
+orb_reform_flash = null
+focus_orbit_speed = null
 
 [node name="Inventory" type="Node" parent="Player" unique_id=1698984047]
 script = ExtResource("5_gee14")
@@ -96,15 +104,11 @@ scroll_active = false
 metadata/_edit_use_anchors_ = true
 
 [node name="HUD" parent="." unique_id=1722242211 instance=ExtResource("10_kvpfn")]
-layer = 2
 
 [node name="RelicPopup" parent="." unique_id=1527728487 instance=ExtResource("13_kvuet")]
-layer = 2
 
 [node name="ForgeUI" parent="." unique_id=1596043621 instance=ExtResource("16_ca42v")]
 unique_name_in_owner = true
-layer = 2
 
 [node name="OrbGraphMenu" parent="." unique_id=1800532869 instance=ExtResource("6_0tnpc")]
 unique_name_in_owner = true
-layer = 2

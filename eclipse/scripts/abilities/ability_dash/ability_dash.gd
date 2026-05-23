@@ -8,9 +8,20 @@ func activate(context: Dictionary) -> void:
 	if not context.get("pressed", false):
 		return
 	var player: CharacterBody2D = context["player"]
-	var input: Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
-	var dir:   Vector2 = input.normalized() if input != Vector2.ZERO \
-		else Vector2(player.direction)
+	# Use aim direction: right joystick if controller, else mouse cursor.
+	# Falls back to the player's facing direction if neither provides input.
+	var target_pos: Vector2 = context.get("target_pos", Vector2.ZERO)
+	var dir: Vector2
+	if target_pos != Vector2.ZERO:
+		dir = (target_pos - player.global_position).normalized()
+	else:
+		# Fallback: right joystick or movement direction
+		var joy: Vector2 = Input.get_vector("aim_left", "aim_right", "aim_up", "aim_down")
+		if joy.length() > 0.2:
+			dir = joy.normalized()
+		else:
+			var move: Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
+			dir = move.normalized() if move != Vector2.ZERO else Vector2(player.direction)
 	@warning_ignore("shadowed_global_identifier")
 	var range: float   = get_stat("range")
 

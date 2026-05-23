@@ -14,6 +14,7 @@ script = ExtResource("1_g1qch")
 id = "Dash"
 display_name = "Dash"
 description = "Dash in your current direction of movement."
+targeting_type = 0
 stats = SubResource("Resource_7srcl")
 main_stats = Array[String](["range"])
 metadata/_custom_type_script = "uid://w4ehtfobddft"

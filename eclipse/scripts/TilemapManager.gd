@@ -582,6 +582,36 @@ func tile_exists(pos: Vector2i) -> bool:
 func is_air(pos: Vector2i) -> bool:
 	return not tile_types.has(pos)
 
+## Returns the world-space center of the mineable tile nearest to `aim_world`
+## that is also within `range` of `origin_world`.  Returns Vector2.INF if none
+## found.  Tiles are ranked by distance to the aim point so that the result
+## follows the player's mouse / joystick cursor.
+func get_nearest_mineable_tile(aim_world: Vector2, origin_world: Vector2, range: float) -> Vector2:
+	var aim_map:    Vector2i = world_to_map(aim_world)
+	var origin_map: Vector2i = world_to_map(origin_world)
+	# Search radius in tile units (ceiling so we don't miss edge tiles).
+	var tile_range: int = int(ceil(range / float(TILE_SIZE.x))) + 1
+
+	var best_dist_sq: float   = INF
+	var best_world:   Vector2 = Vector2.INF
+
+	for dx: int in range(-tile_range, tile_range + 1):
+		for dy: int in range(-tile_range, tile_range + 1):
+			var candidate: Vector2i = aim_map + Vector2i(dx, dy)
+			if not tile_exists(candidate):
+				continue
+			var cand_world: Vector2 = map_to_world(candidate)
+			# Must be within range of the player (origin).
+			if range > 0.0 and cand_world.distance_to(origin_world) > range:
+				continue
+			# Rank by distance to the aim point.
+			var d2: float = cand_world.distance_squared_to(aim_world)
+			if d2 < best_dist_sq:
+				best_dist_sq = d2
+				best_world   = cand_world
+
+	return best_world
+
 func _drop_ore(pos: Vector2i) -> void:
 	if not ore_types.has(pos):
 		return

@@ -23,6 +23,7 @@ func setup(angel_ref: E_Angel, start_angle: float) -> void:
 	_bob_offset_2 = randf() * TAU
 	_bob_offset_3 = randf() * TAU
 	z_index       = 4096
+	add_to_group("enemies")
 
 # ── process ───────────────────────────────────────────────────────────────────
 

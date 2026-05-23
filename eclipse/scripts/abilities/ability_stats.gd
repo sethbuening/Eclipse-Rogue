@@ -4,54 +4,54 @@ extends Resource
 
 # ── core ──────────────────────────────────────────────────────────────────────
 @export_group("Core")
-@export var power:            float = 1.0
-@export var cooldown:         float = 0.0
-@export var duration:         float = 0.0
-@export var range:            float = 1.0
+@export var power:            float = -1
+@export var cooldown:         float = -1
+@export var duration:         float = -1
+@export var range:            float = -1
 
 # ── speed ─────────────────────────────────────────────────────────────────────
 @export_group("Speed")
-@export var cast_speed:       float = 1.0
-@export var projectile_speed: float = 1.0
-@export var move_speed_bonus: float = 0.0
+@export var cast_speed:       float = -1
+@export var projectile_speed: float = -1
+@export var move_speed_bonus: float = -1
 
 # ── area ──────────────────────────────────────────────────────────────────────
 @export_group("Area")
-@export var aoe_radius:       float = 1.0
-@export var pierce:           int   = 0
+@export var aoe_radius:       float = -1
+@export var pierce:           int   = -1
 
 # ── critical hits ─────────────────────────────────────────────────────────────
 @export_group("Critical Hits")
-@export var crit_chance:      float = 0.0
-@export var crit_damage:      float = 2.0
-@export var crit_aoe:         float = 0.0
+@export var crit_chance:      float = -1
+@export var crit_damage:      float = -1
+@export var crit_aoe:         float = -1
 
 # ── light / resource ──────────────────────────────────────────────────────────
 @export_group("Light")
-@export var light_cost:       float = 0.0
-@export var light_on_hit:     float = 0.0
-@export var light_on_crit:    float = 0.0
+@export var light_cost:       float = -1
+@export var light_on_hit:     float = -1
+@export var light_on_crit:    float = -1
 
 # ── mining ────────────────────────────────────────────────────────────────────
 @export_group("Mining")
-@export var mining_power:     int   = 1
-@export var mining_radius:    int   = 1
-@export var ore_yield:        float = 1.0
+@export var mining_power:     int   = -1
+@export var mining_radius:    int   = -1
+@export var ore_yield:        float = -1
 
 # ── enemy interaction ─────────────────────────────────────────────────────────
 @export_group("Enemy Interaction")
-@export var knockback:        float = 0.0
-@export var stun_duration:    float = 0.0
-@export var slow_amount:      float = 0.0
-@export var slow_duration:    float = 0.0
-@export var dot_damage:       float = 0.0
-@export var dot_duration:     float = 0.0
+@export var knockback:        float = -1
+@export var stun_duration:    float = -1
+@export var slow_amount:      float = -1
+@export var slow_duration:    float = -1
+@export var dot_damage:       float = -1
+@export var dot_duration:     float = -1
 
 # ── defensive ─────────────────────────────────────────────────────────────────
 @export_group("Defensive")
-@export var damage_absorb:    float = 0.0
-@export var reflect_chance:   float = 0.0
-@export var shield_amount:    float = 0.0
+@export var damage_absorb:    float = -1
+@export var reflect_chance:   float = -1
+@export var shield_amount:    float = -1
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 func get_stat(stat_name: String, orb_potency: float = 1.0, main_stats: Array[String] = []) -> float:

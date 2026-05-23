@@ -27,30 +27,155 @@ enum Modifier {
 	TRICKLE
 }
 
+# ── targeting helper functions ────────────────────────────────────────────────
+
+enum TargetingType {
+	CURSOR,            # Spawn as close to cursor as possible (conductor post)
+	ENEMY,        # Enemies only, no fallback
+	ENEMY_TILE,   # Enemies first, fall back to nearest mineable tile
+	POST_ENEMY_TILE, # conductor posts first, then enemies, then tiles
+	TILE,         # Mineable tiles only
+	NONE,              # Passive / no targeting needed
+}
+
+class TargetingResult:
+	var position: Vector2  = Vector2.ZERO
+	var targets:  Array    = []          # Node2D enemies/posts, may be empty
+	var found:    bool     = false
+	var is_tile:  bool     = false       # true when result is a tile, not a unit
+
+
+## Resolve a world-space target for one ability press.
+## Returns null if nothing was found (caller should start/continue grace timer).
+static func resolve_target(
+		type:        int,        # TargetingType value
+		player:      Node2D,
+		tilemap:     Node,
+		aim:         Vector2,    # already range-clamped aim position
+		range:       float
+) -> TargetingResult:
+	var r := TargetingResult.new()
+
+	match type:
+		TargetingType.CURSOR:
+			r.position = aim
+			r.found    = true
+
+		TargetingType.ENEMY:
+			var enemy: Node2D = _nearest_enemy(player.global_position, aim, range)
+			if enemy:
+				r.position = enemy.global_position
+				r.targets  = [enemy]
+				r.found    = true
+
+		TargetingType.ENEMY_TILE:
+			var enemy: Node2D = _nearest_enemy(player.global_position, aim, range)
+			if enemy:
+				r.position = enemy.global_position
+				r.targets  = [enemy]
+				r.found    = true
+			else:
+				var tile: Vector2 = _nearest_tile(tilemap, aim, player.global_position, range)
+				if tile != Vector2.INF:
+					r.position = tile
+					r.is_tile  = true
+					r.found    = true
+
+		TargetingType.TILE:
+			var tile: Vector2 = _nearest_tile(tilemap, aim, player.global_position, range)
+			if tile != Vector2.INF:
+				r.position = tile
+				r.is_tile  = true
+				r.found    = true
+		
+		TargetingType.POST_ENEMY_TILE:
+			var target: Node2D = _nearest_enemy_or_post(player.global_position, aim, range)
+			if target:
+				r.position = target.global_position
+				r.targets  = [target]
+				r.found    = true
+			else:
+				var tile: Vector2 = _nearest_tile(tilemap, aim, player.global_position, range)
+				if tile != Vector2.INF:
+					r.position = tile
+					r.is_tile  = true
+					r.found    = true
+
+		TargetingType.NONE:
+			r.found = true   # passives always "succeed"
+
+	return r
+
+
+static func _nearest_enemy(origin: Vector2, aim: Vector2, range: float) -> Node2D:
+	var best_d: float  = INF
+	var best:   Node2D = null
+	for enemy in EnemyManager.living_enemies:
+		if not is_instance_valid(enemy):
+			continue
+		if range > 0.0 and origin.distance_squared_to(enemy.global_position) > range * range:
+			continue
+		var d: float = enemy.global_position.distance_to(aim)
+		if d < best_d:
+			best_d = d
+			best   = enemy
+	return best
+
+static func _nearest_conductor_post(origin: Vector2, aim: Vector2, range: float) -> Node2D:
+	var best_d:   float = INF
+	var best:     Node2D = null
+	for post: ConductorPost in ConductorPost.all_posts:
+		if not is_instance_valid(post):
+			continue
+		if origin.distance_squared_to(post.global_position) > range * range:
+			continue
+		var d: float = post.global_position.distance_to(aim)
+		if d < best_d:
+			best_d = d
+			best   = post
+	return best
+
+static func _nearest_enemy_or_post(origin: Vector2, aim: Vector2, range: float) -> Node2D:
+	# Enemies take priority over posts, but posts are valid targets too.
+	var post: ConductorPost = _nearest_conductor_post(origin, aim, range)
+	if post:
+		return post
+	var enemy: Node2D = _nearest_enemy(origin, aim, range)
+	if enemy:
+		return enemy
+	return null
+
+static func _nearest_tile(tilemap: Node, aim: Vector2, origin: Vector2, range: float) -> Vector2:
+	if tilemap == null or not tilemap.has_method("get_nearest_mineable_tile"):
+		return Vector2.INF
+	return tilemap.get_nearest_mineable_tile(aim, origin, range)
+
 # ── input device tracking ─────────────────────────────────────────────────────
 enum InputDevice { KEYBOARD_MOUSE, CONTROLLER }
 var last_input_device: InputDevice = InputDevice.KEYBOARD_MOUSE
+const _MOUSE_MOVE_DEADZONE: float = 8  # pixels
+const _JOYSTICK_MOVE_DEADZONE: float = 0.2
 signal input_device_changed
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	Input.joy_connection_changed.connect(_on_joy_connection_changed)
+	input_device_changed.connect(_sync_cursor)
+	_sync_cursor()
 
 func _input(event: InputEvent) -> void:
 	var device: InputDevice
-	if event is InputEventKey or event is InputEventMouseButton or event is InputEventMouseMotion:
+	if event is InputEventKey or event is InputEventMouseButton:
+		device = InputDevice.KEYBOARD_MOUSE
+	elif event is InputEventMouseMotion:
+		if (event as InputEventMouseMotion).relative.length() < _MOUSE_MOVE_DEADZONE:
+			return
 		device = InputDevice.KEYBOARD_MOUSE
 	elif event is InputEventJoypadButton:
 		device = InputDevice.CONTROLLER
 	elif event is InputEventJoypadMotion:
-		# Deadzone filter
-		var deadzone: float = 0.2
-		var x: float = Input.get_joy_axis(0, JOY_AXIS_LEFT_X)
-		var y: float = Input.get_joy_axis(0, JOY_AXIS_LEFT_Y)
-		var x_2: float = Input.get_joy_axis(0, JOY_AXIS_RIGHT_X)
-		var y_2: float = Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y)
-		var magnitude: float = maxf(Vector2(x, y).length(), Vector2(x_2, y_2).length())
-		if magnitude < deadzone:
-			return  # ignore micro movement completely
+		if absf((event as InputEventJoypadMotion).axis_value) < _JOYSTICK_MOVE_DEADZONE:
+			return
 		device = InputDevice.CONTROLLER
 	else:
 		return
@@ -62,6 +187,11 @@ func _on_joy_connection_changed(_device: int, connected: bool) -> void:
 	if not connected and last_input_device == InputDevice.CONTROLLER:
 		last_input_device = InputDevice.KEYBOARD_MOUSE
 		input_device_changed.emit()
+
+func _sync_cursor() -> void:
+	Input.mouse_mode = Input.MOUSE_MODE_HIDDEN \
+		if last_input_device == InputDevice.CONTROLLER \
+		else Input.MOUSE_MODE_VISIBLE
 
 # ── misc ──────────────────────────────────────────────────────────────────────
 func nearest_direction(v: Vector2) -> Vector2i:
@@ -119,6 +249,9 @@ const _MOUSE_OFFSET:      int = 0x00010000
 const _JOY_BUTTON_OFFSET: int = 0x00020000
 const _JOY_AXIS_OFFSET:   int = 0x00030000
 const _PRESSED:           int = 0x10000000
+const _JOY_DPAD_ALL: int = 0x00040000
+const _JOY_STICK_L: int = 0x00050000
+const _JOY_STICK_R: int = 0x00060000
 
 const _KB: String = "res://art/input_key_images/Keyboard & Mouse/Default/"
 const _XB: String = "res://art/input_key_images/Xbox Series/Default/"
@@ -292,9 +425,9 @@ const INPUT_ICONS: Dictionary = {
 		preload(_XB + "xbox_rb.png"),
 
 	_JOY_BUTTON_OFFSET | JOY_BUTTON_LEFT_STICK:
-		preload(_XB + "xbox_stick_l.png"),
+		preload(_XB + "xbox_stick_side_l.png"),
 	_JOY_BUTTON_OFFSET | JOY_BUTTON_RIGHT_STICK:
-		preload(_XB + "xbox_stick_r.png"),
+		preload(_XB + "xbox_stick_side_r.png"),
 
 	_JOY_BUTTON_OFFSET | JOY_BUTTON_BACK:
 		preload(_XB + "xbox_button_view.png"),
@@ -309,7 +442,11 @@ const INPUT_ICONS: Dictionary = {
 		preload(_XB + "xbox_dpad_left.png"),
 	_JOY_BUTTON_OFFSET | JOY_BUTTON_DPAD_RIGHT:
 		preload(_XB + "xbox_dpad_right.png"),
-
+	
+	_JOY_DPAD_ALL: preload(_XB + "xbox_dpad_all.png"),
+	_JOY_STICK_L: preload(_XB + "xbox_stick_l.png"),
+	_JOY_STICK_R: preload(_XB + "xbox_stick_r.png"),
+	
 	# ── controller buttons pressed ────────────────────────────────────────────
 	(_JOY_BUTTON_OFFSET | JOY_BUTTON_A) | _PRESSED:
 		preload(_XB + "xbox_button_color_a_outline.png"),
@@ -327,9 +464,9 @@ const INPUT_ICONS: Dictionary = {
 
 	# WARNING: There are no outline sprites for these two inputs
 	(_JOY_BUTTON_OFFSET | JOY_BUTTON_LEFT_STICK) | _PRESSED:
-		preload(_XB + "xbox_stick_l.png"),
+		preload(_XB + "xbox_stick_side_l.png"),
 	(_JOY_BUTTON_OFFSET | JOY_BUTTON_RIGHT_STICK) | _PRESSED:
-		preload(_XB + "xbox_stick_r.png"),
+		preload(_XB + "xbox_stick_side_r.png"),
 
 	(_JOY_BUTTON_OFFSET | JOY_BUTTON_BACK) | _PRESSED:
 		preload(_XB + "xbox_button_view_outline.png"),
