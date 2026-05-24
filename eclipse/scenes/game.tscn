@@ -7,14 +7,14 @@
 [ext_resource type="Script" uid="uid://bbajvvrye7i4c" path="res://scripts/player/inventory.gd" id="5_gee14"]
 [ext_resource type="Texture2D" uid="uid://q2dnkkpl21ee" path="res://art/tempatlas.png" id="5_iywne"]
 [ext_resource type="PackedScene" uid="uid://cfpcxmav7qfv3" path="res://scenes/basalt_altar.tscn" id="5_p57ef"]
-[ext_resource type="PackedScene" uid="uid://cwm5dxysbrho5" path="res://scenes/OrbGraphMenu.tscn" id="6_0tnpc"]
+[ext_resource type="PackedScene" uid="uid://cwm5dxysbrho5" path="res://scenes/ui/OrbGraphMenu.tscn" id="6_0tnpc"]
 [ext_resource type="Texture2D" uid="uid://bqhdshuv47xtu" path="res://art/tempatlasrelic.png" id="7_trtic"]
 [ext_resource type="Texture2D" uid="uid://dk2dsiedhs7ns" path="res://art/tempatlasore.png" id="7_u5sy4"]
 [ext_resource type="Texture2D" uid="uid://be7nay14rgi7b" path="res://art/tempatlasground.png" id="8_ir15t"]
 [ext_resource type="PackedScene" uid="uid://bip2hrfg3w2fv" path="res://scenes/hud.tscn" id="10_kvpfn"]
 [ext_resource type="PackedScene" uid="uid://dnytw6xewr0j0" path="res://scenes/forge.tscn" id="12_dinhu"]
 [ext_resource type="PackedScene" uid="uid://3u75bkav35jp" path="res://scenes/relic_popup.tscn" id="13_kvuet"]
-[ext_resource type="PackedScene" uid="uid://dxyxllhqirip2" path="res://scenes/forge_ui.tscn" id="16_ca42v"]
+[ext_resource type="Script" uid="uid://4dxt4mgyo7pu" path="res://scripts/forging/forge_ui.gd" id="15_ir15t"]
 
 [sub_resource type="Environment" id="Environment_iywne"]
 background_mode = 3
@@ -101,10 +101,10 @@ layer = 2
 [node name="RelicPopup" parent="." unique_id=1527728487 instance=ExtResource("13_kvuet")]
 layer = 2
 
-[node name="ForgeUI" parent="." unique_id=1596043621 instance=ExtResource("16_ca42v")]
-unique_name_in_owner = true
-layer = 2
-
 [node name="OrbGraphMenu" parent="." unique_id=1800532869 instance=ExtResource("6_0tnpc")]
 unique_name_in_owner = true
 layer = 2
+
+[node name="ForgeUI" type="CanvasLayer" parent="." unique_id=631887601]
+unique_name_in_owner = true
+script = ExtResource("15_ir15t")

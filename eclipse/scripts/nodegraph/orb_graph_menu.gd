@@ -38,9 +38,8 @@ var ctrl_held_from:    int        = -1
 var ctrl_reassigning:  bool       = false
 var ctrl_preview_slot: int        = 1   # 1–MAX_ORB_SLOTS, shown while reassigning
 
-var _stick_cooldown:   float      = 0.0
-const STICK_REPEAT:    float      = 0.18
-
+var _stick_was_active: Dictionary = {}  # axis index → bool
+const STICK_DEADZONE:  float = 0.4
 
 # ── colors ────────────────────────────────────────────────────────────────────
 const COLOR_NODE_EMPTY:   Color = Color(0.2, 0.2, 0.3)
@@ -228,8 +227,8 @@ func _input(event: InputEvent) -> void:
 		_handle_mouse_input(event)
 		return
 
-	if event is InputEventJoypadButton and event.pressed:
-		_handle_controller_button(event as InputEventJoypadButton)
+	if event is InputEventJoypadButton or event is InputEventJoypadMotion:
+		_handle_controller_input(event)
 
 
 func _handle_mouse_input(event: InputEvent) -> void:
@@ -327,89 +326,96 @@ func _handle_mouse_input(event: InputEvent) -> void:
 #    A               confirm — assign preview slot to orb, exit mode
 #    B               cancel — restore old slot, exit mode
 #
-func _handle_controller_button(btn: InputEventJoypadButton) -> void:
+func _handle_controller_input(event: InputEvent) -> void:
+	# ── shared axis gate for motion events ───────────────────────────────────
+	if event is InputEventJoypadMotion:
+		var axis:   int  = (event as InputEventJoypadMotion).axis
+		var active: bool = absf(event.get_axis_value()) > STICK_DEADZONE
+		if not active:
+			_stick_was_active[axis] = false
+			return
+		if _stick_was_active.get(axis, false):
+			return
+		_stick_was_active[axis] = true
+
 	# ── slot-reassign mode ────────────────────────────────────────────────────
 	if ctrl_reassigning:
-		match btn.button_index:
-			JOY_BUTTON_DPAD_LEFT, JOY_BUTTON_DPAD_UP:
-				ctrl_preview_slot = wrapi(ctrl_preview_slot - 2, 0, MAX_ORB_SLOTS) + 1
-			JOY_BUTTON_DPAD_RIGHT, JOY_BUTTON_DPAD_DOWN:
-				ctrl_preview_slot = wrapi(ctrl_preview_slot - 1 + 1, 0, MAX_ORB_SLOTS) + 1
-			JOY_BUTTON_A:
-				_ctrl_confirm_slot()   # assigns and exits reassign mode
-			JOY_BUTTON_B:
-				ctrl_reassigning = false   # cancel, keep old slot
-		# FIX 1: rebuild orb list immediately so the card background turns
-		# purple the moment reassign mode is entered/changed/exited.
+		if event.is_action_pressed("ui_navigate_left") or event.is_action_pressed("ui_navigate_up"):
+			ctrl_preview_slot = wrapi(ctrl_preview_slot - 2, 0, MAX_ORB_SLOTS) + 1
+		elif event.is_action_pressed("ui_navigate_right") or event.is_action_pressed("ui_navigate_down"):
+			ctrl_preview_slot = wrapi(ctrl_preview_slot - 1 + 1, 0, MAX_ORB_SLOTS) + 1
+		elif event.is_action_pressed("confirm"):
+			_ctrl_confirm_slot()
+		elif event.is_action_pressed("cancel"):
+			ctrl_reassigning = false
 		_rebuild_orb_list()
 		graph_canvas.queue_redraw()
 		return
 
 	# ── normal mode ───────────────────────────────────────────────────────────
-	match btn.button_index:
-		JOY_BUTTON_DPAD_UP, JOY_BUTTON_DPAD_DOWN, \
-		JOY_BUTTON_DPAD_LEFT, JOY_BUTTON_DPAD_RIGHT:
-			_ctrl_navigate(btn.button_index)
+	var is_nav: bool = event.is_action_pressed("ui_navigate_up") \
+		or event.is_action_pressed("ui_navigate_down") \
+		or event.is_action_pressed("ui_navigate_left") \
+		or event.is_action_pressed("ui_navigate_right")
 
-		JOY_BUTTON_A:
-			if ctrl_panel == FocusPanel.GRAPH:
-				_ctrl_graph_confirm()
+	if is_nav:
+		var dpad: int
+		if event.is_action_pressed("ui_navigate_up"):      dpad = JOY_BUTTON_DPAD_UP
+		elif event.is_action_pressed("ui_navigate_down"):  dpad = JOY_BUTTON_DPAD_DOWN
+		elif event.is_action_pressed("ui_navigate_left"):  dpad = JOY_BUTTON_DPAD_LEFT
+		elif event.is_action_pressed("ui_navigate_right"): dpad = JOY_BUTTON_DPAD_RIGHT
+		_ctrl_navigate(dpad)
+
+	elif event.is_action_pressed("confirm"):
+		if ctrl_panel == FocusPanel.GRAPH:
+			_ctrl_graph_confirm()
+		else:
+			_ctrl_list_confirm()
+
+	elif event.is_action_pressed("cancel"):
+		if ctrl_held_orb != null:
+			if ctrl_held_from != -1:
+				_place_orb(ctrl_held_from, ctrl_held_orb)
+				ctrl_node = ctrl_held_from
 			else:
-				_ctrl_list_confirm()
-
-		JOY_BUTTON_B:
-			if ctrl_held_orb != null:
-				if ctrl_held_from != -1:
-					_place_orb(ctrl_held_from, ctrl_held_orb)
-					# Move focus back to the node the orb was just returned to.
-					ctrl_node = ctrl_held_from
-				else:
-					# Orb came from inventory — return focus there on cancel.
-					ctrl_panel = FocusPanel.LIST
-				ctrl_held_orb  = null
-				ctrl_held_from = -1
-				_rebuild_orb_list()
-			else:
-				close()
-
-		JOY_BUTTON_X:
-			if ctrl_panel == FocusPanel.GRAPH and ctrl_held_orb == null:
-				# Eject the orb from the focused graph node.
-				var nodes: Array[GraphNodeData] = GraphManager.graph.nodes
-				if ctrl_node < nodes.size() and nodes[ctrl_node].placed_orb != null:
-					_remove_orb(ctrl_node)
-			elif ctrl_panel == FocusPanel.LIST:
-				# X while hovering an inventory orb enters slot-reassign mode,
-				# but only for orbs that are not placed on a graph node.
-				var orb: Orb = _get_focused_orb()
-				if orb != null and orb.node_index == -1:
-					ctrl_reassigning  = true
-					ctrl_preview_slot = 1
-					if orb.input_action != "":
-						ctrl_preview_slot = int(orb.input_action.trim_prefix("orb_"))
-					_rebuild_orb_list()
-
-		JOY_BUTTON_Y:
-			if ctrl_panel == FocusPanel.GRAPH:
 				ctrl_panel = FocusPanel.LIST
-				_focus_nearest_orb_card()
-			else:
-				ctrl_panel = FocusPanel.GRAPH
-				_focus_nearest_graph_node()
+			ctrl_held_orb  = null
+			ctrl_held_from = -1
 			_rebuild_orb_list()
+		else:
+			close()
 
-		# RT: enter slot-reassign mode for the focused orb — only if it is
-		# currently in the inventory (not placed on a graph node).
-		JOY_AXIS_TRIGGER_RIGHT, JOY_BUTTON_RIGHT_SHOULDER:
+	elif event.is_action_pressed("ui_eject"):
+		if ctrl_panel == FocusPanel.GRAPH and ctrl_held_orb == null:
+			var nodes: Array[GraphNodeData] = GraphManager.graph.nodes
+			if ctrl_node < nodes.size() and nodes[ctrl_node].placed_orb != null:
+				_remove_orb(ctrl_node)
+		elif ctrl_panel == FocusPanel.LIST:
 			var orb: Orb = _get_focused_orb()
 			if orb != null and orb.node_index == -1:
 				ctrl_reassigning  = true
-				# Start preview on the orb's current slot (or 1 if unassigned).
 				ctrl_preview_slot = 1
 				if orb.input_action != "":
 					ctrl_preview_slot = int(orb.input_action.trim_prefix("orb_"))
-				# Rebuild immediately so the card turns purple right away.
 				_rebuild_orb_list()
+
+	elif event.is_action_pressed("ui_switch_panel"):
+		if ctrl_panel == FocusPanel.GRAPH:
+			ctrl_panel = FocusPanel.LIST
+			_focus_nearest_orb_card()
+		else:
+			ctrl_panel = FocusPanel.GRAPH
+			_focus_nearest_graph_node()
+		_rebuild_orb_list()
+
+	elif event.is_action_pressed("ui_reassign_input"):
+		var orb: Orb = _get_focused_orb()
+		if orb != null and orb.node_index == -1:
+			ctrl_reassigning  = true
+			ctrl_preview_slot = 1
+			if orb.input_action != "":
+				ctrl_preview_slot = int(orb.input_action.trim_prefix("orb_"))
+			_rebuild_orb_list()
 
 	graph_canvas.queue_redraw()
 
@@ -587,41 +593,6 @@ func _process(delta: float) -> void:
 		return
 	graph_canvas.queue_redraw()
 	hint_overlay.queue_redraw()
-
-	if Util.last_input_device != Util.InputDevice.CONTROLLER:
-		return
-
-	_stick_cooldown -= delta
-	if _stick_cooldown > 0.0:
-		return
-
-	# Merge both sticks so either can navigate.
-	var left:  Vector2 = Input.get_vector("move_left",  "move_right",  "move_up",  "move_down")
-	var right: Vector2 = Input.get_vector("aim_left",   "aim_right",   "aim_up",   "aim_down")
-	var stick: Vector2 = left if left.length() > right.length() else right
-	if stick.length() < 0.4:
-		_stick_cooldown = 0.0
-		return
-
-	_stick_cooldown = STICK_REPEAT
-	var ax: float = absf(stick.x)
-	var ay: float = absf(stick.y)
-	var dpad: int
-	if ax >= ay:
-		dpad = JOY_BUTTON_DPAD_RIGHT if stick.x > 0 else JOY_BUTTON_DPAD_LEFT
-	else:
-		dpad = JOY_BUTTON_DPAD_DOWN if stick.y > 0 else JOY_BUTTON_DPAD_UP
-
-	if ctrl_reassigning:
-		match dpad:
-			JOY_BUTTON_DPAD_LEFT, JOY_BUTTON_DPAD_UP:
-				ctrl_preview_slot = wrapi(ctrl_preview_slot - 2, 0, MAX_ORB_SLOTS) + 1
-			JOY_BUTTON_DPAD_RIGHT, JOY_BUTTON_DPAD_DOWN:
-				ctrl_preview_slot = wrapi(ctrl_preview_slot - 1 + 1, 0, MAX_ORB_SLOTS) + 1
-		_rebuild_orb_list()
-		graph_canvas.queue_redraw()
-	else:
-		_ctrl_navigate(dpad)
 
 
 # ── drawing ───────────────────────────────────────────────────────────────────

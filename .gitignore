@@ -17,3 +17,6 @@ mono_crash.*.json
 
 # ignore art assets
 eclipse/art/
+
+# ignore plugins
+eclipse/addons

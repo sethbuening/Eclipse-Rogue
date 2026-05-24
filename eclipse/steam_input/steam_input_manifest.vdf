@@ -1,0 +1,104 @@
+"In Game Actions"
+{
+	"actions"
+	{
+		"InGameControls"
+		{
+			"title"		"#Set_Ingame"
+			"StickPadGyro"
+			{
+				"Move"
+				{
+					"title"			"#Action_Move"
+					"input_mode"	"joystick_move"
+				}
+				"Aim"
+				{
+					"title"			"#Action_Aim"
+					"input_mode"	"joystick_move"
+				}
+			}
+			"AnalogTrigger"
+			{
+				"orb_1"			"#Action_Orb1"
+				"orb_2"			"#Action_Orb2"
+			}
+			"Button"
+			{
+				"orb_3"				"#Action_Orb3"
+				"orb_4"				"#Action_Orb4"
+				"orb_5"				"#Action_Orb5"
+				"basic_ability"		"#Action_BasicAbility"
+				"channel_light"		"#Action_ChannelLight"
+				"throw_flare"		"#Action_ThrowFlare"
+				"interact"			"#Action_Interact"
+				"open_graph"		"#Action_OpenGraph"
+				"pause"				"#Action_Pause"
+				"dev_call_wave"		"#Action_DevCallWave"
+			}
+		}
+		"MenuControls"
+		{
+			"title"		"#Set_Menu"
+			"StickPadGyro"
+			{
+				"Move"
+				{
+					"title"			"#Action_Move"
+					"input_mode"	"joystick_move"
+				}
+			}
+			"AnalogTrigger"
+			{
+			}
+			"Button"
+			{
+				"ui_navigate_up"		"#Menu_Up"
+				"ui_navigate_down"		"#Menu_Down"
+				"ui_navigate_left"		"#Menu_Left"
+				"ui_navigate_right"		"#Menu_Right"
+				"confirm"				"#Menu_Confirm"
+				"cancel"				"#Menu_Cancel"
+				"ui_eject"				"#Menu_Eject"
+				"ui_switch_panel"		"#Menu_SwitchPanel"
+				"ui_reassign_input"		"#Menu_ReassignInput"
+				"ui_scroll_up"			"#Menu_ScrollUp"
+				"ui_scroll_down"		"#Menu_ScrollDown"
+				"pause"					"#Action_Pause"
+			}
+		}
+	}
+	"localization"
+	{
+		"english"
+		{
+			"Set_Ingame"			"In-Game Controls"
+			"Set_Menu"				"Menu Controls"
+			"Action_Move"			"Move"
+			"Action_Aim"			"Aim"
+			"Action_Orb1"			"Orb 1"
+			"Action_Orb2"			"Orb 2"
+			"Action_Orb3"			"Orb 3"
+			"Action_Orb4"			"Orb 4"
+			"Action_Orb5"			"Orb 5"
+			"Action_BasicAbility"	"Basic Ability"
+			"Action_ChannelLight"	"Channel Light"
+			"Action_ThrowFlare"		"Throw Flare"
+			"Action_Interact"		"Interact"
+			"Action_OpenGraph"		"Open Graph"
+			"Action_Pause"			"Pause"
+			"Action_DevCallWave"	"Dev: Call Wave"
+			"Menu_Up"				"Navigate Up"
+			"Menu_Down"				"Navigate Down"
+			"Menu_Left"				"Navigate Left"
+			"Menu_Right"			"Navigate Right"
+			"Menu_Confirm"			"Confirm"
+			"Menu_Cancel"			"Cancel"
+			"Menu_Eject"			"Eject"
+			"Menu_SwitchPanel"		"Switch Panel"
+			"Menu_ReassignInput"	"Reassign Input"
+			"Menu_ScrollUp"			"Scroll Up"
+			"Menu_ScrollDown"		"Scroll Down"
+		}
+	}
+}

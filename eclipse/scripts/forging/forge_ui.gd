@@ -23,6 +23,10 @@ var orb_inventory_list:  VBoxContainer   = null
 var metal_inventory_list:VBoxContainer   = null
 var staged_list:         VBoxContainer   = null   # combined orbs + metals
 
+var orb_inv_scroll:   ScrollContainer = null
+var metal_inv_scroll: ScrollContainer = null
+var staged_scroll:    ScrollContainer = null
+
 var heat_label:          Label           = null
 var preview_label:       Label           = null
 var _info_box:           VBoxContainer   = null
@@ -46,12 +50,11 @@ var _ability_tooltip: AbilityTooltip = null
 # ── controller navigation ─────────────────────────────────────────────────────
 enum ForgePanel { ORB_INV, METAL_INV, STAGED, BUTTONS }
 
-var _ctrl_panel:     ForgePanel = ForgePanel.ORB_INV
-var _ctrl_index:     int        = 0   # focused row within the current panel
-var _ctrl_btn:       int        = 0   # focused button index within a row
-var _stick_cooldown: float      = 0.0
-const _STICK_REPEAT: float      = 0.18
-const _STICK_DEAD:   float      = 0.4
+var _ctrl_panel:       ForgePanel  = ForgePanel.ORB_INV
+var _ctrl_index:       int         = 0
+var _ctrl_btn:         int         = 0
+var _stick_was_active: Dictionary  = {}   # axis index → bool
+const _STICK_DEAD:     float       = 0.4
 
 # ── Actions used by this UI ───────────────────────────────────────────────────
 # All of these are Godot built-ins present in every project by default.
@@ -272,13 +275,15 @@ func _build_input_screen() -> Control:
 	inv_col.add_child(orb_section)
 	orb_inventory_list = VBoxContainer.new()
 	orb_inventory_list.add_theme_constant_override("separation", 6)
-	orb_section.add_child(_make_scroll(orb_inventory_list))
+	orb_inv_scroll = _make_scroll(orb_inventory_list)
+	orb_section.add_child(orb_inv_scroll)
 
 	var metal_section := _make_section("Inventory — Metals")
 	inv_col.add_child(metal_section)
 	metal_inventory_list = VBoxContainer.new()
 	metal_inventory_list.add_theme_constant_override("separation", 6)
-	metal_section.add_child(_make_scroll(metal_inventory_list))
+	metal_inv_scroll = _make_scroll(metal_inventory_list)
+	metal_section.add_child(metal_inv_scroll)
 
 	var right_col := VBoxContainer.new()
 	right_col.add_theme_constant_override("separation", ROW_GAP)
@@ -293,7 +298,8 @@ func _build_input_screen() -> Control:
 
 	staged_list = VBoxContainer.new()
 	staged_list.add_theme_constant_override("separation", 6)
-	var staged_scroll := ScrollContainer.new()
+	staged_scroll = ScrollContainer.new()
+	staged_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	staged_scroll.size_flags_vertical    = Control.SIZE_EXPAND_FILL
 	staged_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	staged_scroll.add_child(staged_list)
@@ -510,7 +516,7 @@ func _default_orb_name(result: ForgeResult) -> String:
 	return "Forged Orb"
 
 # ── process ───────────────────────────────────────────────────────────────────
-func _process(delta: float) -> void:
+func _process(_delta: float) -> void:
 	if not visible:
 		return
 	if forging_screen.visible and forge != null and forge.forge_duration > 0.0:
@@ -519,27 +525,21 @@ func _process(delta: float) -> void:
 
 	if Util.last_input_device != Util.InputDevice.CONTROLLER:
 		return
-	if not input_screen.visible and not complete_screen.visible:
+	if not input_screen.visible:
 		return
 
-	_stick_cooldown -= delta
-	if _stick_cooldown > 0.0:
+	var scroll_amount: float = Input.get_axis("ui_scroll_up", "ui_scroll_down")
+	if absf(scroll_amount) < _STICK_DEAD:
 		return
 
-	# ui_left/right/up/down cover both dpad and left stick in Godot's defaults.
-	# get_axis reads analog values, so stick deflection magnitude is captured.
-	var h: float = Input.get_axis("ui_left", "ui_right")
-	var v: float = Input.get_axis("ui_up",   "ui_down")
+	var scroll_target: ScrollContainer = null
+	match _ctrl_panel:
+		ForgePanel.ORB_INV:   scroll_target = orb_inv_scroll
+		ForgePanel.METAL_INV: scroll_target = metal_inv_scroll
+		ForgePanel.STAGED:    scroll_target = staged_scroll
 
-	if absf(h) < _STICK_DEAD and absf(v) < _STICK_DEAD:
-		_stick_cooldown = 0.0
-		return
-
-	_stick_cooldown = _STICK_REPEAT
-	if absf(h) >= absf(v):
-		_ctrl_navigate_h(1 if h > 0 else -1)
-	else:
-		_ctrl_navigate_v(1 if v > 0 else -1)
+	if scroll_target != null:
+		scroll_target.scroll_vertical += int(scroll_amount * 12.0)
 
 # ── input ─────────────────────────────────────────────────────────────────────
 func _input(event: InputEvent) -> void:
@@ -547,34 +547,44 @@ func _input(event: InputEvent) -> void:
 		return
 	if Util.last_input_device != Util.InputDevice.CONTROLLER:
 		return
-	if not event.is_pressed():
+	if not (event is InputEventJoypadButton or event is InputEventJoypadMotion):
 		return
 
-	# Complete screen: either confirm button collects the orb.
+	# Buttons need is_pressed; motion events must bypass this check entirely
+	# so the axis gate below can reset when the stick returns to center.
+	if event is InputEventJoypadButton and not event.is_pressed():
+		return
+
+	# ── per-axis gate ─────────────────────────────────────────────────────────
+	if event is InputEventJoypadMotion:
+		var axis:   int  = (event as InputEventJoypadMotion).axis
+		var active: bool = absf(event.get_axis_value()) > _STICK_DEAD
+		if not active:
+			_stick_was_active[axis] = false
+			return
+		if _stick_was_active.get(axis, false):
+			return
+		_stick_was_active[axis] = true
+
 	if complete_screen.visible:
-		if event.is_action("ui_accept") or event.is_action("ui_cancel"):
+		if event.is_action_pressed("confirm") or event.is_action_pressed("cancel"):
 			_on_collect_pressed()
 		return
 
 	if not input_screen.visible:
 		return
 
-	# Navigation: set cooldown to prevent _process from double-firing the same frame.
-	if event.is_action("ui_up"):
+	if event.is_action_pressed("ui_navigate_up"):
 		_ctrl_navigate_v(-1)
-		_stick_cooldown = _STICK_REPEAT
-	elif event.is_action("ui_down"):
+	elif event.is_action_pressed("ui_navigate_down"):
 		_ctrl_navigate_v(1)
-		_stick_cooldown = _STICK_REPEAT
-	elif event.is_action("ui_left"):
+	elif event.is_action_pressed("ui_navigate_left"):
 		_ctrl_navigate_h(-1)
-		_stick_cooldown = _STICK_REPEAT
-	elif event.is_action("ui_right"):
+	elif event.is_action_pressed("ui_navigate_right"):
 		_ctrl_navigate_h(1)
-		_stick_cooldown = _STICK_REPEAT
-	elif event.is_action("ui_accept"):
+	elif event.is_action_pressed("confirm"):
 		_ctrl_confirm()
-	elif event.is_action("ui_cancel"):
+	elif event.is_action_pressed("cancel"):
 		_on_cancel_pressed()
 
 # ── rebuild ───────────────────────────────────────────────────────────────────
@@ -916,10 +926,12 @@ func _ctrl_navigate_v(dir: int) -> void:
 					_ctrl_index = c - 1
 					_ctrl_btn   = 0
 					_ctrl_refresh_focus()
+					var scroll: ScrollContainer = _scroll_for_panel(_ctrl_panel)
+					_scroll_to_row(scroll, _rows_for_panel(_ctrl_panel), _ctrl_index)
 					return
 		return
 
-	var count: int = _ctrl_row_count(_ctrl_panel)
+	var count: int     = _ctrl_row_count(_ctrl_panel)
 	var new_index: int = _ctrl_index + dir
 
 	if new_index < 0:
@@ -931,7 +943,7 @@ func _ctrl_navigate_v(dir: int) -> void:
 					_ctrl_index = c - 1
 					_ctrl_btn   = 0
 			ForgePanel.STAGED, ForgePanel.ORB_INV:
-				pass   # already at top edge
+				pass
 	elif new_index >= count:
 		match _ctrl_panel:
 			ForgePanel.ORB_INV:
@@ -950,24 +962,64 @@ func _ctrl_navigate_v(dir: int) -> void:
 				_ctrl_btn   = 0
 	else:
 		_ctrl_index = new_index
-		_ctrl_btn   = 0
+		var rows: Array = _rows_for_panel(_ctrl_panel)
+		if _ctrl_index < rows.size():
+			var btn_count: int = _staged_row_button_count(_get_row_hbox(rows[_ctrl_index]))
+			if btn_count > 0:
+				_ctrl_btn = clampi(_ctrl_btn, 0, btn_count - 1)
 
 	_ctrl_refresh_focus()
+	if _ctrl_panel != ForgePanel.BUTTONS:
+		var scroll: ScrollContainer = _scroll_for_panel(_ctrl_panel)
+		_scroll_to_row(scroll, _rows_for_panel(_ctrl_panel), _ctrl_index)
 
 func _ctrl_navigate_h(dir: int) -> void:
 	if complete_screen.visible:
 		return
 
 	if _ctrl_panel == ForgePanel.BUTTONS:
-		var new_btn: int = clampi(_ctrl_btn + dir, 0, 1)
-		# Don't land on a disabled Activate button.
-		if new_btn == 1 and activate_button.disabled:
-			new_btn = 0
-		_ctrl_btn = new_btn
+		if dir == -1:
+			if _ctrl_btn == 1:
+				# Move left from Activate to Cancel.
+				_ctrl_btn = 0
+			else:
+				# Move left from Cancel → back into the inventory panels.
+				for panel in [ForgePanel.METAL_INV, ForgePanel.ORB_INV]:
+					var c: int = _ctrl_row_count(panel)
+					if c > 0:
+						_ctrl_panel = panel
+						_ctrl_index = c - 1
+						_ctrl_btn   = 0
+						_ctrl_refresh_focus()
+						return
+		else:
+			var new_btn: int = clampi(_ctrl_btn + dir, 0, 1)
+			if new_btn == 1 and activate_button.disabled:
+				new_btn = 0
+			_ctrl_btn = new_btn
 		_ctrl_refresh_focus()
 		return
 
-	if _ctrl_panel in [ForgePanel.ORB_INV, ForgePanel.METAL_INV]:
+	# Metal inventory: cycle between the +1 / +5 / +All buttons on the row.
+	if _ctrl_panel == ForgePanel.METAL_INV:
+		var rows: Array = _get_metal_inv_rows()
+		if _ctrl_index < rows.size():
+			var btn_count: int = _staged_row_button_count(_get_row_hbox(rows[_ctrl_index]))
+			if dir == -1 and _ctrl_btn == 0:
+				# Left edge of metal inv → switch to staged panel.
+				var c: int = _ctrl_row_count(ForgePanel.STAGED)
+				if c > 0:
+					_ctrl_panel = ForgePanel.STAGED
+					_ctrl_index = clampi(_ctrl_index, 0, c - 1)
+					_ctrl_btn   = 0
+			elif dir == 1 and _ctrl_btn >= btn_count - 1:
+				pass   # already at rightmost button
+			else:
+				_ctrl_btn = clampi(_ctrl_btn + dir, 0, btn_count - 1)
+		_ctrl_refresh_focus()
+		return
+
+	if _ctrl_panel == ForgePanel.ORB_INV:
 		if dir == 1:
 			var c: int = _ctrl_row_count(ForgePanel.STAGED)
 			if c > 0:
@@ -978,22 +1030,25 @@ func _ctrl_navigate_h(dir: int) -> void:
 				_ctrl_panel = ForgePanel.BUTTONS
 				_ctrl_index = 0
 				_ctrl_btn   = 0
-	elif _ctrl_panel == ForgePanel.STAGED:
+		_ctrl_refresh_focus()
+		return
+
+	if _ctrl_panel == ForgePanel.STAGED:
 		var rows: Array = _get_staged_rows()
 		if _ctrl_index >= rows.size():
 			return
 		var btn_count: int = _staged_row_button_count(_get_row_hbox(rows[_ctrl_index]))
 		if dir == -1 and _ctrl_btn == 0:
+			# Left edge of staged → go back to orb or metal inv.
 			_ctrl_panel = ForgePanel.ORB_INV if _ctrl_row_count(ForgePanel.ORB_INV) > 0 \
 				else ForgePanel.METAL_INV
 			_ctrl_index = 0
 			_ctrl_btn   = 0
 		elif dir == 1 and _ctrl_btn >= btn_count - 1:
-			pass   # already at rightmost button
+			pass
 		else:
 			_ctrl_btn = clampi(_ctrl_btn + dir, 0, btn_count - 1)
-
-	_ctrl_refresh_focus()
+		_ctrl_refresh_focus()
 
 func _staged_row_button_count(row: Control) -> int:
 	var count: int = 0
@@ -1130,3 +1185,32 @@ func _ctrl_clamp_to_valid_panel() -> void:
 			_ctrl_index = 0
 			_ctrl_btn   = 0
 			return
+
+func _scroll_for_panel(panel: ForgePanel) -> ScrollContainer:
+	match panel:
+		ForgePanel.ORB_INV:   return orb_inv_scroll
+		ForgePanel.METAL_INV: return metal_inv_scroll
+		ForgePanel.STAGED:    return staged_scroll
+	return null
+
+func _rows_for_panel(panel: ForgePanel) -> Array:
+	match panel:
+		ForgePanel.ORB_INV:   return _get_orb_inv_rows()
+		ForgePanel.METAL_INV: return _get_metal_inv_rows()
+		ForgePanel.STAGED:    return _get_staged_rows()
+	return []
+
+func _scroll_to_row(scroll: ScrollContainer, rows: Array, index: int) -> void:
+	if scroll == null or index >= rows.size():
+		return
+	# Wait one frame so the layout has settled after any rebuild.
+	await get_tree().process_frame
+	var row: Control = rows[index]
+	var row_top:    int = int(row.position.y)
+	var row_bottom: int = row_top + int(row.size.y)
+	var view_top:    int = scroll.scroll_vertical
+	var view_bottom: int = view_top + int(scroll.size.y)
+	if row_top < view_top:
+		scroll.scroll_vertical = row_top
+	elif row_bottom > view_bottom:
+		scroll.scroll_vertical = row_bottom - int(scroll.size.y)

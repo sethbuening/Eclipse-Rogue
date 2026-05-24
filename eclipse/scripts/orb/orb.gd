@@ -7,16 +7,22 @@ enum OrbType { SIMPLE, ALLOY }
 @export var display_name:   String             = ""
 @export var orb_type:       OrbType            = OrbType.SIMPLE
 @export var abilities:      Array[AbilityData] = []
-@export var orb_potency:    float              = 1.0   # renamed from power
+@export var orb_potency:    float              = 1.0
 var node_power_base:        float              = -1.0
 @export var light_stored:   float              = 0.0
 @export var sprite_texture: Texture2D
 @export var input_action:   String             = ""
+var cooldown:               float              = 0.0
+var light_cost:             float              = 0.0
+var nonhold_fired:          bool               = false
 
-var node_index: int = -1
-var cooldown: float = 0.0
-var light_cost: float = 0.0
-var nonhold_fired: bool = false
+var node_index: int = -1:
+	set(value):
+		var was_equipped: bool = node_index != -1
+		node_index = value
+		var is_equipped: bool = node_index != -1
+		if was_equipped != is_equipped:
+			SteamStats.update_equipped_orbs_stat()
 
 func _init() -> void:
 	var duped: Array[AbilityData] = []

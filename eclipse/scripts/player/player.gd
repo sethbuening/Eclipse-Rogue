@@ -22,6 +22,8 @@ const starting_orb_2: Orb = preload("res://data/orbs/orb_gold_bomb.tres")
 const starting_orb_3: Orb = preload("res://data/orbs/orb_lightning_chain.tres")
 const starting_orb_4: Orb = preload("res://data/orbs/orb_conductor_post.tres")
 
+var max_orb_inputs: int = 5
+
 
 # ================================================================ constants ==
 
@@ -157,7 +159,8 @@ func _ready() -> void:
 	$Inventory.orb_added.connect(_on_orb_added)
 	$Inventory.orb_removed.connect(_on_orb_removed)
 	$Inventory.relic_added.connect(_on_relic_added)
-	$Inventory.add_orb(starting_orb.clone())
+	#for i in range(10):
+	#	$Inventory.add_orb(starting_orb.clone())
 	$Inventory.add_orb(starting_orb_2.clone())
 	$Inventory.add_orb(starting_orb_3.clone())
 	$Inventory.add_orb(starting_orb_4.clone())
@@ -612,7 +615,7 @@ func _auto_assign_slot(orb: Orb) -> void:
 	for o: Orb in $Inventory.orbs:
 		if o != orb and o.input_action != "":
 			taken[o.input_action] = true
-	for n in range(1, 8):
+	for n in range(1, max_orb_inputs + 1):
 		var action: String = "orb_%d" % n
 		if not taken.has(action):
 			orb.input_action = action
@@ -761,7 +764,6 @@ func _trigger_connections(orb_index: int, delta: float) -> void:
 	if node_index == -1:
 		return
 	GraphManager.on_orb_fired(node_index, {}, $Inventory.orbs[orb_index])
-
 
 func Log(msg: Variant) -> void:
 	print("[player.gd] " + str(msg))

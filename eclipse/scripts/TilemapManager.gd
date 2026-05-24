@@ -127,58 +127,131 @@ func _ready() -> void:
 	_setup_noise(path_noise,           PERLIN_PATH_FREQUENCY)
 	_setup_noise(rock_variation_noise, ROCK_VARIATION_FREQUENCY)
 
+	var play_radius: float = (WIDTH - BUFFER_TILES) / 2.0
+	var cx: float = WIDTH  / 2.0
+	var cy: float = HEIGHT / 2.0
+
+	var t_start: int = Time.get_ticks_usec()
+	var t:       int = t_start
+
+	# ── Pass 1: fill + rock variation + chamber noise + path noise ──────
 	var grid: Array[Array] = []
 	for x in range(WIDTH):
 		grid.append([])
 		for y in range(HEIGHT):
-			grid[x].append(Util.tile.STONE)
+			var tile: Util.tile = Util.tile.STONE
+			var dist:   float = sqrt((x - cx) ** 2 + (y - cy) ** 2)
+			var dist_n: float = dist / play_radius
+			var rock_bonus: float = 0.0
+			if dist >= WIDTH / 2.0:
+				rock_bonus = (1.0 - ROCK_VARIATION_THRESHOLD) * dist_n
+			if rock_variation_noise.get_noise_2d(x, y) > (ROCK_VARIATION_THRESHOLD + rock_bonus):
+				tile = Util.tile.ROCK
+				rock_variation_tiles.append(Vector2i(x, y))
+			var chamber_bonus: float = 0.0
+			if dist > (WIDTH - BUFFER_TILES) / 3.0:
+				chamber_bonus = (1.0 - PERLIN_CHAMBER_THRESHOLD) * dist_n
+			if chamber_noise.get_noise_2d(x, y) > (PERLIN_CHAMBER_THRESHOLD + chamber_bonus) and is_replaceable(tile):
+				tile = Util.tile.AIR
+			var path_bonus: float = 0.0
+			if dist > 2.0 * (WIDTH - BUFFER_TILES) / 5.0:
+				path_bonus = PERLIN_PATH_THRESHOLD * dist_n
+			if absf(path_noise.get_noise_2d(x, y)) < (PERLIN_PATH_THRESHOLD - path_bonus) and is_replaceable(tile):
+				tile = Util.tile.AIR
+			grid[x].append(tile)
 
-	generate_rock_variation(grid)
+	var t_pass1: int = Time.get_ticks_usec()
+	print("Pass 1 (fill+rock+chamber+path noise): %.2f ms" % [(t_pass1 - t) / 1000.0]); t = t_pass1
+
+	# ── Ores ─────────────────────────────────────────────────────────────
 	generate_ores(grid)
+	var t_ores: int = Time.get_ticks_usec()
+	print("generate_ores:                         %.2f ms" % [(t_ores - t) / 1000.0]); t = t_ores
+
+	# ── Faults ───────────────────────────────────────────────────────────
 	grid = generate_faults(grid)
-	generate_chamber_noise(grid)
-	generate_path_noise(grid)
-	for i in range(6):
+	var t_faults: int = Time.get_ticks_usec()
+	print("generate_faults:                       %.2f ms" % [(t_faults - t) / 1000.0]); t = t_faults
+
+	# ── Cellular automata (4 steps) ───────────────────────────────────────
+	for i in range(4):
+		var t_step_start: int = Time.get_ticks_usec()
 		grid = cellular_step(grid)
+		print("  cellular_step[%d]:                  %.2f ms" % [i, (Time.get_ticks_usec() - t_step_start) / 1000.0])
+	var t_cellular: int = Time.get_ticks_usec()
+	print("cellular_step x4 (total):              %.2f ms" % [(t_cellular - t) / 1000.0]); t = t_cellular
+
+	# ── Starting area ────────────────────────────────────────────────────
 	place_starting_area(grid)
+	var t_start_area: int = Time.get_ticks_usec()
+	print("place_starting_area:                   %.2f ms" % [(t_start_area - t) / 1000.0]); t = t_start_area
 
+	# ── Relic placement ──────────────────────────────────────────────────
 	_place_relic_tiles_on_grid(grid)
+	var t_relics: int = Time.get_ticks_usec()
+	print("_place_relic_tiles_on_grid:            %.2f ms" % [(t_relics - t) / 1000.0]); t = t_relics
 
-	var play_radius: float = (WIDTH - BUFFER_TILES) / 2.0
+	# ── Pass 2: populate tile dictionaries ───────────────────────────────
 	for x in range(WIDTH):
 		for y in range(HEIGHT):
-			var dist: float = sqrt((x - WIDTH / 2.0) ** 2 + (y - HEIGHT / 2.0) ** 2)
+			var dist: float = sqrt((x - cx) ** 2 + (y - cy) ** 2)
 			if dist >= play_radius:
 				continue
 			var pos: Vector2i = Vector2i(x, y)
-			var t: Util.tile  = grid[x][y]
-			if t == null or t == Util.tile.AIR:
+			var tile_val: Util.tile = grid[x][y]
+			if tile_val == null or tile_val == Util.tile.AIR:
 				ground_types[pos] = ground_atlas_row_floor
 				continue
-			if _is_ore(t):
-				ore_types[pos]   = t
+			if _is_ore(tile_val):
+				ore_types[pos]   = tile_val
 				tile_types[pos]  = Util.tile.STONE
-				ore_variant[pos] = randi() % _ore_variant_count(t)
-				if t == Util.tile.COPPER: copper_tiles_added += 1
-				elif t == Util.tile.GOLD: gold_tiles_added   += 1
+				ore_variant[pos] = randi() % _ore_variant_count(tile_val)
+				if tile_val == Util.tile.COPPER: copper_tiles_added += 1
+				elif tile_val == Util.tile.GOLD: gold_tiles_added   += 1
 			else:
-				tile_types[pos] = t
-			tile_health[pos]  = get_tile_max_health(t)
-			tile_variant[pos] = randi() % _base_variant_count(t)
+				tile_types[pos] = tile_val
+			tile_health[pos]  = get_tile_max_health(tile_val)
+			tile_variant[pos] = randi() % _base_variant_count(tile_val)
 			ground_types[pos] = ground_atlas_row_dirt
 
+	var t_pass2: int = Time.get_ticks_usec()
+	print("Pass 2 (populate dictionaries):        %.2f ms" % [(t_pass2 - t) / 1000.0]); t = t_pass2
+
+	# ── Relic validation ─────────────────────────────────────────────────
 	for pos in relic_tiles.keys():
 		if not tile_types.has(pos):
 			relic_tiles.erase(pos)
 			_relic_cover_counts.erase(pos)
 
+	var t_relic_valid: int = Time.get_ticks_usec()
+	print("relic validation:                      %.2f ms" % [(t_relic_valid - t) / 1000.0]); t = t_relic_valid
+
 	print("Generated %d gold tiles, %d copper tiles" % [gold_tiles_added, copper_tiles_added])
 
+	# ── Rendering setup ──────────────────────────────────────────────────
 	_setup_rendering()
-	_spawn_relic_containers.call_deferred()
+	var t_render: int = Time.get_ticks_usec()
+	print("_setup_rendering:                      %.2f ms" % [(t_render - t) / 1000.0]); t = t_render
+
+	# ── Distance field bake ──────────────────────────────────────────────
 	_initial_df_bake()
+	var t_df: int = Time.get_ticks_usec()
+	print("_initial_df_bake:                      %.2f ms" % [(t_df - t) / 1000.0]); t = t_df
+
+	# ── Collision build ──────────────────────────────────────────────────
 	_build_collision()
+	var t_col: int = Time.get_ticks_usec()
+	print("_build_collision:                      %.2f ms" % [(t_col - t) / 1000.0]); t = t_col
+
+	# ── Occluder setup ───────────────────────────────────────────────────
 	_setup_occluders()
+	var t_occ: int = Time.get_ticks_usec()
+	print("_setup_occluders:                      %.2f ms" % [(t_occ - t) / 1000.0]); t = t_occ
+
+	print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	print("TOTAL generation time:                 %.2f ms" % [(t_occ - t_start) / 1000.0])
+
+	_spawn_relic_containers.call_deferred()
 
 func _setup_noise(noise: FastNoiseLite, frequency: float) -> void:
 	noise.noise_type = FastNoiseLite.TYPE_PERLIN
@@ -760,28 +833,6 @@ func _spawn_relic_containers() -> void:
 		print("Spawned a relic at %d, %d" % [center.x, center.y])
 
 # ══════════════════════════════════════════════════════════ proc gen ══
-func generate_chamber_noise(grid: Array) -> void:
-	for x in range(WIDTH):
-		for y in range(HEIGHT):
-			var dist:   float = sqrt((x - WIDTH / 2.0) ** 2 + (y - HEIGHT / 2.0) ** 2)
-			var dist_n: float = dist / ((WIDTH - BUFFER_TILES) / 2.0)
-			var bonus:  float = 0.0
-			if dist > (WIDTH - BUFFER_TILES) / 3.0:
-				bonus = (1.0 - PERLIN_CHAMBER_THRESHOLD) * dist_n
-			if chamber_noise.get_noise_2d(x, y) > (PERLIN_CHAMBER_THRESHOLD + bonus) and is_replaceable(grid[x][y]):
-				grid[x][y] = Util.tile.AIR
-
-func generate_path_noise(grid: Array) -> void:
-	for x in range(WIDTH):
-		for y in range(HEIGHT):
-			var dist:   float = sqrt((x - WIDTH / 2.0) ** 2 + (y - HEIGHT / 2.0) ** 2)
-			var dist_n: float = dist / ((WIDTH - BUFFER_TILES) / 2.0)
-			var bonus:  float = 0.0
-			if dist > 2.0 * (WIDTH - BUFFER_TILES) / 5.0:
-				bonus = PERLIN_PATH_THRESHOLD * dist_n
-			if absf(path_noise.get_noise_2d(x, y)) < (PERLIN_PATH_THRESHOLD - bonus) and is_replaceable(grid[x][y]):
-				grid[x][y] = Util.tile.AIR
-
 func count_neighbors(grid: Array, x: int, y: int) -> int:
 	var count: int = 0
 	for nx in range(x - 1, x + 2):
