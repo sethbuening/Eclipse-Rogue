@@ -1,9 +1,9 @@
 [gd_scene format=3 uid="uid://byg3fydbr4lwp"]
 
-[ext_resource type="Script" uid="uid://drjscvcd0uacw" path="res://scripts/core/game.gd" id="1_p57ef"]
+[ext_resource type="Script" uid="uid://drjscvcd0uacw" path="res://scripts/game.gd" id="1_p57ef"]
 [ext_resource type="PackedScene" uid="uid://d0234wglvpyt3" path="res://scenes/player.tscn" id="1_uwrxv"]
-[ext_resource type="Script" uid="uid://wd1y18gjk5c1" path="res://scripts/world/subpixel_camera.gd" id="3_lnu2h"]
-[ext_resource type="Script" uid="uid://dnkle1hwxuime" path="res://scripts/world/TilemapManager.gd" id="4_lbhrr"]
+[ext_resource type="Script" uid="uid://wd1y18gjk5c1" path="res://scripts/subpixel_camera.gd" id="3_lnu2h"]
+[ext_resource type="Script" uid="uid://dnkle1hwxuime" path="res://scripts/TilemapManager.gd" id="4_lbhrr"]
 [ext_resource type="Script" uid="uid://bbajvvrye7i4c" path="res://scripts/player/inventory.gd" id="5_gee14"]
 [ext_resource type="Texture2D" uid="uid://q2dnkkpl21ee" path="res://art/tempatlas.png" id="5_iywne"]
 [ext_resource type="PackedScene" uid="uid://cfpcxmav7qfv3" path="res://scenes/basalt_altar.tscn" id="5_p57ef"]
@@ -15,6 +15,7 @@
 [ext_resource type="PackedScene" uid="uid://dnytw6xewr0j0" path="res://scenes/forge.tscn" id="12_dinhu"]
 [ext_resource type="PackedScene" uid="uid://3u75bkav35jp" path="res://scenes/relic_popup.tscn" id="13_kvuet"]
 [ext_resource type="Script" uid="uid://4dxt4mgyo7pu" path="res://scripts/forging/forge_ui.gd" id="15_ir15t"]
+[ext_resource type="Script" uid="uid://6dbh0uxmi4i4" path="res://scripts/damage_numbers.gd" id="16_rysoc"]
 [ext_resource type="Script" uid="uid://cyy2cy40xuqyu" path="res://scripts/nodegraph/graph_manager.gd" id="17_ssvqc"]
 
 [sub_resource type="Environment" id="Environment_iywne"]
@@ -109,6 +110,10 @@ layer = 2
 [node name="ForgeUI" type="CanvasLayer" parent="." unique_id=631887601]
 unique_name_in_owner = true
 script = ExtResource("15_ir15t")
+
+[node name="DamageNumbers" type="Node" parent="." unique_id=464573822]
+unique_name_in_owner = true
+script = ExtResource("16_rysoc")
 
 [node name="GraphManager" type="Node" parent="." unique_id=365863157]
 unique_name_in_owner = true

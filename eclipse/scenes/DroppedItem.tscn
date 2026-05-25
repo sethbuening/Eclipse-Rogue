@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://6847bx0tp3f8"]
 
-[ext_resource type="Script" uid="uid://dcgakkkvr1wxj" path="res://scripts/dropped_item.gd" id="1_ip0rf"]
+[ext_resource type="Script" uid="uid://dcgakkkvr1wxj" path="res://scripts/world/dropped_item.gd" id="1_ip0rf"]
 
 [node name="DroppedItem" type="Sprite2D" unique_id=1498736297]
 modulate = Color(1.353256, 1.353256, 1.353256, 1)

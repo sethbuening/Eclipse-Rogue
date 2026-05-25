@@ -67,7 +67,8 @@ func _build() -> void:
 	root_vbox.add_child(spacer)
 
 	# ── Menu buttons ─────────────────────────────────────────────────────────
-	var has_save: bool = FileAccess.file_exists(InputManager.SAVE_PATH)
+	var has_save: bool = false
+	#FileAccess.file_exists(InputManager.SAVE_PATH)
 
 	var items: Array[Dictionary] = [
 		{"label": "New Game", "cb": _on_new_game, "enabled": true},
@@ -92,11 +93,11 @@ func _build() -> void:
 	add_child(ver)
 
 	# ── Options menu (lazy-instantiated overlay) ──────────────────────────────
-	_options_menu = preload("res://scenes/ui/options_menu.tscn").instantiate()
-	_options_menu.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_options_menu.visible = false
-	_options_menu.closed.connect(_on_options_closed)
-	add_child(_options_menu)
+	#_options_menu = preload("res://scenes/ui/options_menu.tscn").instantiate()
+	#_options_menu.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	#_options_menu.visible = false
+	#_options_menu.closed.connect(_on_options_closed)
+	#add_child(_options_menu)
 
 # ----------------------------------------------------------------- factory
 

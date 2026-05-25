@@ -15,6 +15,7 @@
 [ext_resource type="PackedScene" uid="uid://dnytw6xewr0j0" path="res://scenes/forge.tscn" id="12_dinhu"]
 [ext_resource type="PackedScene" uid="uid://3u75bkav35jp" path="res://scenes/relic_popup.tscn" id="13_kvuet"]
 [ext_resource type="Script" uid="uid://4dxt4mgyo7pu" path="res://scripts/forging/forge_ui.gd" id="15_ir15t"]
+[ext_resource type="Script" uid="uid://6dbh0uxmi4i4" path="res://scripts/core/damage_numbers.gd" id="16_rysoc"]
 [ext_resource type="Script" uid="uid://cyy2cy40xuqyu" path="res://scripts/nodegraph/graph_manager.gd" id="17_ssvqc"]
 
 [sub_resource type="Environment" id="Environment_iywne"]
@@ -61,6 +62,14 @@ atlas_variants_rock = 1
 [node name="Player" parent="." unique_id=341096909 instance=ExtResource("1_uwrxv")]
 unique_name_in_owner = true
 z_as_relative = false
+head_offset = null
+body_offset = null
+bob_amount = null
+orb_orbit_center = null
+orb_orbit_radius = null
+orb_orbit_speed = null
+orb_reform_flash = null
+focus_orbit_speed = null
 
 [node name="Inventory" type="Node" parent="Player" unique_id=1698984047]
 script = ExtResource("5_gee14")
@@ -109,6 +118,10 @@ layer = 2
 [node name="ForgeUI" type="CanvasLayer" parent="." unique_id=631887601]
 unique_name_in_owner = true
 script = ExtResource("15_ir15t")
+
+[node name="DamageNumbers" type="Node" parent="." unique_id=464573822]
+unique_name_in_owner = true
+script = ExtResource("16_rysoc")
 
 [node name="GraphManager" type="Node" parent="." unique_id=365863157]
 unique_name_in_owner = true

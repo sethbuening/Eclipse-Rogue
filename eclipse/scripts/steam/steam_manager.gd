@@ -1,11 +1,11 @@
 extends Node
 
 const APP_ID: int    = 4775380
-const DEV_MODE: bool = true
+const DEV_MODE: bool = false
 var steam_enabled: bool = false
 
 func _ready() -> void:
-	initialize_steam()
+	#initialize_steam()
 	if DEV_MODE:
 		print("DEV_MODE: resetting all stats and achievements")
 		SteamAchievements.reset_all_achievements()
@@ -15,7 +15,7 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if steam_enabled:
 		Steam.run_callbacks()
-		SteamInputManager.tick()
+		#SteamInputManager.tick()
 
 func initialize_steam() -> void:
 	var initialize_response: Dictionary = Steam.steamInitEx(APP_ID, false)
@@ -25,7 +25,7 @@ func initialize_steam() -> void:
 		return
 	steam_enabled = true
 	print("Steam initialized successfully")
-	SteamInputManager.initialize()
+	#SteamInputManager.initialize()
 	SteamStats.load_steam_stats()
 	SteamAchievements.load_steam_achievements()
 

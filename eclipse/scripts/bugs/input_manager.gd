@@ -1,22 +1,29 @@
 extends Node
 
 # ============================================================ autoload: InputManager
-# Handles keyboard/mouse rebinding and persistence.
+# Handles keyboard/mouse AND raw joypad rebinding + persistence.
 #
-# Controller input is handled entirely by Steam Input when available.
-# Joypad events are only stored/remapped here when Steam Input is inactive.
+# Steam Input takes over controller *polling* when active, but this manager
+# always owns the raw joypad InputMap events so the controller tab in the
+# options menu can show and remap them regardless of Steam state.
 #
-# Save file layout (ConfigFile):
-#   [bindings]   action_name = Array[InputEvent]   ← keyboard/mouse only
-#   [controller] action_name = Array[InputEvent]   ← raw joypad only
+# Listening modes
+# ───────────────
+#   KEYBOARD  — captures InputEventKey / InputEventMouseButton
+#   CONTROLLER — captures InputEventJoypadButton / InputEventJoypadMotion
 #
-# The two sections are kept separate so keyboard and controller mappings
-# are independently saved and loaded without interfering with each other.
-# Both are written to the same file (user://input_bindings.cfg) on every save.
+# The two modes are completely independent so there is no cross-contamination.
+#
+# Save file layout  (user://input_bindings.cfg)
+#   [bindings]   action_name = Array[InputEvent]   ← keyboard / mouse
+#   [controller] action_name = Array[InputEvent]   ← raw joypad
+#
+# Both sections are always written together on every save so the file is
+# always a complete snapshot of the current InputMap state.
 
 const SAVE_PATH: String = "user://input_bindings.cfg"
 
-# All actions the player can rebind in the options menu.
+# All actions the player can remap in the options menu.
 const REMAPPABLE_ACTIONS: Array[String] = [
 	"move_left", "move_right", "move_up", "move_down",
 	"orb_1", "orb_2", "orb_3", "orb_4", "orb_5",
@@ -34,14 +41,20 @@ signal bindings_changed
 # Emitted when listening is cancelled (Escape pressed).
 signal listen_cancelled
 
-# ----------------------------------------------------------------- state
-var _listening_action:    String     = ""
+# ----------------------------------------------------------------- listen state
+
+enum ListenMode { NONE, KEYBOARD, CONTROLLER }
+
+var _listen_mode:      ListenMode = ListenMode.NONE
+var _listening_action: String     = ""
 var _listening_old_event: InputEvent = null
+
+# ================================================================= lifecycle
 
 func _ready() -> void:
 	load_bindings()
 
-# ================================================================= public API
+# ================================================================= public API — query
 
 ## Returns keyboard/mouse-only events for [param action].
 func get_keyboard_events(action: String) -> Array[InputEvent]:
@@ -51,17 +64,9 @@ func get_keyboard_events(action: String) -> Array[InputEvent]:
 			result.append(event)
 	return result
 
-## Returns the default keyboard/mouse events for [param action] from
-## ProjectSettings, regardless of any user remapping.
+## Returns the project-default keyboard/mouse events for [param action].
 func get_default_keyboard_events(action: String) -> Array[InputEvent]:
-	var prop: String = "input/" + action
-	if not ProjectSettings.has_setting(prop):
-		return []
-	var result: Array[InputEvent] = []
-	for event in ProjectSettings.get_setting(prop).events:
-		if event is InputEventKey or event is InputEventMouseButton:
-			result.append(event)
-	return result
+	return _get_default_events(action, true)
 
 ## Returns joypad-only events for [param action].
 func get_controller_events(action: String) -> Array[InputEvent]:
@@ -71,39 +76,57 @@ func get_controller_events(action: String) -> Array[InputEvent]:
 			result.append(event)
 	return result
 
-## Returns the default joypad events for [param action] from ProjectSettings.
+## Returns the project-default joypad events for [param action].
 func get_default_controller_events(action: String) -> Array[InputEvent]:
+	return _get_default_events(action, false)
+
+func _get_default_events(action: String, want_kb: bool) -> Array[InputEvent]:
 	var prop: String = "input/" + action
 	if not ProjectSettings.has_setting(prop):
 		return []
 	var result: Array[InputEvent] = []
 	for event in ProjectSettings.get_setting(prop).events:
-		if event is InputEventJoypadButton or event is InputEventJoypadMotion:
+		var is_kb: bool = event is InputEventKey or event is InputEventMouseButton
+		if is_kb == want_kb:
 			result.append(event)
 	return result
 
-## Begin capturing the next valid key/button press for [param action].
-## Pass [param old_event] = null to add a new slot; otherwise it replaces that event.
-func start_listening(action: String, old_event: InputEvent = null) -> void:
+# ================================================================= public API — listen
+
+## Begin capturing the next keyboard/mouse press for [param action].
+## [param old_event] = null → add a new slot; otherwise replaces that event.
+func start_listening_keyboard(action: String, old_event: InputEvent = null) -> void:
 	if not REMAPPABLE_ACTIONS.has(action):
 		push_warning("[InputManager] action not remappable: %s" % action)
 		return
+	_listen_mode         = ListenMode.KEYBOARD
+	_listening_action    = action
+	_listening_old_event = old_event
+
+## Begin capturing the next joypad press/axis for [param action].
+func start_listening_controller(action: String, old_event: InputEvent = null) -> void:
+	if not REMAPPABLE_ACTIONS.has(action):
+		push_warning("[InputManager] action not remappable: %s" % action)
+		return
+	_listen_mode         = ListenMode.CONTROLLER
 	_listening_action    = action
 	_listening_old_event = old_event
 
 func stop_listening() -> void:
+	_listen_mode         = ListenMode.NONE
 	_listening_action    = ""
 	_listening_old_event = null
 
 func is_listening() -> bool:
-	return _listening_action != ""
+	return _listen_mode != ListenMode.NONE
+
+# ================================================================= public API — remap
 
 ## Directly remap [param action], replacing [param old_event] with [param new_event].
 ## Pass old_event = null to add without removing anything.
 func remap_action(action: String, old_event: InputEvent, new_event: InputEvent) -> void:
 	if not REMAPPABLE_ACTIONS.has(action):
 		return
-	# Prevent duplicates: remove the new_event from any other action first.
 	_clear_event_from_others(action, new_event)
 	if old_event != null:
 		InputMap.action_erase_event(action, old_event)
@@ -111,28 +134,20 @@ func remap_action(action: String, old_event: InputEvent, new_event: InputEvent) 
 	save_bindings()
 	bindings_changed.emit()
 
-## Reset one action to the project-default bindings.
+## Reset one action to the project-default bindings (both KB and joypad).
 func reset_action(action: String) -> void:
 	var prop: String = "input/" + action
 	if not ProjectSettings.has_setting(prop):
 		return
 	InputMap.action_erase_events(action)
 	for event in ProjectSettings.get_setting(prop).events:
-		# Only restore KB/mouse defaults here; joypad defaults live in Steam.
-		if event is InputEventKey or event is InputEventMouseButton:
-			InputMap.action_add_event(action, event)
+		InputMap.action_add_event(action, event)
 	save_bindings()
 	bindings_changed.emit()
 
-## Reset all remappable actions to project defaults (KB/mouse only).
+## Reset ALL remappable actions to project defaults (KB + joypad).
 func reset_all() -> void:
-	# Reload the full defaults, then strip joypad events back out so we
-	# don't accidentally overwrite Steam Input's controller bindings.
 	InputMap.load_from_project_settings()
-	for action in REMAPPABLE_ACTIONS:
-		for event in InputMap.action_get_events(action).duplicate():
-			if event is InputEventJoypadButton or event is InputEventJoypadMotion:
-				InputMap.action_erase_event(action, event)
 	save_bindings()
 	bindings_changed.emit()
 
@@ -142,68 +157,50 @@ func _input(event: InputEvent) -> void:
 	if not is_listening():
 		return
 
-	# Ignore non-actionable events (mouse movement, key/button releases).
+	# Always ignore mouse motion.
 	if event is InputEventMouseMotion:
 		return
-	if event is InputEventKey and not event.pressed:
+
+	# Ignore release events.
+	if event is InputEventKey         and not event.pressed:
 		return
 	if event is InputEventMouseButton and not event.pressed:
 		return
 	if event is InputEventJoypadMotion and absf(event.axis_value) < 0.5:
 		return
+	if event is InputEventJoypadButton and not event.pressed:
+		return
 
-	# Escape → cancel listening without applying a binding.
+	# Escape cancels regardless of mode.
 	if event is InputEventKey and event.keycode == KEY_ESCAPE:
 		stop_listening()
 		listen_cancelled.emit()
 		get_viewport().set_input_as_handled()
 		return
 
-	# Joypad events while Steam Input is active → redirect to Steam overlay.
-	if (event is InputEventJoypadButton or event is InputEventJoypadMotion) \
-			and SteamInputManager.is_controller_connected():
-		push_warning("[InputManager] controller connected — redirecting to Steam overlay")
-		OS.shell_open("steam://controllerconfig/%d" % SteamManager.APP_ID)
-		stop_listening()
-		get_viewport().set_input_as_handled()
-		return
+	# Route to the correct listen mode — ignore mismatched event types.
+	var is_kb_event:  bool = event is InputEventKey or event is InputEventMouseButton
+	var is_joy_event: bool = event is InputEventJoypadButton or event is InputEventJoypadMotion
 
-	# Apply the new binding. This also emits bindings_changed, which causes
-	# the options menu to rebuild the list and hide the listening overlay.
+	match _listen_mode:
+		ListenMode.KEYBOARD:
+			if not is_kb_event:
+				return   # Ignore joypad while capturing keyboard
+		ListenMode.CONTROLLER:
+			if not is_joy_event:
+				return   # Ignore keyboard while capturing controller
+
+	# Apply the binding.
 	remap_action(_listening_action, _listening_old_event, event)
 	stop_listening()
 	get_viewport().set_input_as_handled()
 
 # ================================================================= persistence
-#
-# HOW SAVING WORKS
-# ────────────────
-# Bindings are stored in a single ConfigFile at user://input_bindings.cfg.
-# The file has two sections:
-#
-#   [bindings]   — keyboard / mouse events (one key per action)
-#   [controller] — raw joypad events (only used when Steam Input is off)
-#
-# On every call to remap_action() or reset_all(), both sections are
-# rewritten in full so the file always reflects the complete current state.
-#
-# On startup, load_bindings() reads the file. If it doesn't exist the
-# project defaults from ProjectSettings remain active (no changes needed).
-# Keyboard and controller events are loaded independently: loading keyboard
-# bindings never touches joypad events and vice versa, so a player can
-# remap their keyboard without disturbing their controller layout.
-#
-# Per-user persistence: the "user://" path resolves to a user-specific
-# directory (e.g. %APPDATA%\Godot\app_userdata\<game>\ on Windows), so
-# each OS user account gets its own bindings file automatically.
-# If you add Steam Cloud Sync, pointing it at user://input_bindings.cfg
-# will sync bindings across machines for the same Steam account.
 
 func save_bindings() -> void:
 	var config := ConfigFile.new()
-
 	for action in REMAPPABLE_ACTIONS:
-		var kb_events: Array  = []
+		var kb_events:  Array = []
 		var ctl_events: Array = []
 		for event in InputMap.action_get_events(action):
 			if event is InputEventKey or event is InputEventMouseButton:
@@ -230,7 +227,7 @@ func load_bindings() -> void:
 			push_warning("[InputManager] action not in InputMap: %s (skipping)" % action)
 			continue
 
-		# Load keyboard/mouse bindings.
+		# Keyboard/mouse.
 		if config.has_section_key("bindings", action):
 			for event in InputMap.action_get_events(action).duplicate():
 				if event is InputEventKey or event is InputEventMouseButton:
@@ -241,7 +238,7 @@ func load_bindings() -> void:
 					if event is InputEventKey or event is InputEventMouseButton:
 						InputMap.action_add_event(action, event)
 
-		# Load controller bindings (only applied when Steam Input is inactive).
+		# Raw joypad.
 		if config.has_section_key("controller", action):
 			for event in InputMap.action_get_events(action).duplicate():
 				if event is InputEventJoypadButton or event is InputEventJoypadMotion:
@@ -256,8 +253,7 @@ func load_bindings() -> void:
 
 # ================================================================= helpers
 
-## Remove [param new_event] from all actions except [param skip_action] to
-## prevent the same key being bound to two different actions simultaneously.
+## Remove [param new_event] from all actions except [param skip_action].
 func _clear_event_from_others(skip_action: String, new_event: InputEvent) -> void:
 	for action in REMAPPABLE_ACTIONS:
 		if action == skip_action:

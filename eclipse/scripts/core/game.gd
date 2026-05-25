@@ -17,7 +17,8 @@ func _ready() -> void:
 	ItemManager.tilemap_manager     = %TilemapManager
 	WaveManager.wave_started.connect(_on_wave_started)
 	WaveManager.wave_cleared.connect(_on_wave_cleared)
-	GraphManager.generate()
+	%TilemapManager.camera = %Camera2D
+	%GraphManager.generate()
 	%OrbGraphMenu.player            = %Player
 	%DebugLabel.add_theme_font_size_override(
 		"normal_font_size",

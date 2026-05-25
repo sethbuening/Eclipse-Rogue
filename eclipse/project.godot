@@ -23,14 +23,11 @@ ParticleManager="*uid://dsgx4d76etqud"
 EnemyManager="*uid://fcmsyn7h7a2m"
 WaveManager="*uid://ct3irpix2qrbu"
 ItemManager="*uid://ch60r00nky0hr"
-GraphManager="*uid://cyy2cy40xuqyu"
 NavManager="*uid://cosh12f6isoqo"
-DamageNumbers="*uid://6dbh0uxmi4i4"
 SteamManager="*uid://kgequth817ek"
-SteamInputManager="*uid://dlciwidkhnryk"
 SteamStats="*uid://dybuak8nc0jmu"
 SteamAchievements="*uid://okcogwrejctr"
-InputManager="*uid://cp4xxgmg87l1g"
+DamageNumbers="*uid://6dbh0uxmi4i4"
 
 [debug]
 
@@ -41,7 +38,6 @@ file_logging/enable_file_logging=true
 window/size/viewport_width=4608
 window/size/viewport_height=2592
 window/size/mode=3
-window/stretch/scale_mode="integer"
 window/defaults/default_environment="uid://cery84ong0tvf"
 
 [input]

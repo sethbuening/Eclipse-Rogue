@@ -81,6 +81,23 @@ func spawn_mine_chunk(pos: Vector2, tile_color: Color) -> void:
 			true
 		)
 
+func spawn_mine_chunk_directional(pos: Vector2, tile_color: Color, vel_bias: Vector2) -> void:
+	var gradient := Gradient.new()
+	gradient.set_color(0, tile_color)
+	gradient.set_color(1, Color(tile_color.r * 0.5, tile_color.g * 0.5, tile_color.b * 0.5))
+	for i: int in range(randi_range(2, 4)):
+		spawn(
+			pos,
+			Vector2(randf_range(-50, 50), randf_range(-70, 0)) + vel_bias,
+			randf_range(40, 120),
+			gradient,
+			randf_range(0.2, 0.45),
+			randf_range(3.0, 6.0),
+			0.5,
+			true,
+			true
+		)
+
 func spawn_mine_dust(pos: Vector2, tile_type: Util.tile) -> void:
 	var color: Color = _tile_dust_color(tile_type)
 	var gradient     := Gradient.new()

@@ -20,6 +20,7 @@ script = ExtResource("1_n7q8x")
 id = "Gold Bomb"
 display_name = "Gold Bomb"
 description = "Explodes a massive bomb sending out a shockwave, dealing damage with an increased crit chance."
+targeting_type = null
 stats = SubResource("Resource_c856i")
 main_stats = Array[String](["aoe_radius", "power"])
 metadata/_custom_type_script = "uid://db3d372f87vcx"

@@ -1,0 +1,29 @@
+[gd_scene format=3 uid="uid://bx16q7l084ows"]
+
+[sub_resource type="GDScript" id="GDScript_ow3er"]
+script/source = "extends Node2D
+
+var age:      float = 0.0
+var duration: float = 0.55
+
+const SPEED:     float = 80.0
+const THICKNESS: float = 10.0
+
+func _process(delta: float) -> void:
+	age += delta
+	if age >= duration:
+		queue_free()
+		return
+	queue_redraw()
+
+func _draw() -> void:
+	var front: float = age * SPEED
+	if front <= 0.0:
+		return
+	var fade:  float = 1.0 - (age / duration)
+	draw_arc(Vector2.ZERO, front,        0.0, TAU, 64, Color(1, 1, 1, fade * 0.5),  THICKNESS * fade,        true)
+	draw_arc(Vector2.ZERO, front * 0.8,  0.0, TAU, 48, Color(1, 1, 1, fade * 0.25), THICKNESS * fade * 0.5,  true)
+"
+
+[node name="Shockwave" type="Node2D" unique_id=1497242104]
+script = SubResource("GDScript_ow3er")

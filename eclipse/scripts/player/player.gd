@@ -37,10 +37,9 @@ const CHANNEL_LIGHT_COST:   float = 0.80
 const CHANNEL_POWER_BONUS:  float = 0.5
 
 const ABILITY_STAGGER_SEC:  float = 0.05
-const ENEMY_SEARCH_WAIT:    float = 1
-const TILE_SEARCH_WAIT:     float = 1
 
-const JOYSTICK_CURSOR_RADIUS: float = 160.0
+const MINE_PRESS_DELAY:     float = 0.0   # seconds of pushing before mining begins
+const MINE_TICK_INTERVAL:   float = 0.22   # seconds between damage ticks while held
 
 
 # ================================================================= textures ==
@@ -118,49 +117,36 @@ var channeling_orb_index: int   = -1
 var channel_charge:       float = 0.0
 
 
-# ============================================================ auto-targeting ==
+# ============================================================ pending activations ==
 
 class PendingActivation:
 	var orb_index:     int
 	var abilities:     Array[AbilityData]
 	var stagger_timer: float = 0.0
-	var search_timer:  float = 0.0
 	var any_activated: bool  = false
 
 var _pending: Array[PendingActivation] = []
 
-var _range_flash_radius: float = 0.0
-var _range_flash_phase:  float = 0.0
+
+# ================================================================== mining ==
+
+var _mine_press_timer: float    = 0.0
+var _mine_tick_timer:  float    = 0.0
+var _mine_target:      Vector2i = Vector2i(-1, -1)
 
 
 # ================================================================== forging ==
 
 var _nearby_forge: Forge = null
 
-# ================================================================== drawing ==
-
-var _top_canvas: CanvasLayer = null
-var _top_draw:   Node2D      = null
 
 # ==================================================================== ready ==
 
 func _ready() -> void:
-	# setup the canvas for the player draw function
-	_top_canvas        = CanvasLayer.new()
-	_top_canvas.layer  = 1          # above everything else
-	_top_canvas.follow_viewport_enabled = true
-	_top_canvas.follow_viewport_scale   = 1.0
-	add_child(_top_canvas)
-	_top_draw = Node2D.new()
-	_top_draw.draw.connect(_on_top_draw)
-	_top_canvas.add_child(_top_draw)
-
 	add_to_group("player")
 	$Inventory.orb_added.connect(_on_orb_added)
 	$Inventory.orb_removed.connect(_on_orb_removed)
 	$Inventory.relic_added.connect(_on_relic_added)
-	#for i in range(10):
-	#	$Inventory.add_orb(starting_orb.clone())
 	$Inventory.add_orb(starting_orb_2.clone())
 	$Inventory.add_orb(starting_orb_3.clone())
 	$Inventory.add_orb(starting_orb_4.clone())
@@ -169,7 +155,6 @@ func _ready() -> void:
 # ================================================================== process ==
 
 func _process(delta: float) -> void:
-	_top_draw.queue_redraw()
 	time            += delta
 	z_index          = %TilemapManager.get_z_for(global_position)
 	movement_enabled = true
@@ -182,10 +167,11 @@ func _process(delta: float) -> void:
 	_tick_abilities(delta)
 	_tick_relics(delta)
 	_tick_env(delta)
+	_tick_mining(delta)
 	_tick_dev_input()
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	var input_vector: Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	if input_vector != Vector2.ZERO:
 		input_vector = input_vector.normalized()
@@ -195,13 +181,33 @@ func _physics_process(_delta: float) -> void:
 		velocity = input_vector * speed
 	else:
 		velocity = Vector2.ZERO
+
 	move_and_slide()
+
+	var new_target := Vector2i(-1, -1)
+	var tilemap: Node = %TilemapManager
+	if input_vector != Vector2.ZERO:
+		for i in get_slide_collision_count():
+			var col: KinematicCollision2D = get_slide_collision(i)
+			# only mine if the player is actively pushing into this surface
+			var pushing: bool = input_vector.dot(-col.get_normal()) > 0.5
+			if not pushing:
+				continue
+			var hit_world: Vector2 = col.get_position() - col.get_normal() * (tilemap.TILE_SIZE.x * 0.5)
+			var candidate: Vector2i = tilemap.world_to_map(hit_world)
+			if tilemap.tile_exists(candidate):
+				new_target = candidate
+				break
+
+	if new_target != _mine_target:
+		_mine_target      = new_target
+		_mine_press_timer = MINE_PRESS_DELAY
+		_mine_tick_timer  = 0.0
 
 
 # ================================================================ abilities ==
 
 func _tick_abilities(delta: float) -> void:
-	# if we're channeling, don't check to activate any orbs
 	if channeling_orb_index != -1:
 		return
 
@@ -214,8 +220,6 @@ func _tick_abilities(delta: float) -> void:
 	_update_body_glow(max_orb_t)
 
 
-# Checks each orb's input action this frame and enqueues a PendingActivation
-# for any newly pressed orb that is usable and affordable.
 func _queue_new_orb_presses(orbs: Array[Orb]) -> void:
 	for i in range(orbs.size()):
 		var orb: Orb = orbs[i]
@@ -227,11 +231,9 @@ func _queue_new_orb_presses(orbs: Array[Orb]) -> void:
 		if _orb_already_pending(i):
 			continue
 
-		# add the orb to the list of pending orb activations
 		var pa          := PendingActivation.new()
 		pa.orb_index     = i
 		pa.stagger_timer = 0.0
-		pa.search_timer  = 0.0
 		pa.any_activated = false
 		for ability: AbilityData in orb.abilities:
 			if ability.trigger_type == AbilityData.TriggerType.ACTIVE and not ability.requires_hold:
@@ -246,8 +248,6 @@ func _orb_already_pending(orb_index: int) -> bool:
 	return false
 
 
-# Ticks all passive abilities every frame, and hold abilities while their
-# input is held. Updates max_orb_t for body glow.
 func _tick_passive_and_hold_abilities(orbs: Array[Orb], delta: float, max_orb_t: float) -> void:
 	for i in range(orbs.size()):
 		if not _orb_is_usable(i):
@@ -261,14 +261,8 @@ func _tick_passive_and_hold_abilities(orbs: Array[Orb], delta: float, max_orb_t:
 		max_orb_t = maxf(max_orb_t, orb_visuals[i].glow)
 
 
-# Each frame, steps every pending activation forward:
-# - Respects the stagger timer between abilities on the same orb.
-# - Calls Util.resolve_target() to find a world position for the ability.
-# - If a target is found, fires the ability immediately.
-# - If not, runs a grace-period timer; skips the ability when it expires.
 func _advance_pending_activations(delta: float) -> void:
-	var finished:      Array[PendingActivation] = []
-	var flashing_range: float                   = 0.0
+	var finished: Array[PendingActivation] = []
 
 	for pa: PendingActivation in _pending:
 		if pa.abilities.is_empty():
@@ -279,18 +273,13 @@ func _advance_pending_activations(delta: float) -> void:
 		if pa.stagger_timer > 0.0:
 			continue
 
-		var ability: AbilityData            = pa.abilities[0]
-		var range:   float                  = _get_orb_range(ability)
-		var aim:     Vector2                = _get_aim_position(range)
-		var result:  Util.TargetingResult   = Util.resolve_target(
-			ability.targeting_type, self, %TilemapManager, aim, range)
-
-		if result.found:
-			_fire_ability(pa, ability, result, delta)
-		else:
-			flashing_range = _tick_grace_period(pa, ability, delta, flashing_range)
-
-	_update_range_flash(flashing_range, delta)
+		var ability: AbilityData = pa.abilities[0]
+		var ctx                 := _make_context(delta, true, pa.orb_index)
+		if _activate_free(ability, ctx):
+			if not pa.any_activated:
+				light -= _orb_cost(pa.orb_index)
+			pa.any_activated = true
+		_advance_ability_queue(pa)
 
 	for pa: PendingActivation in finished:
 		if pa.any_activated:
@@ -299,53 +288,10 @@ func _advance_pending_activations(delta: float) -> void:
 		_pending.erase(pa)
 
 
-# Fires one ability from a pending activation, deducting light on first fire.
-func _fire_ability(pa: PendingActivation, ability: AbilityData,
-		result: Util.TargetingResult, delta: float) -> void:
-	var ctx           := _make_context(delta, true, pa.orb_index)
-	ctx["target_pos"]  = result.position
-	ctx["targets"]     = result.targets
-	if _activate_free(ability, ctx):
-		if not pa.any_activated:
-			light -= _orb_cost(pa.orb_index)
-		pa.any_activated = true
-	_advance_ability_queue(pa)
-
-
-# Counts down the grace period for a pending ability that found no target.
-# Returns an updated flashing_range so the range arc can pulse on screen.
-# Skips (pops) the ability when the timer expires.
-func _tick_grace_period(pa: PendingActivation, ability: AbilityData,
-		delta: float, flashing_range: float) -> float:
-	var wait: float = TILE_SEARCH_WAIT \
-		if ability.targeting_type == Util.TargetingType.TILE \
-		else ENEMY_SEARCH_WAIT
-	if pa.search_timer <= 0.0:
-		pa.search_timer = wait
-	pa.search_timer -= delta
-	flashing_range = maxf(flashing_range, _get_orb_range(ability))
-	if pa.search_timer <= 0.0:
-		_advance_ability_queue(pa)
-	return flashing_range
-
-
-func _update_range_flash(flashing_range: float, delta: float) -> void:
-	if flashing_range != _range_flash_radius:
-		_range_flash_radius = flashing_range
-		queue_redraw()
-	if _range_flash_radius > 0.0:
-		_range_flash_phase += delta * TAU * 3.0
-		queue_redraw()
-	if Util.last_input_device == Util.InputDevice.CONTROLLER:
-		queue_redraw()
-
-
 func _tick_hold_ability(ability: AbilityData, delta: float, orb_index: int) -> void:
 	var orb: Orb = $Inventory.orbs[orb_index]
 	if Input.is_action_pressed(orb.input_action):
-		var aim: Vector2  = _get_aim_position(_get_orb_range(ability))
-		var ctx           := _make_context(delta, true, orb_index)
-		ctx["target_pos"]  = aim
+		var ctx := _make_context(delta, true, orb_index)
 		if _activate_free(ability, ctx):
 			orb_visuals[orb_index].glow_target = 1.0
 			shatter_orb(orb_index)
@@ -354,10 +300,11 @@ func _tick_hold_ability(ability: AbilityData, delta: float, orb_index: int) -> v
 		_activate_free(ability, _make_context(delta, false, orb_index))
 		orb_visuals[orb_index].glow_target = 0.0
 
+
 func _advance_ability_queue(pa: PendingActivation) -> void:
 	pa.abilities.pop_front()
 	pa.stagger_timer = ABILITY_STAGGER_SEC
-	pa.search_timer  = 0.0
+
 
 # ── context / cost helpers ─────────────────────────────────────────────────
 
@@ -373,7 +320,6 @@ func _make_context(delta: float, pressed: bool, orb_index: int) -> Dictionary:
 		"orb_shattered": orb_visuals[orb_index].shattered,
 		"orb_index":     orb_index,
 		"potency":       $Inventory.orbs[orb_index].orb_potency,
-		"target_pos":    Vector2.ZERO,
 		"targets":       [],
 	}
 
@@ -383,10 +329,6 @@ func _activate_free(ability: AbilityData, ctx: Dictionary) -> bool:
 	if ctx["lock_movement"]:
 		movement_enabled = false
 	return ctx["activated"]
-
-
-func _get_orb_range(ability: AbilityData) -> float:
-	return ability.stats.range if ability.stats and "range" in ability.stats else 0.0
 
 
 func _orb_cost(orb_index: int) -> float:
@@ -419,26 +361,6 @@ func _update_body_glow(t: float) -> void:
 	var glow: Color = Color(lerpf(1.0, 2.0, t), lerpf(1.0, 2.0, t), lerpf(1.0, 2.0, t))
 	%body.self_modulate = glow if t > 0.0 else Color.WHITE
 	%head.self_modulate = glow if t > 0.0 else Color.WHITE
-
-
-# ================================================================= aiming ====
-
-func _get_aim_position(range: float = 0.0) -> Vector2:
-	var joy: Vector2 = Input.get_vector("aim_left", "aim_right", "aim_up", "aim_down")
-	var world_target: Vector2
-	if joy.length() > 0.1:
-		world_target = global_position + joy.normalized() * (joy.length() * JOYSTICK_CURSOR_RADIUS)
-	else:
-		world_target = get_global_mouse_position()
-	if range > 0.0:
-		var offset: Vector2 = world_target - global_position
-		if offset.length() > range:
-			world_target = global_position + offset.normalized() * range
-	return world_target
-
-
-func _get_right_stick() -> Vector2:
-	return Input.get_vector("aim_left", "aim_right", "aim_up", "aim_down")
 
 
 # ================================================================ channeling ==
@@ -589,7 +511,7 @@ func _on_orb_added(orb: Orb) -> void:
 	ov.sprite.z_index              = 4096
 	add_child(ov.sprite)
 	orb_visuals.append(ov)
-	_orb_visual_map[orb] = ov        # ← track by reference
+	_orb_visual_map[orb] = ov
 	_auto_assign_slot(orb)
 
 func _on_orb_removed(orb: Orb) -> void:
@@ -597,7 +519,7 @@ func _on_orb_removed(orb: Orb) -> void:
 		return
 	var ov: OrbVisual = _orb_visual_map[orb]
 	ov.sprite.queue_free()
-	orb_visuals.erase(ov)            # erase by value, no index math
+	orb_visuals.erase(ov)
 	_orb_visual_map.erase(orb)
 
 
@@ -669,6 +591,57 @@ func store_light_in_orb(orb_index: int, amount: float) -> void:
 		return
 	$Inventory.orbs[orb_index].store_light(amount)
 	ParticleManager.spawn_focus_particles(global_position, 1.0)
+
+
+# ================================================================== mining ==
+
+func _tick_mining(delta: float) -> void:
+	var tilemap: Node = %TilemapManager
+
+	if _mine_target == Vector2i(-1, -1):
+		_mine_press_timer = 0.0
+		_mine_tick_timer  = 0.0
+		return
+
+	if not tilemap.tile_exists(_mine_target):
+		_mine_press_timer = 0.0
+		_mine_tick_timer  = 0.0
+		_mine_target      = Vector2i(-1, -1)
+		return
+
+	_mine_press_timer += delta
+	if _mine_press_timer < MINE_PRESS_DELAY:
+		return
+
+	if _mine_tick_timer <= 0.0:
+		# ── squish animation ──────────────────────────────────────────
+		# squish_tile handles the primary tile AND sends a smaller delayed
+		# bounce to the 4 NESW neighbours, so neighbour damage_tile calls
+		# below suppress their own bounce.
+		tilemap.squish_tile(_mine_target)
+
+		# ── particles ────────────────────────────────────────────────
+		var world_pos: Vector2   = tilemap.map_to_world(_mine_target)
+		var base_type: Util.tile = tilemap.tile_types.get(_mine_target, Util.tile.STONE)
+		var dig_dir:   Vector2   = Vector2(direction)
+		ParticleManager.spawn_mine_dust(world_pos, base_type)
+		ParticleManager.spawn_mine_chunk_directional(
+			world_pos,
+			ParticleManager._tile_dust_color(base_type),
+			dig_dir * 40.0
+		)
+
+		# ── damage ───────────────────────────────────────────────────
+		var tile_died: bool = tilemap.damage_tile(_mine_target, 3, false)
+		for dx: int in range(-1, 2):
+			for dy: int in range(-1, 2):
+				if dx == 0 and dy == 0:
+					continue
+				tilemap.damage_tile(_mine_target + Vector2i(dx, dy), 1, false)
+
+		_mine_tick_timer = MINE_TICK_INTERVAL
+	else:
+		_mine_tick_timer -= delta
 
 
 # ================================================================== forging ==
@@ -743,27 +716,13 @@ func _dev_reset_cooldowns() -> void:
 		ov.glow_target  = 0.0
 
 
-# ===================================================================== draw ==
-
-func _on_top_draw() -> void:
-	if _range_flash_radius > 0.0:
-		var alpha: float = lerpf(0.15, 0.55, sin(_range_flash_phase) * 0.5 + 0.5)
-		_top_draw.draw_arc(
-			global_position, _range_flash_radius, 0.0, TAU, 48,
-			Color(1.0, 0.3, 0.2, alpha), 1.5)
-
-	var joy: Vector2 = _get_right_stick()
-	if Util.last_input_device == Util.InputDevice.CONTROLLER and joy.length() > 0.1:
-		var cursor_world: Vector2 = _get_aim_position()
-		_top_draw.draw_arc(cursor_world, 3.0, 0.0, TAU, 16, Color(1.0, 1.0, 1.0, 1.0), 0.5)
-
 # =================================================================== helpers ==
 
 func _trigger_connections(orb_index: int, delta: float) -> void:
 	var node_index: int = $Inventory.orbs[orb_index].node_index
 	if node_index == -1:
 		return
-	GraphManager.on_orb_fired(node_index, {}, $Inventory.orbs[orb_index])
+	%GraphManager.on_orb_fired(node_index, {}, $Inventory.orbs[orb_index])
 
 func Log(msg: Variant) -> void:
 	print("[player.gd] " + str(msg))

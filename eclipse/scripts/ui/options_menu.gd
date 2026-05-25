@@ -1,15 +1,20 @@
 extends Control
 
 # ============================================================ scene: OptionsMenu
-# Attach to a Control node. Instantiated as an overlay inside MainMenu and PauseMenu.
-# Built entirely in code — no scene file needed beyond the root node.
-#
 # Two tabs: General (audio/video), Controls (Keyboard/Mouse | Controller).
 #
-# Keyboard/mouse rebinding is done inline via InputManager.
-# Controller rebinding redirects to the Steam Input controller configurator.
-# When Steam Input is unavailable (no Steam / no controller), raw joypad
-# events are shown and can be rebound via InputManager normally.
+# Controller tab behaviour:
+#
+#   Steam connected  → shows current Steam action → Godot action mapping
+#                      with remap buttons. Remapping stores overrides via
+#                      SteamInputManager (no raw joypad events involved).
+#
+#   No Steam         → shows raw joypad InputMap events with remap buttons.
+#                      Remapping captured via InputManager (ListenMode.CONTROLLER).
+#
+# Both paths use the same UI layout so the experience is consistent.
+# The only visible difference is the sub-header text explaining which
+# backend is active.
 
 const FONT_TITLE: String = "res://assets/fonts/Cinzel-Bold.ttf"
 const FONT_LABEL: String = "res://assets/fonts/Cinzel-Regular.ttf"
@@ -21,35 +26,41 @@ const C_BORDER:      Color = Color("#2a1e38")
 const C_TITLE:       Color = Color("#f0dfa0")
 const C_LABEL:       Color = Color("#c8a87a")
 const C_LABEL_MUTED: Color = Color("#6b5030")
-const C_LABEL_DIM:   Color = Color("#4a3820")   # used for "(default)" hint text
+const C_LABEL_DIM:   Color = Color("#4a3820")
 const C_HOVER:       Color = Color("#f5d78e")
 const C_BTN_BG:      Color = Color("#1a1024")
 const C_BTN_HOVER:   Color = Color("#2a1a34")
 const C_BTN_BORDER:  Color = Color("#3d2850")
 const C_LISTENING:   Color = Color("#f0dfa0")
 const C_ACCENT:      Color = Color("#7a3aaa")
-const C_STEAM_NOTE:  Color = Color("#8a6aaa")
+const C_INFO:        Color = Color("#8a6aaa")
 
 signal closed
 
-enum Tab { GENERAL, CONTROLS }
+enum Tab         { GENERAL, CONTROLS }
 enum ControlsTab { KEYBOARD, CONTROLLER }
 
 var _tab:  Tab         = Tab.GENERAL
 var _ctab: ControlsTab = ControlsTab.KEYBOARD
 
+# --- built nodes we need to reference later ---
 var _general_panel:     Control         = null
 var _controls_panel:    Control         = null
 var _kb_panel:          ScrollContainer = null
 var _ctrl_panel:        ScrollContainer = null
 var _kb_list:           VBoxContainer   = null
 var _ctrl_list:         VBoxContainer   = null
+var _ctrl_info_label:   Label           = null
 var _listening_overlay: Control         = null
 var _listening_label:   Label           = null
 var _tab_btns:          Array[Button]   = []
 var _ctab_btns:         Array[Button]   = []
 
-# Maps Godot action name → display name shown in the UI.
+# --- pending remap state for Steam listen path ---
+var _steam_listening:        bool   = false
+var _steam_listen_action:    String = ""   # Godot action we are waiting to replace
+var _steam_listen_old_steam: String = ""   # steam action that currently fires it
+
 const ACTION_NAMES: Dictionary = {
 	"move_up":            "Move up",
 	"move_down":          "Move down",
@@ -81,9 +92,9 @@ const ACTION_NAMES: Dictionary = {
 # ================================================================= lifecycle
 
 func _ready() -> void:
-	# Rebuild the binding list whenever a key is remapped.
 	InputManager.bindings_changed.connect(_on_bindings_changed)
 	InputManager.listen_cancelled.connect(_on_listen_cancelled)
+	SteamInputManager.steam_bindings_changed.connect(_on_bindings_changed)
 	_build()
 	visible = false
 
@@ -92,10 +103,12 @@ func open() -> void:
 	_rebuild_lists()
 
 func request_close() -> void:
-	# If we are mid-listen, cancel that instead of closing the whole menu.
 	if InputManager.is_listening():
 		InputManager.stop_listening()
 		_listening_overlay.visible = false
+		return
+	if _steam_listening:
+		_cancel_steam_listen()
 		return
 	visible = false
 	closed.emit()
@@ -103,13 +116,11 @@ func request_close() -> void:
 # ================================================================= build
 
 func _build() -> void:
-	# Full-screen dark overlay.
 	var bg := ColorRect.new()
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	bg.color = C_BG
 	add_child(bg)
 
-	# Centered panel container.
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(center)
@@ -127,7 +138,6 @@ func _build() -> void:
 	vbox.add_child(_build_tab_bar())
 	vbox.add_child(_build_separator())
 
-	# Content area fills available space between tab bar and footer.
 	var content := MarginContainer.new()
 	content.add_theme_constant_override("margin_left",   32)
 	content.add_theme_constant_override("margin_right",  32)
@@ -136,7 +146,6 @@ func _build() -> void:
 	content.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	vbox.add_child(content)
 
-	# Panels sit on top of each other; only one is visible at a time.
 	var panels := Control.new()
 	panels.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	panels.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -153,7 +162,6 @@ func _build() -> void:
 	vbox.add_child(_build_separator())
 	vbox.add_child(_build_footer())
 
-	# Listening overlay rendered above everything else.
 	_listening_overlay = _build_listening_overlay()
 	add_child(_listening_overlay)
 
@@ -195,21 +203,16 @@ func _build_tab_bar() -> Control:
 func _build_general_panel() -> Control:
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 20)
-
-	vbox.add_child(_slider_row("Master volume", "master_volume", 0.0, 1.0, 1.0,
+	vbox.add_child(_slider_row("Master volume", 1.0,
 		func(v): AudioServer.set_bus_volume_db(
 			AudioServer.get_bus_index("Master"), linear_to_db(v))))
-	vbox.add_child(_slider_row("Music volume",  "music_volume",  0.0, 1.0, 0.8,
+	vbox.add_child(_slider_row("Music volume",  0.8,
 		func(v): AudioServer.set_bus_volume_db(
 			AudioServer.get_bus_index("Music"), linear_to_db(v))))
-	vbox.add_child(_slider_row("SFX volume",    "sfx_volume",    0.0, 1.0, 1.0,
+	vbox.add_child(_slider_row("SFX volume",    1.0,
 		func(v): AudioServer.set_bus_volume_db(
 			AudioServer.get_bus_index("SFX"), linear_to_db(v))))
-
-	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(0, 8)
-	vbox.add_child(spacer)
-
+	vbox.add_child(_spacer(8))
 	vbox.add_child(_toggle_row("Fullscreen",
 		DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN,
 		func(v): DisplayServer.window_set_mode(
@@ -219,9 +222,9 @@ func _build_general_panel() -> Control:
 
 func _build_controls_panel() -> Control:
 	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 12)
+	vbox.add_theme_constant_override("separation", 8)
 
-	# Sub-tab bar (Keyboard / Controller).
+	# Sub-tab bar.
 	var sub_hbox := HBoxContainer.new()
 	sub_hbox.add_theme_constant_override("separation", 2)
 	var sub_labels: Array[String] = ["Keyboard / Mouse", "Controller"]
@@ -233,6 +236,14 @@ func _build_controls_panel() -> Control:
 		sub_hbox.add_child(btn)
 		_ctab_btns.append(btn)
 	vbox.add_child(sub_hbox)
+
+	# Info label shown in the controller tab header.
+	_ctrl_info_label = Label.new()
+	_ctrl_info_label.add_theme_font_override("font", load(FONT_UI))
+	_ctrl_info_label.add_theme_font_size_override("font_size", 11)
+	_ctrl_info_label.add_theme_color_override("font_color", C_INFO)
+	_ctrl_info_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vbox.add_child(_ctrl_info_label)
 
 	# Keyboard scroll list.
 	_kb_panel = _make_scroll()
@@ -262,9 +273,7 @@ func _build_footer() -> Control:
 	m.add_child(hbox)
 
 	var reset_btn := _action_btn("Reset to defaults")
-	reset_btn.pressed.connect(func():
-		InputManager.reset_all()
-		_rebuild_lists())
+	reset_btn.pressed.connect(_on_reset_pressed)
 	hbox.add_child(reset_btn)
 
 	var spacer := Control.new()
@@ -302,23 +311,13 @@ func _build_listening_overlay() -> Control:
 
 	var cancel_btn := _action_btn("Cancel  [Esc]")
 	cancel_btn.pressed.connect(func():
-		InputManager.stop_listening()
-		overlay.visible = false)
+		if _steam_listening:
+			_cancel_steam_listen()
+		else:
+			InputManager.stop_listening()
+			overlay.visible = false)
 	box.add_child(cancel_btn)
 	return overlay
-
-func _build_separator() -> HSeparator:
-	var sep := HSeparator.new()
-	sep.add_theme_color_override("color", C_BORDER)
-	sep.add_theme_constant_override("separation", 1)
-	return sep
-
-func _make_scroll() -> ScrollContainer:
-	var s := ScrollContainer.new()
-	s.size_flags_vertical    = Control.SIZE_EXPAND_FILL
-	s.custom_minimum_size    = Vector2(0, 300)
-	s.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	return s
 
 # ================================================================= tab switching
 
@@ -328,11 +327,14 @@ func _switch_tab(tab: Tab) -> void:
 	_controls_panel.visible = tab == Tab.CONTROLS
 	for i in range(_tab_btns.size()):
 		_set_tab_active(_tab_btns[i], i == tab as int)
+	if tab == Tab.CONTROLS:
+		_rebuild_lists()
 
 func _switch_ctab(ctab: ControlsTab) -> void:
 	_ctab = ctab
-	_kb_panel.visible   = ctab == ControlsTab.KEYBOARD
-	_ctrl_panel.visible = ctab == ControlsTab.CONTROLLER
+	_kb_panel.visible         = ctab == ControlsTab.KEYBOARD
+	_ctrl_panel.visible       = ctab == ControlsTab.CONTROLLER
+	_ctrl_info_label.visible  = ctab == ControlsTab.CONTROLLER
 	for i in range(_ctab_btns.size()):
 		_set_tab_active(_ctab_btns[i], i == ctab as int)
 
@@ -341,8 +343,17 @@ func _switch_ctab(ctab: ControlsTab) -> void:
 func _rebuild_lists() -> void:
 	if _kb_list == null or _ctrl_list == null:
 		return
+
+	# Clear old rows.
 	for c in _kb_list.get_children():   c.queue_free()
 	for c in _ctrl_list.get_children(): c.queue_free()
+
+	# Update controller info label.
+	if SteamInputManager.is_controller_connected():
+		_ctrl_info_label.text = "Steam Input is active. Remapping here changes which in-game action each Steam action triggers."
+	else:
+		_ctrl_info_label.text = "No Steam controller detected. Raw controller buttons are shown and can be rebound directly."
+
 	for action in InputManager.REMAPPABLE_ACTIONS:
 		_kb_list.add_child(_binding_row_keyboard(action))
 		_ctrl_list.add_child(_binding_row_controller(action))
@@ -353,13 +364,9 @@ func _binding_row_keyboard(action: String) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
 	row.custom_minimum_size = Vector2(0, 38)
-
 	row.add_child(_action_label(action))
 
 	var events: Array[InputEvent] = InputManager.get_keyboard_events(action)
-
-	# If the player has no saved bindings for this action yet, fall back to
-	# showing the project defaults so the row is never empty.
 	var show_defaults: bool = events.is_empty()
 	if show_defaults:
 		events = InputManager.get_default_keyboard_events(action)
@@ -368,72 +375,85 @@ func _binding_row_keyboard(action: String) -> Control:
 	for event in events:
 		if shown >= 2:
 			break
-		var btn := _binding_btn(_event_str(event), show_defaults)
-		var a: String     = action
-		var e: InputEvent = event if not show_defaults else null
+		var btn  := _binding_btn(_event_str(event), show_defaults)
+		var a    := action
+		var e    := event if not show_defaults else null
 		btn.pressed.connect(func(): _start_listen_keyboard(a, e))
 		row.add_child(btn)
 		shown += 1
 
-	# Show a "+" slot if there is still room for an additional binding.
 	if shown < 2 and not show_defaults:
 		var add := _binding_btn("+")
 		add.custom_minimum_size = Vector2(36, 34)
-		var a: String = action
+		var a := action
 		add.pressed.connect(func(): _start_listen_keyboard(a, null))
 		row.add_child(add)
 
 	return row
 
 # ----------------------------------------------------------------- controller row
-# When Steam Input is active: shows a note and opens the Steam overlay.
-# When Steam Input is unavailable: shows raw joypad bindings (or defaults)
-# and allows rebinding.
+#
+# Steam path  → each row shows the steam action name and the Godot action it
+#               currently maps to (default or overridden). A remap button opens
+#               the Steam-listen overlay which waits for a DIFFERENT steam action
+#               to be pressed, then swaps the mappings.
+#
+# Non-Steam path → identical to the keyboard row but for joypad events.
 
 func _binding_row_controller(action: String) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
 	row.custom_minimum_size = Vector2(0, 38)
-
 	row.add_child(_action_label(action))
 
 	if SteamInputManager.is_controller_connected():
-		# Steam Input is handling this controller — show a redirect note.
-		var note := Label.new()
-		note.text = "Managed by Steam"
-		note.add_theme_font_override("font", load(FONT_UI))
-		note.add_theme_font_size_override("font_size", 11)
-		note.add_theme_color_override("font_color", C_STEAM_NOTE)
-		note.vertical_alignment    = VERTICAL_ALIGNMENT_CENTER
-		note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(note)
+		_build_steam_row(row, action)
 	else:
-		# No Steam controller — allow raw joypad remapping.
-		var events: Array[InputEvent] = InputManager.get_controller_events(action)
-
-		var show_defaults: bool = events.is_empty()
-		if show_defaults:
-			events = InputManager.get_default_controller_events(action)
-
-		var shown: int = 0
-		for event in events:
-			if shown >= 2:
-				break
-			var btn := _binding_btn(_event_str(event), show_defaults)
-			var a: String     = action
-			var e: InputEvent = event if not show_defaults else null
-			btn.pressed.connect(func(): _start_listen_controller(a, e))
-			row.add_child(btn)
-			shown += 1
-
-		if shown < 2 and not show_defaults:
-			var add := _binding_btn("+")
-			add.custom_minimum_size = Vector2(36, 34)
-			var a: String = action
-			add.pressed.connect(func(): _start_listen_controller(a, null))
-			row.add_child(add)
+		_build_raw_joypad_row(row, action)
 
 	return row
+
+func _build_steam_row(row: HBoxContainer, godot_action: String) -> void:
+	# Find which Steam action currently triggers this Godot action.
+	var steam_action: String = SteamInputManager.get_steam_action_for_godot(godot_action)
+	var is_overridden: bool  = SteamInputManager._action_overrides.has(steam_action)
+
+	var label_text: String
+	if steam_action == "":
+		label_text = "—"
+	else:
+		# Show the steam action name, dimmed if it's just the default.
+		label_text = steam_action
+
+	var btn := _binding_btn(label_text, not is_overridden)
+	var a := godot_action
+	var s := steam_action
+	btn.pressed.connect(func(): _start_listen_steam(a, s))
+	row.add_child(btn)
+
+func _build_raw_joypad_row(row: HBoxContainer, action: String) -> void:
+	var events: Array[InputEvent] = InputManager.get_controller_events(action)
+	var show_defaults: bool = events.is_empty()
+	if show_defaults:
+		events = InputManager.get_default_controller_events(action)
+
+	var shown: int = 0
+	for event in events:
+		if shown >= 2:
+			break
+		var btn  := _binding_btn(_event_str(event), show_defaults)
+		var a    := action
+		var e    := event if not show_defaults else null
+		btn.pressed.connect(func(): _start_listen_controller(a, e))
+		row.add_child(btn)
+		shown += 1
+
+	if shown < 2 and not show_defaults:
+		var add := _binding_btn("+")
+		add.custom_minimum_size = Vector2(36, 34)
+		var a := action
+		add.pressed.connect(func(): _start_listen_controller(a, null))
+		row.add_child(add)
 
 func _action_label(action: String) -> Label:
 	var lbl := Label.new()
@@ -446,38 +466,121 @@ func _action_label(action: String) -> Label:
 	lbl.vertical_alignment    = VERTICAL_ALIGNMENT_CENTER
 	return lbl
 
-# ================================================================= listening
+# ================================================================= listen — keyboard
 
-## Start keyboard/mouse binding capture.
 func _start_listen_keyboard(action: String, old_event: InputEvent) -> void:
 	_listening_label.text = \
 		"Press a key or mouse button for:\n%s\n\n(Escape to cancel)" \
 		% ACTION_NAMES.get(action, action)
 	_listening_overlay.visible = true
-	InputManager.start_listening(action, old_event)
+	InputManager.start_listening_keyboard(action, old_event)
 
-## Start controller binding capture (raw joypad only, no Steam).
+# ================================================================= listen — raw joypad
+
 func _start_listen_controller(action: String, old_event: InputEvent) -> void:
 	_listening_label.text = \
 		"Press a button or move a stick for:\n%s\n\n(Escape to cancel)" \
 		% ACTION_NAMES.get(action, action)
 	_listening_overlay.visible = true
-	InputManager.start_listening(action, old_event)
+	InputManager.start_listening_controller(action, old_event)
 
-## Called via InputManager.bindings_changed after any binding is committed.
-## Hides the listening overlay and rebuilds the list to show the new key.
+# ================================================================= listen — Steam
+#
+# Steam Input captures physical controller inputs before Godot, so we cannot
+# watch raw joypad events. Instead we poll SteamInputManager for a newly-pressed
+# digital action and reassign the mapping once detected.
+
+func _start_listen_steam(godot_action: String, current_steam_action: String) -> void:
+	_steam_listening        = true
+	_steam_listen_action    = godot_action
+	_steam_listen_old_steam = current_steam_action
+	_listening_label.text   = \
+		"Press a controller button for:\n%s\n\n(Escape to cancel)" \
+		% ACTION_NAMES.get(godot_action, godot_action)
+	_listening_overlay.visible = true
+	set_process(true)
+
+func _cancel_steam_listen() -> void:
+	_steam_listening        = false
+	_steam_listen_action    = ""
+	_steam_listen_old_steam = ""
+	_listening_overlay.visible = false
+	set_process(false)
+
+func _process(_delta: float) -> void:
+	if not _steam_listening:
+		set_process(false)
+		return
+	# Poll for any digital Steam action that is now pressed.
+	if not SteamInputManager._enabled or SteamInputManager._controller == 0:
+		_cancel_steam_listen()
+		return
+	for steam_action in SteamInputManager.DIGITAL_ACTION_MAP.keys():
+		var data: Dictionary = Steam.getDigitalActionData(
+			SteamInputManager._controller,
+			SteamInputManager._digital_handles[steam_action])
+		if not data.get("bActive", false):
+			continue
+		if not data.get("bState", false):
+			continue
+		# A button is held. If it's already the bound one, ignore it.
+		if steam_action == _steam_listen_old_steam:
+			continue
+		# Apply the swap:
+		# 1. If the pressed steam_action already had a custom target, clear it.
+		# 2. Set the old steam action back to its default target.
+		# 3. Point the pressed steam action at the requested godot action.
+		var default_old: String = SteamInputManager.DIGITAL_ACTION_MAP.get(
+			_steam_listen_old_steam, "")
+		var default_new: String = SteamInputManager.DIGITAL_ACTION_MAP.get(steam_action, "")
+
+		# Clear any prior override for the pressed action (it will get a new one).
+		SteamInputManager._action_overrides.erase(steam_action)
+		# Send the old steam action back to its default godot action.
+		if _steam_listen_old_steam != "":
+			SteamInputManager.set_steam_action_override(
+				_steam_listen_old_steam, default_old)
+		# Map the pressed steam action to the requested godot action.
+		SteamInputManager.set_steam_action_override(steam_action, _steam_listen_action)
+
+		_cancel_steam_listen()
+		return
+
+# ================================================================= reset
+
+func _on_reset_pressed() -> void:
+	match _ctab:
+		ControlsTab.KEYBOARD:
+			InputManager.reset_all()
+		ControlsTab.CONTROLLER:
+			if SteamInputManager.is_controller_connected():
+				SteamInputManager.reset_steam_overrides()
+			else:
+				InputManager.reset_all()
+	_rebuild_lists()
+
+# ================================================================= signal handlers
+
 func _on_bindings_changed() -> void:
 	_listening_overlay.visible = false
 	_rebuild_lists()
 
-## Called via InputManager.listen_cancelled when Escape is pressed mid-listen.
 func _on_listen_cancelled() -> void:
 	_listening_overlay.visible = false
 
+# ================================================================= input (Esc / cancel action)
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not visible:
+		return
+	if InputMap.event_is_action(event, "cancel", true) \
+			or InputMap.event_is_action(event, "pause", true):
+		request_close()
+		get_viewport().set_input_as_handled()
+
 # ================================================================= widgets
 
-func _slider_row(label_text: String, _key: String,
-		mn: float, mx: float, val: float,
+func _slider_row(label_text: String, val: float,
 		on_change: Callable = Callable()) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 16)
@@ -491,8 +594,8 @@ func _slider_row(label_text: String, _key: String,
 	row.add_child(lbl)
 
 	var slider := HSlider.new()
-	slider.min_value             = mn
-	slider.max_value             = mx
+	slider.min_value             = 0.0
+	slider.max_value             = 1.0
 	slider.value                 = val
 	slider.step                  = 0.01
 	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -529,6 +632,24 @@ func _toggle_row(label_text: String, initial: bool, on_change: Callable) -> Cont
 	row.add_child(chk)
 	return row
 
+func _build_separator() -> HSeparator:
+	var sep := HSeparator.new()
+	sep.add_theme_color_override("color", C_BORDER)
+	sep.add_theme_constant_override("separation", 1)
+	return sep
+
+func _make_scroll() -> ScrollContainer:
+	var s := ScrollContainer.new()
+	s.size_flags_vertical    = Control.SIZE_EXPAND_FILL
+	s.custom_minimum_size    = Vector2(0, 300)
+	s.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	return s
+
+func _spacer(h: int) -> Control:
+	var s := Control.new()
+	s.custom_minimum_size = Vector2(0, h)
+	return s
+
 # ================================================================= styles
 
 func _panel_style() -> StyleBoxFlat:
@@ -561,8 +682,8 @@ func _tab_btn(label_text: String, small: bool = false) -> Button:
 
 func _tab_style(active: bool) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
-	s.bg_color     = C_BTN_HOVER if active else Color(0, 0, 0, 0)
-	s.border_color = C_ACCENT    if active else Color(0, 0, 0, 0)
+	s.bg_color            = C_BTN_HOVER if active else Color(0, 0, 0, 0)
+	s.border_color        = C_ACCENT    if active else Color(0, 0, 0, 0)
 	s.set_border_width_all(0)
 	s.border_width_bottom = 2 if active else 0
 	s.set_corner_radius_all(0)
@@ -571,14 +692,11 @@ func _tab_style(active: bool) -> StyleBoxFlat:
 
 func _set_tab_active(btn: Button, active: bool) -> void:
 	btn.button_pressed = active
-	# Re-apply both styles so the active underline updates immediately.
 	btn.add_theme_stylebox_override("normal",  _tab_style(active))
 	btn.add_theme_stylebox_override("pressed", _tab_style(active))
 	btn.add_theme_color_override("font_color",
 		C_LABEL if active else C_LABEL_MUTED)
 
-## [param is_default] dims the button text to signal it shows a default binding
-## rather than a player-set one.
 func _binding_btn(label_text: String, is_default: bool = false) -> Button:
 	var btn := Button.new()
 	btn.text                = label_text
@@ -631,17 +749,30 @@ func _event_str(event: InputEvent) -> String:
 			MOUSE_BUTTON_MIDDLE: return "Middle click"
 			_: return "Mouse %d" % event.button_index
 	if event is InputEventJoypadButton:
-		return "Button %d" % event.button_index
+		match event.button_index:
+			JOY_BUTTON_A:              return "A"
+			JOY_BUTTON_B:              return "B"
+			JOY_BUTTON_X:              return "X"
+			JOY_BUTTON_Y:              return "Y"
+			JOY_BUTTON_LEFT_SHOULDER:  return "LB"
+			JOY_BUTTON_RIGHT_SHOULDER: return "RB"
+			JOY_BUTTON_LEFT_STICK:     return "L3"
+			JOY_BUTTON_RIGHT_STICK:    return "R3"
+			JOY_BUTTON_START:          return "Menu"
+			JOY_BUTTON_BACK:           return "View"
+			JOY_BUTTON_DPAD_UP:        return "D-Up"
+			JOY_BUTTON_DPAD_DOWN:      return "D-Down"
+			JOY_BUTTON_DPAD_LEFT:      return "D-Left"
+			JOY_BUTTON_DPAD_RIGHT:     return "D-Right"
+			_: return "Btn %d" % event.button_index
 	if event is InputEventJoypadMotion:
-		return "Axis %d%s" % [event.axis, "+" if event.axis_value > 0 else "-"]
+		var dir: String = "+" if event.axis_value > 0 else "-"
+		match event.axis:
+			JOY_AXIS_LEFT_X:       return "LS " + ("Right" if dir == "+" else "Left")
+			JOY_AXIS_LEFT_Y:       return "LS " + ("Down"  if dir == "+" else "Up")
+			JOY_AXIS_RIGHT_X:      return "RS " + ("Right" if dir == "+" else "Left")
+			JOY_AXIS_RIGHT_Y:      return "RS " + ("Down"  if dir == "+" else "Up")
+			JOY_AXIS_TRIGGER_LEFT: return "LT"
+			JOY_AXIS_TRIGGER_RIGHT:return "RT"
+			_: return "Axis %d%s" % [event.axis, dir]
 	return event.as_text()
-
-# ================================================================= input
-
-func _unhandled_input(event: InputEvent) -> void:
-	if not visible:
-		return
-	if InputMap.event_is_action(event, "cancel", true) \
-			or InputMap.event_is_action(event, "pause", true):
-		request_close()
-		get_viewport().set_input_as_handled()

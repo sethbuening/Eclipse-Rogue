@@ -4,6 +4,7 @@ extends CanvasLayer
 # ── references ────────────────────────────────────────────────────────────────
 var player: CharacterBody2D
 
+@onready var graph_manager: Node = %GraphManager
 
 # ── ui state ──────────────────────────────────────────────────────────────────
 var selected_orb:          Orb     = null
@@ -180,7 +181,7 @@ func close() -> void:
 
 # ── layout ────────────────────────────────────────────────────────────────────
 func _layout_nodes() -> void:
-	var nodes: Array[GraphNodeData] = GraphManager.graph.nodes
+	var nodes: Array[GraphNodeData] = graph_manager.graph.nodes
 	var count: int                  = nodes.size()
 	if count == 0:
 		return
@@ -237,12 +238,12 @@ func _handle_mouse_input(event: InputEvent) -> void:
 
 	if event is InputEventMouseMotion:
 		var prev_hover: int = hover_node
-		hover_node = GraphManager.graph.get_node_at(graph_mouse, NODE_RADIUS)
+		hover_node = graph_manager.graph.get_node_at(graph_mouse, NODE_RADIUS)
 		if dragging_orb != null:
 			drag_pos = get_viewport().get_mouse_position()
 		if hover_node != prev_hover:
 			if hover_node != -1:
-				var hovered_orb: Orb = GraphManager.graph.nodes[hover_node].placed_orb
+				var hovered_orb: Orb = graph_manager.graph.nodes[hover_node].placed_orb
 				if hovered_orb != null:
 					_orb_tooltip.request_show(hovered_orb, get_viewport().get_mouse_position())
 				else:
@@ -257,9 +258,9 @@ func _handle_mouse_input(event: InputEvent) -> void:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_LEFT:
 			if mb.pressed:
-				var clicked := GraphManager.graph.get_node_at(graph_mouse, NODE_RADIUS)
+				var clicked: int = graph_manager.graph.get_node_at(graph_mouse, NODE_RADIUS)
 				if clicked != -1:
-					var node: GraphNodeData = GraphManager.graph.nodes[clicked]
+					var node: GraphNodeData = graph_manager.graph.nodes[clicked]
 					if dragging_orb == null and node.placed_orb != null:
 						dragging_orb     = node.placed_orb
 						drag_origin_node = clicked
@@ -268,10 +269,10 @@ func _handle_mouse_input(event: InputEvent) -> void:
 						selected_orb = null
 						_rebuild_orb_list()
 			else:
-				var clicked := GraphManager.graph.get_node_at(graph_mouse, NODE_RADIUS)
+				var clicked: int = graph_manager.graph.get_node_at(graph_mouse, NODE_RADIUS)
 				if dragging_orb != null:
 					if clicked != -1:
-						var target_node: GraphNodeData = GraphManager.graph.nodes[clicked]
+						var target_node: GraphNodeData = graph_manager.graph.nodes[clicked]
 						if target_node.placed_orb != null and clicked != drag_origin_node:
 							var displaced: Orb = target_node.placed_orb
 							_remove_orb(clicked)
@@ -289,7 +290,7 @@ func _handle_mouse_input(event: InputEvent) -> void:
 						_place_orb(clicked, selected_orb)
 						selected_orb = null
 				elif clicked != -1:
-					var node: GraphNodeData = GraphManager.graph.nodes[clicked]
+					var node: GraphNodeData = graph_manager.graph.nodes[clicked]
 					if node.placed_orb != null:
 						selected_orb = node.placed_orb
 						_remove_orb(clicked)
@@ -298,7 +299,7 @@ func _handle_mouse_input(event: InputEvent) -> void:
 				_rebuild_orb_list()
 
 		if mb.button_index == MOUSE_BUTTON_RIGHT and mb.pressed:
-			var clicked := GraphManager.graph.get_node_at(graph_mouse, NODE_RADIUS)
+			var clicked: int = graph_manager.graph.get_node_at(graph_mouse, NODE_RADIUS)
 			if clicked != -1:
 				_remove_orb(clicked)
 			if dragging_orb != null:
@@ -387,7 +388,7 @@ func _handle_controller_input(event: InputEvent) -> void:
 
 	elif event.is_action_pressed("ui_eject"):
 		if ctrl_panel == FocusPanel.GRAPH and ctrl_held_orb == null:
-			var nodes: Array[GraphNodeData] = GraphManager.graph.nodes
+			var nodes: Array[GraphNodeData] = graph_manager.graph.nodes
 			if ctrl_node < nodes.size() and nodes[ctrl_node].placed_orb != null:
 				_remove_orb(ctrl_node)
 		elif ctrl_panel == FocusPanel.LIST:
@@ -440,7 +441,7 @@ func _ctrl_confirm_slot() -> void:
 # ── controller navigation ─────────────────────────────────────────────────────
 
 func _ctrl_navigate(dpad: int) -> void:
-	var nodes: Array[GraphNodeData] = GraphManager.graph.nodes
+	var nodes: Array[GraphNodeData] = graph_manager.graph.nodes
 
 	if ctrl_panel == FocusPanel.GRAPH:
 		var dir: Vector2
@@ -498,7 +499,7 @@ func _ctrl_navigate(dpad: int) -> void:
 # ── controller confirm actions ────────────────────────────────────────────────
 
 func _ctrl_graph_confirm() -> void:
-	var nodes: Array[GraphNodeData] = GraphManager.graph.nodes
+	var nodes: Array[GraphNodeData] = graph_manager.graph.nodes
 	if ctrl_node >= nodes.size():
 		return
 	var node: GraphNodeData = nodes[ctrl_node]
@@ -542,7 +543,7 @@ func _ctrl_list_confirm() -> void:
 
 func _get_focused_orb() -> Orb:
 	if ctrl_panel == FocusPanel.GRAPH:
-		var nodes: Array[GraphNodeData] = GraphManager.graph.nodes
+		var nodes: Array[GraphNodeData] = graph_manager.graph.nodes
 		if ctrl_node < nodes.size():
 			return nodes[ctrl_node].placed_orb
 		return null
@@ -555,7 +556,7 @@ func _get_focused_orb() -> Orb:
 
 func _get_unplaced_orbs() -> Array[Orb]:
 	var placed: Array[Orb] = []
-	for node: GraphNodeData in GraphManager.graph.nodes:
+	for node: GraphNodeData in graph_manager.graph.nodes:
 		if node.placed_orb != null:
 			placed.append(node.placed_orb)
 	var result: Array[Orb] = []
@@ -566,7 +567,7 @@ func _get_unplaced_orbs() -> Array[Orb]:
 
 
 func _focus_nearest_graph_node() -> void:
-	var nodes: Array[GraphNodeData] = GraphManager.graph.nodes
+	var nodes: Array[GraphNodeData] = graph_manager.graph.nodes
 	if nodes.is_empty():
 		return
 	var canvas_origin: Vector2 = graph_canvas.global_position + graph_canvas.size * 0.5
@@ -598,8 +599,8 @@ func _process(delta: float) -> void:
 # ── drawing ───────────────────────────────────────────────────────────────────
 
 func _draw_graph() -> void:
-	var nodes:       Array[GraphNodeData]       = GraphManager.graph.nodes
-	var connections: Array[GraphConnectionData] = GraphManager.graph.connections
+	var nodes:       Array[GraphNodeData]       = graph_manager.graph.nodes
+	var connections: Array[GraphConnectionData] = graph_manager.graph.connections
 	var origin:      Vector2                    = graph_canvas.size / 2.0
 	var using_ctrl:  bool = Util.last_input_device == Util.InputDevice.CONTROLLER
 
@@ -643,7 +644,7 @@ func _draw_graph() -> void:
 			var ring_col: Color = COLOR_REASSIGN  if ctrl_reassigning else COLOR_NODE_FOCUS
 			graph_canvas.draw_arc(center, NODE_RADIUS + 8, 0, TAU, 48, ring_col, 4.0)
 
-		var sign_str: String = "-" if GraphManager.is_inverse(node.stat_name) else "+"
+		var sign_str: String = "-" if graph_manager.is_inverse(node.stat_name) else "+"
 		var pct_str:  String = "%s%.0f%%" % [sign_str, (node.stat_value - 1.0) * 100.0]
 		graph_canvas.draw_string(ThemeDB.fallback_font,
 			center + Vector2(-NODE_RADIUS + 8, -10),
@@ -864,7 +865,7 @@ func _draw_hint_bar() -> void:
 func _place_orb(node_index: int, orb: Orb) -> void:
 	if _kb_reassigning_orb == orb:
 		_kb_reassigning_orb = null
-	var node: GraphNodeData = GraphManager.graph.nodes[node_index]
+	var node: GraphNodeData = graph_manager.graph.nodes[node_index]
 	if node.placed_orb != null:
 		_remove_orb(node_index)
 	node.placed_orb = orb
@@ -874,13 +875,13 @@ func _place_orb(node_index: int, orb: Orb) -> void:
 	_rebuild_orb_list()
 
 func _remove_orb(node_index: int) -> void:
-	var node: GraphNodeData = GraphManager.graph.nodes[node_index]
+	var node: GraphNodeData = graph_manager.graph.nodes[node_index]
 	if node.placed_orb == null:
 		return
 	if _kb_reassigning_orb == node.placed_orb:
 		_kb_reassigning_orb = null
 	var orb: Orb = node.placed_orb
-	for conn: GraphConnectionData in GraphManager.graph.connections:
+	for conn: GraphConnectionData in graph_manager.graph.connections:
 		if conn.charge_stacks == 0:
 			continue
 		if conn.to_node == node_index:
@@ -888,7 +889,7 @@ func _remove_orb(node_index: int) -> void:
 				ability.stats.power -= conn.charge_stacks * 0.1
 			conn.charge_stacks = 0
 		elif conn.from_node == node_index:
-			var target_orb: Orb = GraphManager.graph.nodes[conn.to_node].placed_orb
+			var target_orb: Orb = graph_manager.graph.nodes[conn.to_node].placed_orb
 			if target_orb != null:
 				for ability: AbilityData in target_orb.abilities:
 					ability.stats.power -= conn.charge_stacks * 0.1
@@ -905,14 +906,14 @@ func _apply_node_to_orb(node: GraphNodeData, orb: Orb) -> void:
 	var modifier      := OrbModifier.new()
 	modifier.stat_name = node.stat_name
 	modifier.mod_type  = OrbModifier.ModType.MULTIPLICATIVE
-	modifier.value     = (1.0 / node.stat_value) if GraphManager.is_inverse(node.stat_name) else node.stat_value
+	modifier.value     = (1.0 / node.stat_value) if graph_manager.is_inverse(node.stat_name) else node.stat_value
 	modifier.apply(orb)
 
 func _unapply_node_from_orb(node: GraphNodeData, orb: Orb) -> void:
 	var modifier      := OrbModifier.new()
 	modifier.stat_name = node.stat_name
 	modifier.mod_type  = OrbModifier.ModType.MULTIPLICATIVE
-	modifier.value     = (1.0 / node.stat_value) if GraphManager.is_inverse(node.stat_name) else node.stat_value
+	modifier.value     = (1.0 / node.stat_value) if graph_manager.is_inverse(node.stat_name) else node.stat_value
 	modifier.unapply(orb)
 
 
