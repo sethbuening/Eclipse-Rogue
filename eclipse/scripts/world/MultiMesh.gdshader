@@ -1,3 +1,4 @@
+// MultiMesh.gdshader
 shader_type canvas_item;
 uniform sampler2D atlas          : source_color, filter_nearest;
 uniform sampler2D distance_field : filter_nearest;

@@ -38,8 +38,14 @@ const CHANNEL_POWER_BONUS:  float = 0.5
 
 const ABILITY_STAGGER_SEC:  float = 0.05
 
-const MINE_PRESS_DELAY:     float = 0.0   # seconds of pushing before mining begins
-const MINE_TICK_INTERVAL:   float = 0.22   # seconds between damage ticks while held
+const MINE_PRESS_DELAY:     float = 0.05  # seconds of pushing before mining begins
+const MINE_TICK_INTERVAL:   float = 0.44  # seconds between damage ticks while held
+
+const MINE_BOUNCE_AMOUNT:   float = 10.0
+const MINE_BOUNCE_FALLOFF:  float = 0.50
+const MINE_AOE_RADIUS:      int   = 1
+var MINE_BOUNCE_DURATION: float:
+	get: return MINE_TICK_INTERVAL * 0.9
 
 
 # ================================================================= textures ==
@@ -105,10 +111,10 @@ class OrbVisual:
 	var angle_offset:  float = 0.0
 	var reforming:     bool  = false
 
-var orb_visuals:      Array[OrbVisual] = []
-var _orb_visual_map: Dictionary = {}   # Orb → OrbVisual
-var orbit_time:       float            = 0.0
-var orbit_speed_mult: float            = 1.0
+var orb_visuals:     Array[OrbVisual] = []
+var _orb_visual_map: Dictionary       = {}   # Orb → OrbVisual
+var orbit_time:      float            = 0.0
+var orbit_speed_mult: float           = 1.0
 
 
 # =============================================================== channeling ==
@@ -127,12 +133,20 @@ class PendingActivation:
 
 var _pending: Array[PendingActivation] = []
 
+class PendingMineDamage:
+	var pos:    Vector2i
+	var damage: int
+	var timer:  float   # seconds remaining before applying
+
+var _pending_mine_damage: Array[PendingMineDamage] = []
+
 
 # ================================================================== mining ==
 
-var _mine_press_timer: float    = 0.0
-var _mine_tick_timer:  float    = 0.0
-var _mine_target:      Vector2i = Vector2i(-1, -1)
+var _mine_press_timer:    float    = 0.0
+var _mine_target:         Vector2i = Vector2i(-1, -1)
+var _mine_cooldown_timer: float    = 0.0   # counts down after each strike; blocks re-entry
+var _mining_enabled:      bool     = true  # false while cooldown is active
 
 
 # ================================================================== forging ==
@@ -189,7 +203,6 @@ func _physics_process(delta: float) -> void:
 	if input_vector != Vector2.ZERO:
 		for i in get_slide_collision_count():
 			var col: KinematicCollision2D = get_slide_collision(i)
-			# only mine if the player is actively pushing into this surface
 			var pushing: bool = input_vector.dot(-col.get_normal()) > 0.5
 			if not pushing:
 				continue
@@ -202,7 +215,6 @@ func _physics_process(delta: float) -> void:
 	if new_target != _mine_target:
 		_mine_target      = new_target
 		_mine_press_timer = MINE_PRESS_DELAY
-		_mine_tick_timer  = 0.0
 
 
 # ================================================================ abilities ==
@@ -502,17 +514,18 @@ func _recalculate_orb_offsets() -> void:
 # ============================================================= orb management ==
 
 func _on_orb_added(orb: Orb) -> void:
-	var ov          := OrbVisual.new()
-	ov.sprite        = Sprite2D.new()
-	ov.sprite.texture              = orb.sprite_texture
-	ov.sprite.centered             = true
-	ov.sprite.visible              = false
-	ov.sprite.z_as_relative        = false
-	ov.sprite.z_index              = 4096
+	var ov               := OrbVisual.new()
+	ov.sprite             = Sprite2D.new()
+	ov.sprite.texture     = orb.sprite_texture
+	ov.sprite.centered    = true
+	ov.sprite.visible     = false
+	ov.sprite.z_as_relative = false
+	ov.sprite.z_index     = 4096
 	add_child(ov.sprite)
 	orb_visuals.append(ov)
 	_orb_visual_map[orb] = ov
 	_auto_assign_slot(orb)
+
 
 func _on_orb_removed(orb: Orb) -> void:
 	if not _orb_visual_map.has(orb):
@@ -598,14 +611,39 @@ func store_light_in_orb(orb_index: int, amount: float) -> void:
 func _tick_mining(delta: float) -> void:
 	var tilemap: Node = %TilemapManager
 
+	# ── mining cooldown gate ──────────────────────────────────────────
+	if not _mining_enabled:
+		_mine_cooldown_timer -= delta
+		if _mine_cooldown_timer <= 0.0:
+			_mine_cooldown_timer = 0.0
+			_mining_enabled      = true
+		else:
+			var still_pending: Array[PendingMineDamage] = []
+			for pd: PendingMineDamage in _pending_mine_damage:
+				pd.timer -= delta
+				if pd.timer <= 0.0:
+					tilemap.damage_tile(pd.pos, pd.damage, false)
+				else:
+					still_pending.append(pd)
+			_pending_mine_damage = still_pending
+			return
+
+	# ── drain pending damage ──────────────────────────────────────────
+	var still_pending: Array[PendingMineDamage] = []
+	for pd: PendingMineDamage in _pending_mine_damage:
+		pd.timer -= delta
+		if pd.timer <= 0.0:
+			tilemap.damage_tile(pd.pos, pd.damage, false)
+		else:
+			still_pending.append(pd)
+	_pending_mine_damage = still_pending
+
 	if _mine_target == Vector2i(-1, -1):
 		_mine_press_timer = 0.0
-		_mine_tick_timer  = 0.0
 		return
 
 	if not tilemap.tile_exists(_mine_target):
 		_mine_press_timer = 0.0
-		_mine_tick_timer  = 0.0
 		_mine_target      = Vector2i(-1, -1)
 		return
 
@@ -613,35 +651,49 @@ func _tick_mining(delta: float) -> void:
 	if _mine_press_timer < MINE_PRESS_DELAY:
 		return
 
-	if _mine_tick_timer <= 0.0:
-		# ── squish animation ──────────────────────────────────────────
-		# squish_tile handles the primary tile AND sends a smaller delayed
-		# bounce to the 4 NESW neighbours, so neighbour damage_tile calls
-		# below suppress their own bounce.
-		tilemap.squish_tile(_mine_target)
+	# ── strike ───────────────────────────────────────────────────────
+	var max_hp: int    = tilemap.get_tile_max_health(tilemap.tile_types.get(_mine_target, Util.tile.STONE))
+	var cur_hp: int    = tilemap.tile_health.get(_mine_target, max_hp)
+	var dmg_ratio:     float = 1.0 - clampf(float(cur_hp - 6) / float(max_hp), 0.0, 1.0)
+	var bounce_px:     float = lerpf(MINE_BOUNCE_AMOUNT * 0.5, MINE_BOUNCE_AMOUNT, dmg_ratio)
 
-		# ── particles ────────────────────────────────────────────────
-		var world_pos: Vector2   = tilemap.map_to_world(_mine_target)
-		var base_type: Util.tile = tilemap.tile_types.get(_mine_target, Util.tile.STONE)
-		var dig_dir:   Vector2   = Vector2(direction)
-		ParticleManager.spawn_mine_dust(world_pos, base_type)
-		ParticleManager.spawn_mine_chunk_directional(
-			world_pos,
-			ParticleManager._tile_dust_color(base_type),
-			dig_dir * 40.0
-		)
+	var world_pos: Vector2   = tilemap.map_to_world(_mine_target)
+	var base_type: Util.tile = tilemap.tile_types.get(_mine_target, Util.tile.STONE)
+	var dig_dir:   Vector2   = Vector2(direction)
+	ParticleManager.spawn_mine_dust(world_pos, base_type)
+	ParticleManager.spawn_mine_chunk_directional(
+		world_pos,
+		ParticleManager._tile_dust_color(base_type),
+		dig_dir * 40.0
+	)
 
-		# ── damage ───────────────────────────────────────────────────
-		var tile_died: bool = tilemap.damage_tile(_mine_target, 3, false)
-		for dx: int in range(-1, 2):
-			for dy: int in range(-1, 2):
-				if dx == 0 and dy == 0:
-					continue
-				tilemap.damage_tile(_mine_target + Vector2i(dx, dy), 1, false)
+	var bounce_dur: float = MINE_BOUNCE_DURATION
+	tilemap.bounce_tile(_mine_target, bounce_px, 0.0, bounce_dur)
+	_schedule_mine_damage(_mine_target, 4, bounce_dur)
 
-		_mine_tick_timer = MINE_TICK_INTERVAL
-	else:
-		_mine_tick_timer -= delta
+	for dx: int in range(-MINE_AOE_RADIUS, MINE_AOE_RADIUS + 1):
+		for dy: int in range(-MINE_AOE_RADIUS, MINE_AOE_RADIUS + 1):
+			if dx == 0 and dy == 0:
+				continue
+			var nb:    Vector2i = _mine_target + Vector2i(dx, dy)
+			var dist:  int      = absi(dx) + absi(dy)
+			var delay: float    = float(dist) * 0.06
+			tilemap.bounce_tile(nb, bounce_px * MINE_BOUNCE_FALLOFF, delay, bounce_dur)
+			_schedule_mine_damage(nb, 2, delay + bounce_dur)
+
+	if tilemap.camera and tilemap.camera.has_method("shake"):
+		tilemap.camera.shake(0.1)
+
+	_mine_cooldown_timer = MINE_TICK_INTERVAL
+	_mining_enabled      = false
+
+
+func _schedule_mine_damage(pos: Vector2i, damage: int, delay: float) -> void:
+	var pd    := PendingMineDamage.new()
+	pd.pos     = pos
+	pd.damage  = damage
+	pd.timer   = delay
+	_pending_mine_damage.append(pd)
 
 
 # ================================================================== forging ==
@@ -723,6 +775,7 @@ func _trigger_connections(orb_index: int, delta: float) -> void:
 	if node_index == -1:
 		return
 	%GraphManager.on_orb_fired(node_index, {}, $Inventory.orbs[orb_index])
+
 
 func Log(msg: Variant) -> void:
 	print("[player.gd] " + str(msg))

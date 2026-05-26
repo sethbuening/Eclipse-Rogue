@@ -93,11 +93,12 @@ var path_noise:           FastNoiseLite   = FastNoiseLite.new()
 var rock_variation_noise: FastNoiseLite   = FastNoiseLite.new()
 var rock_variation_tiles: Array[Vector2i] = []
 
-# ══════════════════════════════════════════════════ bounce anim ══
+# ══════════════════════════════════════════════ bounce anim ══
 class BounceState:
 	var start_time: float
 	var amplitude:  float
 	var delay:      float
+	var duration:   float = 0.25
 
 var _tile_bounces: Dictionary[Vector2i, BounceState] = {}
 
@@ -107,18 +108,36 @@ var static_body: StaticBody2D
 class OverlayLayer:
 	var multimesh:   MultiMesh           = null
 	var instance:    MultiMeshInstance2D = null
-	var index:       Dictionary          = {}
-	var occluders:   Dictionary          = {}
+	var index:       Dictionary          = {}   # Vector2i → int
 	var atlas:       Texture2D           = null
-	var z_offset:    int                 = 0
 	var has_data:    Callable
 	var get_uv_rect: Callable
 	var get_uv:      Callable
 
+# Background multimesh layers (no z-row splitting needed — drawn at z=-1 globally)
 var _wall_layer:   OverlayLayer
 var _ore_layer:    OverlayLayer
 var _relic_layer:  OverlayLayer
 var _ground_layer: OverlayLayer
+
+# ── Occluder row multimeshes ──────────────────────────────────────────
+# Tiles whose top edge is exposed to air above need to be drawn at a
+# per-row z-index so they occlude entities standing in the row below.
+# We split them into one MultiMeshInstance2D per tile-row, per atlas layer.
+class OccluderRow:
+	var multimesh: MultiMesh           = null
+	var instance:  MultiMeshInstance2D = null
+	var index:     Dictionary          = {}   # Vector2i → int (slot in this row's MM)
+
+# _occ_wall[row_y]  → OccluderRow
+# _occ_ore[row_y]   → OccluderRow
+# _occ_relic[row_y] → OccluderRow
+var _occ_wall:  Dictionary = {}
+var _occ_ore:   Dictionary = {}
+var _occ_relic: Dictionary = {}
+
+# Quick lookup: is this tile an occluder?
+var _is_occluder: Dictionary = {}   # Vector2i → true
 
 # ══════════════════════════════════════════════════════════ distance field ══
 var _df_texture:      ImageTexture    = ImageTexture.new()
@@ -148,7 +167,6 @@ func _ready() -> void:
 	var t_start: int = Time.get_ticks_usec()
 	var t:       int = t_start
 
-	# ── Pass 1: fill + rock variation + chamber noise + path noise ──────
 	var grid: Array[Array] = []
 	for x in range(WIDTH):
 		grid.append([])
@@ -174,33 +192,18 @@ func _ready() -> void:
 				tile = Util.tile.AIR
 			grid[x].append(tile)
 
-	var t_pass1: int = Time.get_ticks_usec()
-	print("Pass 1 (fill+rock+chamber+path noise): %.2f ms" % [(t_pass1 - t) / 1000.0]); t = t_pass1
-
+	print("Pass 1: %.2f ms" % [(Time.get_ticks_usec() - t) / 1000.0]); t = Time.get_ticks_usec()
 	generate_ores(grid)
-	var t_ores: int = Time.get_ticks_usec()
-	print("generate_ores:                         %.2f ms" % [(t_ores - t) / 1000.0]); t = t_ores
-
+	print("generate_ores: %.2f ms" % [(Time.get_ticks_usec() - t) / 1000.0]); t = Time.get_ticks_usec()
 	grid = generate_faults(grid)
-	var t_faults: int = Time.get_ticks_usec()
-	print("generate_faults:                       %.2f ms" % [(t_faults - t) / 1000.0]); t = t_faults
-
+	print("generate_faults: %.2f ms" % [(Time.get_ticks_usec() - t) / 1000.0]); t = Time.get_ticks_usec()
 	for i in range(4):
-		var t_step_start: int = Time.get_ticks_usec()
 		grid = cellular_step(grid)
-		print("  cellular_step[%d]:                  %.2f ms" % [i, (Time.get_ticks_usec() - t_step_start) / 1000.0])
-	var t_cellular: int = Time.get_ticks_usec()
-	print("cellular_step x4 (total):              %.2f ms" % [(t_cellular - t) / 1000.0]); t = t_cellular
-
+	print("cellular x4: %.2f ms" % [(Time.get_ticks_usec() - t) / 1000.0]); t = Time.get_ticks_usec()
 	place_starting_area(grid)
-	var t_start_area: int = Time.get_ticks_usec()
-	print("place_starting_area:                   %.2f ms" % [(t_start_area - t) / 1000.0]); t = t_start_area
-
 	_place_relic_tiles_on_grid(grid)
-	var t_relics: int = Time.get_ticks_usec()
-	print("_place_relic_tiles_on_grid:            %.2f ms" % [(t_relics - t) / 1000.0]); t = t_relics
+	print("starting+relics: %.2f ms" % [(Time.get_ticks_usec() - t) / 1000.0]); t = Time.get_ticks_usec()
 
-	# ── Pass 2: populate tile dictionaries ───────────────────────────────
 	for x in range(WIDTH):
 		for y in range(HEIGHT):
 			var dist: float = sqrt((x - cx) ** 2 + (y - cy) ** 2)
@@ -221,36 +224,20 @@ func _ready() -> void:
 			tile_variant[pos] = randi() % _base_variant_count(tile_val)
 			ground_types[pos] = ground_atlas_row_dirt
 
-	var t_pass2: int = Time.get_ticks_usec()
-	print("Pass 2 (populate dictionaries):        %.2f ms" % [(t_pass2 - t) / 1000.0]); t = t_pass2
-
 	for pos in relic_tiles.keys():
 		if not tile_types.has(pos):
 			relic_tiles.erase(pos)
 			_relic_cover_counts.erase(pos)
 
-	var t_relic_valid: int = Time.get_ticks_usec()
-	print("relic validation:                      %.2f ms" % [(t_relic_valid - t) / 1000.0]); t = t_relic_valid
-
+	print("Pass 2: %.2f ms" % [(Time.get_ticks_usec() - t) / 1000.0]); t = Time.get_ticks_usec()
 	_setup_rendering()
-	var t_render: int = Time.get_ticks_usec()
-	print("_setup_rendering:                      %.2f ms" % [(t_render - t) / 1000.0]); t = t_render
-
+	print("_setup_rendering: %.2f ms" % [(Time.get_ticks_usec() - t) / 1000.0]); t = Time.get_ticks_usec()
 	_initial_df_bake()
-	var t_df: int = Time.get_ticks_usec()
-	print("_initial_df_bake:                      %.2f ms" % [(t_df - t) / 1000.0]); t = t_df
-
+	print("_initial_df_bake: %.2f ms" % [(Time.get_ticks_usec() - t) / 1000.0]); t = Time.get_ticks_usec()
 	_build_collision()
-	var t_col: int = Time.get_ticks_usec()
-	print("_build_collision:                      %.2f ms" % [(t_col - t) / 1000.0]); t = t_col
-
-	_setup_occluders()
-	var t_occ: int = Time.get_ticks_usec()
-	print("_setup_occluders:                      %.2f ms" % [(t_occ - t) / 1000.0]); t = t_occ
-
+	print("_build_collision: %.2f ms" % [(Time.get_ticks_usec() - t) / 1000.0]); t = Time.get_ticks_usec()
 	print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-	print("TOTAL generation time:                 %.2f ms" % [(t_occ - t_start) / 1000.0])
-
+	print("TOTAL: %.2f ms" % [(Time.get_ticks_usec() - t_start) / 1000.0])
 	_spawn_relic_containers.call_deferred()
 
 func _process(_delta: float) -> void:
@@ -283,19 +270,11 @@ func map_to_world(pos: Vector2i) -> Vector2:
 	var local: Vector2 = Vector2((pos - Vector2i(WIDTH / 2, HEIGHT / 2)) * TILE_SIZE) + Vector2(TILE_SIZE) / 2.0
 	return local * get_parent().scale
 
-# Returns the multimesh draw origin (unscaled, atlas-offset baked in — quad center).
 func _world_origin(pos: Vector2i) -> Vector2:
 	@warning_ignore("integer_division")
 	var local: Vector2 = Vector2((pos - Vector2i(WIDTH / 2, HEIGHT / 2)) * TILE_SIZE) + Vector2(TILE_SIZE) / 2.0
 	local.y -= SPRITE_OFFSET_Y
 	return local
-
-# Returns the top-left corner of the atlas sprite in Sprite2D position space (scaled).
-func _sprite_top_left(pos: Vector2i) -> Vector2:
-	var origin: Vector2 = _world_origin(pos) * get_parent().scale
-	origin.x -= TILE_SIZE.x      / 2.0 * get_parent().scale.x
-	origin.y -= ATLAS_TILE_SIZE.y / 2.0 * get_parent().scale.y
-	return origin
 
 func in_bounds(loc: Vector2i) -> bool:
 	return loc.x >= 0 and loc.x < WIDTH and loc.y >= 0 and loc.y < HEIGHT
@@ -306,14 +285,21 @@ func tile_exists(pos: Vector2i) -> bool:
 func is_air(pos: Vector2i) -> bool:
 	return not tile_types.has(pos)
 
+func _is_occluder_tile(pos: Vector2i) -> bool:
+	return _is_occluder.has(pos)
+
 # ══════════════════════════════════════════════════════════ tile queries ══
-func get_tile_max_health(t: Util.tile) -> int:
-	return 12  # all tile types share the same health for now
+func get_tile_max_health(_t: Util.tile) -> int:
+	return 12
 
 func get_tile_uv(t: Util.tile) -> Rect2:
 	return _uv_for(0, _wall_row_for(t), tile_atlas)
 
 func get_tile_color(pos: Vector2i) -> Color:
+	if _is_occluder_tile(pos):
+		var row: OccluderRow = _occ_wall.get(pos.y, null)
+		if row != null and row.index.has(pos):
+			return row.multimesh.get_instance_color(row.index[pos])
 	if not _wall_layer.index.has(pos):
 		return Color.WHITE
 	return _wall_layer.multimesh.get_instance_color(_wall_layer.index[pos])
@@ -420,6 +406,7 @@ func _make_multimesh_instance(mm: MultiMesh, atlas: Texture2D, z: int) -> MultiM
 	inst.texture       = atlas
 	inst.z_index       = z
 	inst.z_as_relative = false
+	inst.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	var mat           := ShaderMaterial.new()
 	mat.shader         = preload("res://scripts/world/MultiMesh.gdshader")
 	mat.set_shader_parameter("atlas",       atlas)
@@ -432,12 +419,12 @@ func _setup_rendering() -> void:
 	static_body.collision_layer = 1
 	static_body.collision_mask  = 0
 	static_body.scale           = get_parent().scale
+	static_body.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	add_child(static_body)
 
 	# ── ground layer ──────────────────────────────────────────────────
 	_ground_layer             = OverlayLayer.new()
 	_ground_layer.atlas       = ground_atlas
-	_ground_layer.z_offset    = -1
 	_ground_layer.has_data    = func(pos: Vector2i) -> bool: return ground_types.has(pos)
 	_ground_layer.get_uv      = func(pos: Vector2i) -> Rect2: return _ground_atlas_uv(pos)
 	_ground_layer.get_uv_rect = func(pos: Vector2i) -> Rect2:
@@ -456,10 +443,14 @@ func _setup_rendering() -> void:
 			_ground_layer.index[sorted_ground[i]] = i
 			_write_ground_instance(i, sorted_ground[i])
 
-	# ── walls ─────────────────────────────────────────────────────────
+	# ── Decide which tiles are occluders ──────────────────────────────
+	for pos: Vector2i in tile_types.keys():
+		if is_air(pos + Vector2i(0, -1)):
+			_is_occluder[pos] = true
+
+	# ── walls (non-occluder tiles only) ───────────────────────────────
 	_wall_layer             = OverlayLayer.new()
 	_wall_layer.atlas       = tile_atlas
-	_wall_layer.z_offset    = 0
 	_wall_layer.has_data    = func(pos: Vector2i) -> bool: return tile_types.has(pos)
 	_wall_layer.get_uv      = func(pos: Vector2i) -> Rect2: return _wall_atlas_uv(pos)
 	_wall_layer.get_uv_rect = func(pos: Vector2i) -> Rect2:
@@ -467,19 +458,19 @@ func _setup_rendering() -> void:
 		var row: int = _wall_row_for(tile_types[pos]) + tile_variant[pos]
 		return Rect2(Vector2(_get_bitmask(pos) * ATLAS_TILE_SIZE.x, row * ATLAS_TILE_SIZE.y), Vector2(ATLAS_TILE_SIZE))
 
-	_wall_layer.multimesh = _make_multimesh(tile_types.size())
-	_wall_layer.instance  = _make_multimesh_instance(_wall_layer.multimesh, tile_atlas, -1)
-	add_child(_wall_layer.instance)
-	var sorted_walls: Array = tile_types.keys()
-	sorted_walls.sort_custom(func(a: Vector2i, b: Vector2i): return a.y < b.y)
-	for i in sorted_walls.size():
-		_wall_layer.index[sorted_walls[i]] = i
-		_write_layer_instance(_wall_layer, i, sorted_walls[i])
+	var non_occ_walls: Array = tile_types.keys().filter(func(p): return not _is_occluder.has(p))
+	non_occ_walls.sort_custom(func(a: Vector2i, b: Vector2i): return a.y < b.y)
+	if non_occ_walls.size() > 0:
+		_wall_layer.multimesh = _make_multimesh(non_occ_walls.size())
+		_wall_layer.instance  = _make_multimesh_instance(_wall_layer.multimesh, tile_atlas, -1)
+		add_child(_wall_layer.instance)
+		for i in non_occ_walls.size():
+			_wall_layer.index[non_occ_walls[i]] = i
+			_write_layer_instance(_wall_layer, i, non_occ_walls[i])
 
-	# ── ore overlay ───────────────────────────────────────────────────
+	# ── ore overlay (non-occluder) ────────────────────────────────────
 	_ore_layer             = OverlayLayer.new()
 	_ore_layer.atlas       = ore_atlas
-	_ore_layer.z_offset    = 1
 	_ore_layer.has_data    = func(pos: Vector2i) -> bool: return ore_types.has(pos)
 	_ore_layer.get_uv      = func(pos: Vector2i) -> Rect2: return _ore_atlas_uv(pos)
 	_ore_layer.get_uv_rect = func(pos: Vector2i) -> Rect2:
@@ -487,41 +478,134 @@ func _setup_rendering() -> void:
 		var row: int = _ore_row_for(ore_types[pos]) + ore_variant[pos]
 		return Rect2(Vector2(_get_bitmask(pos) * ATLAS_TILE_SIZE.x, row * ATLAS_TILE_SIZE.y), Vector2(ATLAS_TILE_SIZE))
 
-	_ore_layer.multimesh = _make_multimesh(ore_types.size())
-	_ore_layer.instance  = _make_multimesh_instance(_ore_layer.multimesh, ore_atlas, -1)
-	add_child(_ore_layer.instance)
-	var sorted_ores: Array = ore_types.keys()
-	sorted_ores.sort_custom(func(a: Vector2i, b: Vector2i): return a.y < b.y)
-	for i in sorted_ores.size():
-		_ore_layer.index[sorted_ores[i]] = i
-		_write_layer_instance(_ore_layer, i, sorted_ores[i])
+	var non_occ_ores: Array = ore_types.keys().filter(func(p): return not _is_occluder.has(p))
+	non_occ_ores.sort_custom(func(a: Vector2i, b: Vector2i): return a.y < b.y)
+	if non_occ_ores.size() > 0:
+		_ore_layer.multimesh = _make_multimesh(non_occ_ores.size())
+		_ore_layer.instance  = _make_multimesh_instance(_ore_layer.multimesh, ore_atlas, -1)
+		add_child(_ore_layer.instance)
+		for i in non_occ_ores.size():
+			_ore_layer.index[non_occ_ores[i]] = i
+			_write_layer_instance(_ore_layer, i, non_occ_ores[i])
 
-	# ── relic overlay ─────────────────────────────────────────────────
+	# ── relic overlay (non-occluder) ──────────────────────────────────
 	_relic_layer             = OverlayLayer.new()
 	_relic_layer.atlas       = relic_atlas
-	_relic_layer.z_offset    = 2
 	_relic_layer.has_data    = func(pos: Vector2i) -> bool: return relic_tiles.has(pos)
 	_relic_layer.get_uv      = func(pos: Vector2i) -> Rect2: return _relic_atlas_uv(pos)
 	_relic_layer.get_uv_rect = func(pos: Vector2i) -> Rect2:
 		if not relic_tiles.has(pos): return Rect2()
 		return Rect2(Vector2(_get_bitmask(pos) * ATLAS_TILE_SIZE.x, relic_atlas_row * ATLAS_TILE_SIZE.y), Vector2(ATLAS_TILE_SIZE))
 
-	if relic_atlas != null and not relic_tiles.is_empty():
-		_relic_layer.multimesh = _make_multimesh(relic_tiles.size())
+	var non_occ_relics: Array = relic_tiles.keys().filter(func(p): return not _is_occluder.has(p))
+	non_occ_relics.sort_custom(func(a: Vector2i, b: Vector2i): return a.y < b.y)
+	if relic_atlas != null and non_occ_relics.size() > 0:
+		_relic_layer.multimesh = _make_multimesh(non_occ_relics.size())
 		_relic_layer.instance  = _make_multimesh_instance(_relic_layer.multimesh, relic_atlas, -1)
 		add_child(_relic_layer.instance)
-		var sorted_relics: Array = relic_tiles.keys()
-		sorted_relics.sort_custom(func(a: Vector2i, b: Vector2i): return a.y < b.y)
-		for i in sorted_relics.size():
-			_relic_layer.index[sorted_relics[i]] = i
-			_write_layer_instance(_relic_layer, i, sorted_relics[i])
+		for i in non_occ_relics.size():
+			_relic_layer.index[non_occ_relics[i]] = i
+			_write_layer_instance(_relic_layer, i, non_occ_relics[i])
+
+	# ── occluder row multimeshes ──────────────────────────────────────
+	_build_occluder_multimeshes()
+
+func _build_occluder_multimeshes() -> void:
+	var wall_by_row:  Dictionary = {}
+	var ore_by_row:   Dictionary = {}
+	var relic_by_row: Dictionary = {}
+
+	for pos: Vector2i in _is_occluder.keys():
+		if not tile_types.has(pos):
+			continue
+		var row: int = pos.y
+		if not wall_by_row.has(row):
+			wall_by_row[row] = []
+		wall_by_row[row].append(pos)
+		if ore_types.has(pos):
+			if not ore_by_row.has(row):
+				ore_by_row[row] = []
+			ore_by_row[row].append(pos)
+		if relic_tiles.has(pos) and relic_atlas != null:
+			if not relic_by_row.has(row):
+				relic_by_row[row] = []
+			relic_by_row[row].append(pos)
+
+	for row: int in wall_by_row.keys():
+		var positions: Array = wall_by_row[row]
+		var orow       := OccluderRow.new()
+		orow.multimesh  = _make_multimesh(positions.size())
+		orow.instance   = _make_multimesh_instance(orow.multimesh, tile_atlas, row * 10)
+		add_child(orow.instance)
+		for i in positions.size():
+			orow.index[positions[i]] = i
+			_write_occluder_instance(orow, positions[i], tile_atlas)
+		_occ_wall[row] = orow
+
+	for row: int in ore_by_row.keys():
+		var positions: Array = ore_by_row[row]
+		var orow       := OccluderRow.new()
+		orow.multimesh  = _make_multimesh(positions.size())
+		orow.instance   = _make_multimesh_instance(orow.multimesh, ore_atlas, row * 10 + 1)
+		add_child(orow.instance)
+		for i in positions.size():
+			orow.index[positions[i]] = i
+			_write_occluder_instance(orow, positions[i], ore_atlas)
+		_occ_ore[row] = orow
+
+	for row: int in relic_by_row.keys():
+		var positions: Array = relic_by_row[row]
+		var orow       := OccluderRow.new()
+		orow.multimesh  = _make_multimesh(positions.size())
+		orow.instance   = _make_multimesh_instance(orow.multimesh, relic_atlas, row * 10 + 2)
+		add_child(orow.instance)
+		for i in positions.size():
+			orow.index[positions[i]] = i
+			_write_occluder_instance(orow, positions[i], relic_atlas)
+		_occ_relic[row] = orow
+
+	_set_df_shader_params()
+
+# ── Write a single slot in an occluder row multimesh ─────────────────
+func _clip_for(pos: Vector2i) -> float:
+	var below: Vector2i = pos + Vector2i(0, 1)
+	if is_air(below):
+		return 0.0
+	var below_offset: float = _get_bounce_offset(below)
+	return OCCLUDER_CLIP - below_offset
+
+func _write_occluder_instance(orow: OccluderRow, pos: Vector2i, atlas: Texture2D) -> void:
+	var idx: int = orow.index[pos]
+	var t := Transform2D.IDENTITY
+	t.origin = _world_origin(pos)
+	orow.multimesh.set_instance_transform_2d(idx, t)
+	var clip: float = _clip_for(pos)
+	orow.multimesh.set_instance_color(idx, Color(1.0, 1.0, 1.0, 1.0 + clip))
+	var uv: Rect2
+	if atlas == tile_atlas:
+		uv = _wall_atlas_uv(pos)
+	elif atlas == ore_atlas:
+		uv = _ore_atlas_uv(pos)
+	else:
+		uv = _relic_atlas_uv(pos)
+	orow.multimesh.set_instance_custom_data(idx, Color(uv.position.x, uv.position.y, uv.size.x, uv.size.y))
+
+func _hide_occluder_instance(pos: Vector2i) -> void:
+	var row: int = pos.y
+	for occ_dict in [_occ_wall, _occ_ore, _occ_relic]:
+		var orow: OccluderRow = occ_dict.get(row, null)
+		if orow == null or not orow.index.has(pos):
+			continue
+		var t := Transform2D.IDENTITY
+		t.origin = Vector2(-999999, -999999)
+		orow.multimesh.set_instance_transform_2d(orow.index[pos], t)
 
 # ── multimesh write / hide helpers ────────────────────────────────────
 func _write_layer_instance(layer: OverlayLayer, idx: int, pos: Vector2i) -> void:
 	var t := Transform2D.IDENTITY
 	t.origin = _world_origin(pos)
 	layer.multimesh.set_instance_transform_2d(idx, t)
-	layer.multimesh.set_instance_color(idx, Color.WHITE)
+	layer.multimesh.set_instance_color(idx, Color(1.0, 1.0, 1.0, 1.0))
 	var uv: Rect2 = layer.get_uv.call(pos)
 	layer.multimesh.set_instance_custom_data(idx, Color(uv.position.x, uv.position.y, uv.size.x, uv.size.y))
 
@@ -550,144 +634,48 @@ func _redraw_neighbors(pos: Vector2i) -> void:
 			_write_ground_instance(_ground_layer.index[nb], nb)
 		if not tile_types.has(nb):
 			continue
-		for layer: OverlayLayer in [_wall_layer, _ore_layer, _relic_layer]:
-			if layer.index.has(nb) and not layer.occluders.has(nb):
-				_write_layer_instance(layer, layer.index[nb], nb)
-			if layer.occluders.has(nb):
-				var full_px: Rect2 = layer.get_uv_rect.call(nb)
-				layer.occluders[nb].region_rect = Rect2(full_px.position, Vector2(full_px.size.x, _get_occluder_clip_height(nb)))
+		if _is_occluder_tile(nb):
+			var row: int = nb.y
+			var orow_w: OccluderRow = _occ_wall.get(row, null)
+			if orow_w != null and orow_w.index.has(nb):
+				_write_occluder_instance(orow_w, nb, tile_atlas)
+			var orow_o: OccluderRow = _occ_ore.get(row, null)
+			if orow_o != null and orow_o.index.has(nb):
+				_write_occluder_instance(orow_o, nb, ore_atlas)
+			var orow_r: OccluderRow = _occ_relic.get(row, null)
+			if orow_r != null and orow_r.index.has(nb):
+				_write_occluder_instance(orow_r, nb, relic_atlas)
+		else:
+			if _wall_layer.index.has(nb) and _wall_layer.has_data.call(nb):
+				_write_layer_instance(_wall_layer, _wall_layer.index[nb], nb)
+			if _ore_layer.index.has(nb) and _ore_layer.has_data.call(nb):
+				_write_layer_instance(_ore_layer, _ore_layer.index[nb], nb)
+			if _relic_layer.index.has(nb) and _relic_layer.has_data.call(nb):
+				_write_layer_instance(_relic_layer, _relic_layer.index[nb], nb)
 
 # ── color helpers ─────────────────────────────────────────────────────
 func set_tile_color(pos: Vector2i, color: Color) -> void:
-	if _wall_layer.index.has(pos):
-		_wall_layer.multimesh.set_instance_color(_wall_layer.index[pos], color)
-	if _ore_layer.index.has(pos):
-		_ore_layer.multimesh.set_instance_color(_ore_layer.index[pos], color)
-	var side_color := Color(
-		(color.r - 1.0) * 0.38 + 1.0,
-		(color.g - 1.0) * 0.38 + 1.0,
-		(color.b - 1.0) * 0.38 + 1.0
-	)
-	for layer: OverlayLayer in [_wall_layer, _ore_layer, _relic_layer]:
-		if layer.occluders.has(pos):
-			layer.occluders[pos].modulate = side_color
-
-# ══════════════════════════════════════════════════════════ occluders ══
-
-# Returns the correct region_rect height (in atlas pixels) for an occluder
-# sprite at pos, accounting for both its own bounce and the tile below's bounce.
-func _get_occluder_clip_height(pos: Vector2i) -> float:
-	var below: Vector2i = pos + Vector2i(0, 1)
-	var above: Vector2i = pos + Vector2i(0, -1)
-	var scale_y: float = get_parent().scale.y
-
-	var sprite_top: float = _sprite_top_left(pos).y
-
-	# Default = fully visible atlas sprite
-	var clip_y_screen: float = sprite_top + float(ATLAS_TILE_SIZE.y) * scale_y
-
-	# If the tile has air both above and below, clip it exactly 
-	# at its logical layout tile boundary so texture bleed doesn't hang in mid-air.
-	if is_air(above) and is_air(below):
-		clip_y_screen = sprite_top + float(ATLAS_TILE_SIZE.y) * scale_y
-	# Otherwise, if there is a tile below, clip against its shifting top edge
-	elif tile_types.has(below):
-		var current_bounce: float = _get_bounce_offset(pos)
-		var below_bounce: float = _get_bounce_offset(below)
-		var below_top: float = _sprite_top_left(below).y
-
-		clip_y_screen = below_top - current_bounce + below_bounce
-
-	return clampf(
-		(clip_y_screen - sprite_top) / scale_y,
-		0.0,
-		float(ATLAS_TILE_SIZE.y)
-	)
-
-func _recalculate_full_occluder(pos: Vector2i) -> void:
-	for layer: OverlayLayer in [_wall_layer, _ore_layer, _relic_layer]:
-		if not layer.occluders.has(pos):
-			continue
-
-		var sprite: Sprite2D = layer.occluders[pos]
-
-		# Recompute base UV fully (not cached / not partial)
-		var full_rect: Rect2 = layer.get_uv_rect.call(pos)
-
-		# Recompute clipping based on CURRENT world + bounce
-		var h: float = _get_occluder_clip_height(pos)
-
-		sprite.region_rect = Rect2(
-			full_rect.position,
-			Vector2(full_rect.size.x, h)
-		)
-
-		# Also ensure correct world position after bounce
-		sprite.position = _sprite_top_left(pos) + Vector2(0, _get_bounce_offset(pos))
-
-func _apply_occluder_clip(pos: Vector2i) -> void:
-	var h: float = _get_occluder_clip_height(pos)
-	for layer: OverlayLayer in [_wall_layer, _ore_layer, _relic_layer]:
-		if not layer.occluders.has(pos):
-			continue
-		var full_px: Rect2 = layer.get_uv_rect.call(pos)
-		layer.occluders[pos].region_rect = Rect2(full_px.position, Vector2(full_px.size.x, h))
-
-func _setup_occluders() -> void:
-	for pos: Vector2i in tile_types.keys():
-		if is_air(pos + Vector2i(0, -1)):
-			_add_occluder_sprite(pos)
-
-func _add_occluder_sprite(pos: Vector2i) -> void:
-	if _wall_layer.occluders.has(pos):
-		return
-	_hide_wall_instance(pos)
-	_hide_ore_instance(pos)
-	_hide_relic_instance(pos)
-
-	var sprite_pos: Vector2 = _sprite_top_left(pos)
-
-	var _make_sprite: Callable = func(atlas: Texture2D, rect: Rect2, z_off: int) -> Sprite2D:
-		var s            := Sprite2D.new()
-		s.texture        = atlas
-		s.region_enabled = true
-		s.region_rect    = rect  # full rect; clip applied after deferred add
-		s.centered       = false
-		s.z_as_relative  = false
-		s.z_index        = pos.y * 10 + z_off
-		s.position       = sprite_pos
-		return s
-
-	var wall_sprite: Sprite2D = _make_sprite.call(tile_atlas, _wall_layer.get_uv_rect.call(pos), 0)
-	_wall_layer.occluders[pos] = wall_sprite
-	get_parent().add_child.call_deferred(wall_sprite)
-
-	if ore_types.has(pos):
-		var ore_sprite: Sprite2D = _make_sprite.call(ore_atlas, _ore_layer.get_uv_rect.call(pos), 1)
-		_ore_layer.occluders[pos] = ore_sprite
-		get_parent().add_child.call_deferred(ore_sprite)
-
-	if relic_tiles.has(pos) and relic_atlas != null:
-		var relic_sprite: Sprite2D = _make_sprite.call(relic_atlas, _relic_layer.get_uv_rect.call(pos), 2)
-		_relic_layer.occluders[pos] = relic_sprite
-		get_parent().add_child.call_deferred(relic_sprite)
-
-	# Instead of only clipping the region rect texture, completely recalculate 
-	# the resting position offset and clip properties in tandem.
-	_recalculate_full_occluder.call_deferred(pos)
-
-func _remove_occluder_sprite(pos: Vector2i) -> void:
-	if not _wall_layer.occluders.has(pos):
-		return
-	for layer: OverlayLayer in [_wall_layer, _ore_layer, _relic_layer]:
-		if layer.occluders.has(pos):
-			layer.occluders[pos].queue_free()
-			layer.occluders.erase(pos)
-		if layer.has_data.call(pos) and layer.index.has(pos):
-			_write_layer_instance(layer, layer.index[pos], pos)
-
-func update_occluder_depths(_player: Node2D) -> void:
-	pass
+	var row: int = pos.y
+	if _is_occluder_tile(pos):
+		var orow: OccluderRow = _occ_wall.get(row, null)
+		if orow != null and orow.index.has(pos):
+			var idx: int   = orow.index[pos]
+			var cur: Color = orow.multimesh.get_instance_color(idx)
+			orow.multimesh.set_instance_color(idx, Color(color.r, color.g, color.b, cur.a))
+		var orow_o: OccluderRow = _occ_ore.get(row, null)
+		if orow_o != null and orow_o.index.has(pos):
+			var idx: int   = orow_o.index[pos]
+			var cur: Color = orow_o.multimesh.get_instance_color(idx)
+			orow_o.multimesh.set_instance_color(idx, Color(color.r, color.g, color.b, cur.a))
+	else:
+		if _wall_layer.index.has(pos):
+			var idx: int = _wall_layer.index[pos]
+			var a: float = _wall_layer.multimesh.get_instance_color(idx).a
+			_wall_layer.multimesh.set_instance_color(idx, Color(color.r, color.g, color.b, a))
+		if _ore_layer.index.has(pos):
+			var idx: int = _ore_layer.index[pos]
+			var a: float = _ore_layer.multimesh.get_instance_color(idx).a
+			_ore_layer.multimesh.set_instance_color(idx, Color(color.r, color.g, color.b, a))
 
 # ══════════════════════════════════════════════════════════ collision ══
 func _build_collision() -> void:
@@ -705,8 +693,6 @@ func _add_collision_shape(pos: Vector2i) -> void:
 	tile_shapes[pos] = col
 
 # ══════════════════════════════════════════════════════════ bounce anim ══
-
-# Returns the current bounce offset in pixels for a tile, or 0 if not bouncing.
 func _get_bounce_offset(pos: Vector2i) -> float:
 	if not _tile_bounces.has(pos):
 		return 0.0
@@ -714,87 +700,133 @@ func _get_bounce_offset(pos: Vector2i) -> float:
 	var age: float = (Time.get_ticks_msec() / 1000.0) - b.start_time - b.delay
 	if age < 0.0:
 		return 0.0
-	return sin(clampf(age / 0.25, 0.0, 1.0) * PI) * b.amplitude
+	return sin(clampf(age / b.duration, 0.0, 1.0) * PI) * b.amplitude
 
-func bounce_tile(pos: Vector2i, amp: float = 6.0, delay: float = 0.0) -> void:
-	var b          := BounceState.new()
-	b.start_time    = Time.get_ticks_msec() / 1000.0
-	b.amplitude     = amp
-	b.delay         = delay
+func bounce_tile(pos: Vector2i, amp: float = 6.0, delay: float = 0.0, duration: float = 0.25) -> void:
+	var b       := BounceState.new()
+	b.start_time = Time.get_ticks_msec() / 1000.0
+	b.amplitude  = amp
+	b.delay      = delay
+	b.duration   = duration
 	_tile_bounces[pos] = b
 
-func squish_tile(pos: Vector2i, amp: float = 6.0) -> void:
-	bounce_tile(pos, amp)
+func squish_tile(pos: Vector2i, amp: float = 6.0, duration: float = 0.25) -> void:
+	bounce_tile(pos, amp, 0.0, duration)
 	for nb: Vector2i in [pos + Vector2i(0,-1), pos + Vector2i(1,0),
 						  pos + Vector2i(0,1),  pos + Vector2i(-1,0)]:
 		if tile_exists(nb):
-			bounce_tile(nb, amp * 0.35, 0.07)
+			bounce_tile(nb, amp * 0.35, 0.07, duration)
 
 func _update_tile_bounces() -> void:
 	var now:      float           = Time.get_ticks_msec() / 1000.0
 	var finished: Array[Vector2i] = []
-
 	for pos: Vector2i in _tile_bounces.keys():
 		var b: BounceState = _tile_bounces[pos]
 		var age: float = now - b.start_time
 		if age < b.delay:
 			continue
-		var t: float = (age - b.delay) / 0.25
+		var t: float = (age - b.delay) / b.duration
 		if t >= 1.0:
-			_restore_tile_transform(pos)
 			finished.append(pos)
 			continue
-		_apply_tile_offset(pos, sin(t * PI) * b.amplitude)
-
+		var offset: float = sin(t * PI) * b.amplitude
+		_apply_tile_offset(pos, offset)
+		var above: Vector2i = pos + Vector2i(0, -1)
+		if _is_occluder_tile(above):
+			var above_offset: float = _get_bounce_offset(above)
+			_apply_tile_offset(above, above_offset)
 	for pos: Vector2i in finished:
 		_tile_bounces.erase(pos)
+		_restore_tile_transform(pos)
+		var above: Vector2i = pos + Vector2i(0, -1)
+		if _is_occluder_tile(above):
+			_restore_tile_transform(above)
 
 func _apply_tile_offset(pos: Vector2i, offset_y: float) -> void:
 	offset_y = clampf(offset_y, -TILE_SIZE.y / 2.0, TILE_SIZE.y / 2.0)
+	var base: Vector2 = _world_origin(pos)
 
-	var base:          Vector2 = _world_origin(pos)
-	var has_air_below: bool    = is_air(pos + Vector2i(0, 1))
-
-	# ── MultiMesh paths ────────────────────────────────────────────────
-	for layer: OverlayLayer in [_wall_layer, _ore_layer, _relic_layer]:
-		if layer == null or not layer.index.has(pos) or layer.occluders.has(pos):
-			continue
+	if _is_occluder_tile(pos):
+		var clip: float          = _clip_for(pos)
+		var encoded_alpha: float = 1.0 + clip + offset_y
+		var row: int = pos.y
 		var t := Transform2D.IDENTITY
 		t.origin = base + Vector2(0.0, offset_y)
-		layer.multimesh.set_instance_transform_2d(layer.index[pos], t)
-		var current_color: Color = layer.multimesh.get_instance_color(layer.index[pos])
-		var clip_alpha: float = 1.0 + (offset_y if has_air_below else 0.0)
-		layer.multimesh.set_instance_color(layer.index[pos], Color(current_color.r, current_color.g, current_color.b, clip_alpha))
 
-	# ── Occluder Sprite2D: move and reclip this tile ───────────────────
-	var sprite_base_y: float = _sprite_top_left(pos).y
-	for layer: OverlayLayer in [_wall_layer, _ore_layer, _relic_layer]:
-		if layer == null or not layer.occluders.has(pos):
-			continue
-		layer.occluders[pos].position.y = sprite_base_y + offset_y
+		var orow_w: OccluderRow = _occ_wall.get(row, null)
+		if orow_w != null and orow_w.index.has(pos):
+			var idx: int   = orow_w.index[pos]
+			var cur: Color = orow_w.multimesh.get_instance_color(idx)
+			orow_w.multimesh.set_instance_transform_2d(idx, t)
+			orow_w.multimesh.set_instance_color(idx, Color(cur.r, cur.g, cur.b, encoded_alpha))
 
-	# Both loops explicitly enforce the fresh _get_occluder_clip_height constraints per-frame
-	# Reclip this tile (its own bounce shifts the clip boundary).
-	_apply_occluder_clip(pos)
+		var orow_o: OccluderRow = _occ_ore.get(row, null)
+		if orow_o != null and orow_o.index.has(pos):
+			var idx: int   = orow_o.index[pos]
+			var cur: Color = orow_o.multimesh.get_instance_color(idx)
+			orow_o.multimesh.set_instance_transform_2d(idx, t)
+			orow_o.multimesh.set_instance_color(idx, Color(cur.r, cur.g, cur.b, encoded_alpha))
 
-	# Reclip the tile above (the tile below it — this tile — moved).
-	_apply_occluder_clip(pos + Vector2i(0, -1))
+		var orow_r: OccluderRow = _occ_relic.get(row, null)
+		if orow_r != null and orow_r.index.has(pos):
+			var idx: int   = orow_r.index[pos]
+			var cur: Color = orow_r.multimesh.get_instance_color(idx)
+			orow_r.multimesh.set_instance_transform_2d(idx, t)
+			orow_r.multimesh.set_instance_color(idx, Color(cur.r, cur.g, cur.b, encoded_alpha))
+	else:
+		var t := Transform2D.IDENTITY
+		t.origin = base + Vector2(0.0, offset_y)
+		for layer: OverlayLayer in [_wall_layer, _ore_layer, _relic_layer]:
+			if layer == null or not layer.index.has(pos):
+				continue
+			if not layer.has_data.call(pos):
+				continue
+			layer.multimesh.set_instance_transform_2d(layer.index[pos], t)
+
+const OCCLUDER_CLIP: float = 16.0
 
 func _restore_tile_transform(pos: Vector2i) -> void:
-	_apply_tile_offset(pos, 0.0)
-	for layer: OverlayLayer in [_wall_layer, _ore_layer, _relic_layer]:
-		if layer == null or layer.occluders.has(pos) or not layer.index.has(pos):
-			continue
-		_write_layer_instance(layer, layer.index[pos], pos)
+	var base: Vector2 = _world_origin(pos)
+	var t := Transform2D.IDENTITY
+	t.origin = base
+
+	if _is_occluder_tile(pos):
+		var clip: float = _clip_for(pos)
+		var rest_alpha: float = 1.0 + clip
+		var row: int = pos.y
+		var orow_w: OccluderRow = _occ_wall.get(row, null)
+		if orow_w != null and orow_w.index.has(pos):
+			var idx: int   = orow_w.index[pos]
+			var cur: Color = orow_w.multimesh.get_instance_color(idx)
+			orow_w.multimesh.set_instance_transform_2d(idx, t)
+			orow_w.multimesh.set_instance_color(idx, Color(cur.r, cur.g, cur.b, rest_alpha))
+		var orow_o: OccluderRow = _occ_ore.get(row, null)
+		if orow_o != null and orow_o.index.has(pos):
+			var idx: int   = orow_o.index[pos]
+			var cur: Color = orow_o.multimesh.get_instance_color(idx)
+			orow_o.multimesh.set_instance_transform_2d(idx, t)
+			orow_o.multimesh.set_instance_color(idx, Color(cur.r, cur.g, cur.b, rest_alpha))
+		var orow_r: OccluderRow = _occ_relic.get(row, null)
+		if orow_r != null and orow_r.index.has(pos):
+			var idx: int   = orow_r.index[pos]
+			var cur: Color = orow_r.multimesh.get_instance_color(idx)
+			orow_r.multimesh.set_instance_transform_2d(idx, t)
+			orow_r.multimesh.set_instance_color(idx, Color(cur.r, cur.g, cur.b, rest_alpha))
+	else:
+		for layer: OverlayLayer in [_wall_layer, _ore_layer, _relic_layer]:
+			if layer == null or not layer.index.has(pos):
+				continue
+			if not layer.has_data.call(pos):
+				_hide_layer_instance(layer, pos)
+				continue
+			_write_layer_instance(layer, layer.index[pos], pos)
 
 # ══════════════════════════════════════════════════════════ nearest tile ══
 func get_nearest_mineable_tile(aim_world: Vector2, origin_world: Vector2, range: float) -> Vector2:
 	var aim_map:    Vector2i = world_to_map(aim_world)
 	var tile_range: int      = int(ceil(range / float(TILE_SIZE.x))) + 1
-
-	var best_dist_sq: float   = INF
+	var best_dist_sq: float  = INF
 	var best_world:   Vector2 = Vector2.INF
-
 	for dx: int in range(-tile_range, tile_range + 1):
 		for dy: int in range(-tile_range, tile_range + 1):
 			var candidate: Vector2i = aim_map + Vector2i(dx, dy)
@@ -807,7 +839,6 @@ func get_nearest_mineable_tile(aim_world: Vector2, origin_world: Vector2, range:
 			if d2 < best_dist_sq:
 				best_dist_sq = d2
 				best_world   = cand_world
-
 	return best_world
 
 # ══════════════════════════════════════════════════════════ drops ══
@@ -829,11 +860,8 @@ func damage_tile(pos: Vector2i, damage: int = 1, play_bounce: bool = true) -> bo
 		if ore_types.has(pos):
 			ParticleManager.spawn_ore_rubble(map_to_world(pos), tile_types[pos], ore_types[pos])
 			_drop_ore(pos)
-		if camera and camera.has_method("shake"):
-			camera.shake(0.1)
 		remove_tile(pos)
 		return true
-	camera.shake(0.05)
 	return false
 
 func damage_tile_silent(pos: Vector2i, damage: int = 1) -> bool:
@@ -853,39 +881,121 @@ func _erase_tile_data(pos: Vector2i) -> void:
 	tile_variant.erase(pos)
 	tile_shapes[pos].disabled = true
 	if ore_types.has(pos):
-		_hide_ore_instance(pos)
 		ore_types.erase(pos)
 		ore_variant.erase(pos)
 	if relic_tiles.has(pos):
-		_hide_relic_instance(pos)
 		_check_relic_reveal(pos)
 		relic_tiles.erase(pos)
+
+func _hide_tile_visuals(pos: Vector2i) -> void:
+	if _is_occluder_tile(pos):
+		_hide_occluder_instance(pos)
+	else:
+		_hide_layer_instance(_wall_layer, pos)
+		_hide_layer_instance(_ore_layer,  pos)
+		_hide_layer_instance(_relic_layer, pos)
+	_is_occluder.erase(pos)
 
 func _remove_tile_silent(pos: Vector2i) -> void:
 	if not tile_types.has(pos):
 		return
+	_tile_bounces.erase(pos)
+	for nb: Vector2i in [pos + Vector2i(0,-1), pos + Vector2i(1,0),
+						 pos + Vector2i(0,1),  pos + Vector2i(-1,0)]:
+		_tile_bounces.erase(nb)
+	_hide_tile_visuals(pos)
 	_erase_tile_data(pos)
-	if _wall_layer.occluders.has(pos):
-		_remove_occluder_sprite(pos)
-	else:
-		_hide_wall_instance(pos)
 
 func remove_tile(pos: Vector2i) -> void:
 	if not tile_types.has(pos):
 		return
 	_tile_bounces.erase(pos)
+	for nb: Vector2i in [pos + Vector2i(0,-1), pos + Vector2i(1,0),
+						 pos + Vector2i(0,1),  pos + Vector2i(-1,0)]:
+		_tile_bounces.erase(nb)
+
+	_hide_tile_visuals(pos)
 	_erase_tile_data(pos)
 	NavManager.on_tile_removed(pos)
-	if _wall_layer.occluders.has(pos):
-		_remove_occluder_sprite(pos)
-	else:
-		_hide_wall_instance(pos)
+
 	var below: Vector2i = pos + Vector2i(0, 1)
-	if tile_types.has(below) and not _wall_layer.occluders.has(below):
-		_add_occluder_sprite(below)
+	if tile_types.has(below) and not _is_occluder_tile(below):
+		_promote_to_occluder(below)
+
 	_redraw_neighbors(pos)
 	_mark_chunk_dirty(pos)
 	_request_df_update()
+
+func _promote_to_occluder(pos: Vector2i) -> void:
+	_hide_layer_instance(_wall_layer,  pos)
+	_hide_layer_instance(_ore_layer,   pos)
+	_hide_layer_instance(_relic_layer, pos)
+	_is_occluder[pos] = true
+
+	var row: int = pos.y
+
+	if tile_types.has(pos):
+		var orow_w: OccluderRow = _occ_wall.get(row, null)
+		if orow_w == null:
+			orow_w           = OccluderRow.new()
+			orow_w.multimesh = _make_multimesh(1)
+			orow_w.instance  = _make_multimesh_instance(orow_w.multimesh, tile_atlas, row * 10)
+			add_child(orow_w.instance)
+			_occ_wall[row]   = orow_w
+			_apply_df_to_occluder_instance(orow_w.instance)
+		_append_to_occluder_row(orow_w, pos, tile_atlas)
+
+	if ore_types.has(pos):
+		var orow_o: OccluderRow = _occ_ore.get(row, null)
+		if orow_o == null:
+			orow_o           = OccluderRow.new()
+			orow_o.multimesh = _make_multimesh(1)
+			orow_o.instance  = _make_multimesh_instance(orow_o.multimesh, ore_atlas, row * 10 + 1)
+			add_child(orow_o.instance)
+			_occ_ore[row]    = orow_o
+			_apply_df_to_occluder_instance(orow_o.instance)
+		_append_to_occluder_row(orow_o, pos, ore_atlas)
+
+	if relic_tiles.has(pos) and relic_atlas != null:
+		var orow_r: OccluderRow = _occ_relic.get(row, null)
+		if orow_r == null:
+			orow_r           = OccluderRow.new()
+			orow_r.multimesh = _make_multimesh(1)
+			orow_r.instance  = _make_multimesh_instance(orow_r.multimesh, relic_atlas, row * 10 + 2)
+			add_child(orow_r.instance)
+			_occ_relic[row]  = orow_r
+			_apply_df_to_occluder_instance(orow_r.instance)
+		_append_to_occluder_row(orow_r, pos, relic_atlas)
+
+	var current_offset: float = _get_bounce_offset(pos)
+	if current_offset != 0.0:
+		_apply_tile_offset(pos, current_offset)
+
+func _append_to_occluder_row(orow: OccluderRow, pos: Vector2i, atlas: Texture2D) -> void:
+	var old_mm: MultiMesh = orow.multimesh
+	var new_count: int    = old_mm.instance_count + 1
+	var new_mm: MultiMesh = _make_multimesh(new_count)
+	for i in old_mm.instance_count:
+		new_mm.set_instance_transform_2d(i, old_mm.get_instance_transform_2d(i))
+		new_mm.set_instance_color(i,       old_mm.get_instance_color(i))
+		new_mm.set_instance_custom_data(i, old_mm.get_instance_custom_data(i))
+	orow.multimesh          = new_mm
+	orow.instance.multimesh = new_mm
+	var idx: int            = new_count - 1
+	orow.index[pos]         = idx
+	_write_occluder_instance(orow, pos, atlas)
+
+func _apply_df_to_occluder_instance(inst: MultiMeshInstance2D) -> void:
+	if _df_texture == null:
+		return
+	var world_origin: Vector2 = map_to_world(Vector2i(0, 0)) - Vector2(TILE_SIZE) / 2.0
+	var mat: ShaderMaterial   = inst.material
+	mat.set_shader_parameter("distance_field",   _df_texture)
+	mat.set_shader_parameter("map_size",         Vector2(WIDTH, HEIGHT))
+	mat.set_shader_parameter("map_world_origin", world_origin)
+	mat.set_shader_parameter("tile_world_size",  float(TILE_SIZE.x))
+	mat.set_shader_parameter("max_depth",        DF_MAX_DEPTH)
+	mat.set_shader_parameter("darkness_power",   1.0)
 
 func flush_removed_tiles(removed: Array[Vector2i]) -> void:
 	if removed.is_empty():
@@ -894,8 +1004,8 @@ func flush_removed_tiles(removed: Array[Vector2i]) -> void:
 	var df_touched:  Dictionary = {}
 	for pos in removed:
 		var below: Vector2i = pos + Vector2i(0, 1)
-		if tile_types.has(below) and not _wall_layer.occluders.has(below):
-			_add_occluder_sprite(below)
+		if tile_types.has(below) and not _is_occluder_tile(below):
+			_promote_to_occluder(below)
 		_redraw_neighbors(pos)
 		nav_touched[Vector2i(pos.x / NavManager.chunk_size, pos.y / NavManager.chunk_size)] = true
 		df_touched[Vector2i(pos.x / DF_CHUNK_SIZE, pos.y / DF_CHUNK_SIZE)]                  = true
@@ -937,7 +1047,7 @@ func _spawn_relic_containers() -> void:
 			continue
 		seen[center] = true
 		_spawn_relic_container(center, entry["relic"])
-		print("Spawned a relic at %d, %d" % [center.x, center.y])
+		print("Spawned relic at %d, %d" % [center.x, center.y])
 
 # ══════════════════════════════════════════════════════════ proc gen ══
 func count_neighbors(grid: Array, x: int, y: int) -> int:
@@ -1059,12 +1169,10 @@ func generate_faults(grid: Array) -> Array[Array]:
 		while sqrt((pt.x - WIDTH / 2.0) ** 2 + (pt.y - HEIGHT / 2.0) ** 2) > WIDTH / 4.0:
 			pt = rock_variation_tiles.pop_at(randi_range(0, rock_variation_tiles.size() - 1))
 		fault_point = pt
-
 	var m:         float   = randf_range(-2.0, 2.0)
 	var fault_dir: Vector2 = Vector2(1.0 / sqrt(1.0 + m ** 2), m / sqrt(1.0 + m ** 2))
 	var magnitude: float   = randf_range(16.0, 32.0)
 	print("Fault magnitude: %.2f" % magnitude)
-
 	for x in range(WIDTH):
 		new_grid.append([])
 		var y_fault: float = m * (x - fault_point.x) + fault_point.y
@@ -1078,7 +1186,6 @@ func generate_faults(grid: Array) -> Array[Array]:
 					new_grid[x].append(grid[x_old][y_old])
 			else:
 				new_grid[x].append(grid[x][y])
-
 	var candidates: Array[Vector2i] = []
 	for x in range(WIDTH):
 		var y_fault: float = m * (x - fault_point.x) + fault_point.y
@@ -1125,11 +1232,9 @@ func _place_relic_tiles_on_grid(grid: Array) -> void:
 	var target:   int = randi_range(relic_count.x, relic_count.y)
 	var placed:   int = 0
 	var attempts: int = 0
-
 	var play_radius: float = (WIDTH - BUFFER_TILES) / 2.0
 	var cx: float = WIDTH  / 2.0
 	var cy: float = HEIGHT / 2.0
-
 	while placed < target and attempts < 5000:
 		attempts += 1
 		var x: int = randi_range(BUFFER_TILES + 4, WIDTH  - BUFFER_TILES - 4)
@@ -1184,20 +1289,24 @@ func _initial_df_bake() -> void:
 
 func _set_df_shader_params() -> void:
 	var world_origin: Vector2 = map_to_world(Vector2i(0, 0)) - Vector2(TILE_SIZE) / 2.0
-	var wall_mats: Array[ShaderMaterial] = [
-		_wall_layer.instance.material,
-		_ore_layer.instance.material,
-	]
-	if _relic_layer.instance != null:
-		wall_mats.append(_relic_layer.instance.material)
-	for mat: ShaderMaterial in wall_mats:
+	var all_instances: Array[MultiMeshInstance2D] = []
+	if _wall_layer  != null and _wall_layer.instance  != null: all_instances.append(_wall_layer.instance)
+	if _ore_layer   != null and _ore_layer.instance   != null: all_instances.append(_ore_layer.instance)
+	if _relic_layer != null and _relic_layer.instance != null: all_instances.append(_relic_layer.instance)
+	for occ_dict in [_occ_wall, _occ_ore, _occ_relic]:
+		for row_key in occ_dict.keys():
+			var orow: OccluderRow = occ_dict[row_key]
+			if orow.instance != null:
+				all_instances.append(orow.instance)
+	for inst: MultiMeshInstance2D in all_instances:
+		var mat: ShaderMaterial = inst.material
 		mat.set_shader_parameter("distance_field",   _df_texture)
 		mat.set_shader_parameter("map_size",         Vector2(WIDTH, HEIGHT))
 		mat.set_shader_parameter("map_world_origin", world_origin)
 		mat.set_shader_parameter("tile_world_size",  float(TILE_SIZE.x))
 		mat.set_shader_parameter("max_depth",        DF_MAX_DEPTH)
 		mat.set_shader_parameter("darkness_power",   1.0)
-	if _ground_layer.instance != null:
+	if _ground_layer != null and _ground_layer.instance != null:
 		var mat: ShaderMaterial = _ground_layer.instance.material
 		mat.set_shader_parameter("distance_field",   _df_texture)
 		mat.set_shader_parameter("map_size",         Vector2(WIDTH, HEIGHT))
