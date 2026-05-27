@@ -2,7 +2,8 @@
 class_name AbilityMineBurst
 extends AbilityData
 
-func activate(context: Dictionary) -> void:
+func tick(context: Dictionary) -> void:
+	super.tick(context)
 	var player: Node = context.get("player")
 	if player == null:
 		return

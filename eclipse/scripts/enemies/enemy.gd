@@ -18,6 +18,8 @@ var _navigator: EnemyNavigator
 
 var _status: Dictionary = {}
 
+var _attack_cooldown_remaining: float = 0.0
+
 const KNOCKBACK_DECAY: float = 8.0
 
 # ── lifecycle ─────────────────────────────────────────────────────────────────
@@ -44,7 +46,7 @@ func _ready() -> void:
 	sep_area.body_entered.connect(_on_sep_body_entered)
 	sep_area.body_exited.connect(_on_sep_body_exited)
 	add_child(sep_area)
-	
+
 	add_to_group("enemies")
 
 func initialize(p: CharacterBody2D, modifier: Util.Modifier = Util.Modifier.NONE) -> void:
@@ -105,6 +107,7 @@ func _physics_process(delta: float) -> void:
 	_tick_status(delta)
 	if not _status.has("stun"):
 		_tick_behavior(delta)
+		_tick_attack(delta)
 		velocity = _compute_nav_velocity(delta)
 		if _status.has("knockback"):
 			velocity += _status["knockback"]["velocity"]
@@ -121,6 +124,38 @@ func _compute_nav_velocity(delta: float) -> Vector2:
 	if NavManager._built:
 		return _navigator.navigate_toward(player.global_position, delta) + _separation_velocity()
 	return (player.global_position - global_position).normalized() * data.speed + _separation_velocity()
+
+# ── attacking ─────────────────────────────────────────────────────────────────
+
+## Ticks the melee attack cooldown and fires when in range.
+## Projectile-based enemies should override _tick_behavior and set
+## data.projectile_speed > 0 to bypass this.
+func _tick_attack(delta: float) -> void:
+	if data.projectile_speed > 0.0:
+		return   # projectile subclass handles its own attack timing
+	_attack_cooldown_remaining = maxf(0.0, _attack_cooldown_remaining - delta)
+	if _attack_cooldown_remaining > 0.0:
+		return
+	var dist: float = global_position.distance_to(player.global_position)
+	if dist <= data.attack_range:
+		_attack_player()
+
+func _attack_player() -> void:
+	_attack_cooldown_remaining = data.attack_cooldown
+
+	# Roll crit before armour so the full raw value is used for the crit multiply.
+	var is_crit:    bool = randf() < data.crit_chance
+	var raw_damage: int  = data.damage
+	if is_crit:
+		raw_damage = int(float(raw_damage) * data.crit_damage_mult)
+
+	# Pass this enemy's armor_penetration so the player can factor it in.
+	player.take_damage(raw_damage, data.armor_penetration, is_crit)
+
+## Convenience for projectile subclasses — call this from the projectile's
+## on_hit callback instead of _attack_player().
+func deal_damage_to_player(raw_damage: int, is_crit: bool = false) -> void:
+	player.take_damage(raw_damage, data.armor_penetration, is_crit)
 
 # ── separation ────────────────────────────────────────────────────────────────
 
@@ -152,7 +187,7 @@ func _range_offset_target(target: Vector2, preferred: float) -> Vector2:
 	if dist <= preferred:
 		return global_position   # already close enough, hold position
 	return target - to_target.normalized() * preferred
-	
+
 # ── modifiers ─────────────────────────────────────────────────────────────────
 
 func _apply_modifier(modifier: Util.Modifier) -> void:
@@ -160,10 +195,27 @@ func _apply_modifier(modifier: Util.Modifier) -> void:
 		Util.Modifier.FAST:
 			data.speed *= 1.6
 
-# ── combat ────────────────────────────────────────────────────────────────────
+# ── combat (incoming) ─────────────────────────────────────────────────────────
 
-func take_damage(amount: int, is_crit: bool = false) -> void:
-	var reduced: int = int(amount * (1.0 - data.damage_reduction))
+## Main entry point for all incoming damage.
+##
+## armor_penetration — flat armor the attacker ignores (from their EnemyData or
+##                     a player ability). Defaults to 0 so callers that don't
+##                     care about armor (e.g. plain AoE) can omit it.
+##
+## Damage pipeline:
+##   1. Subtract armor, offset by penetration.  Minimum 1 so armor never
+##      makes an enemy fully immune to non-zero hits.
+##   2. Apply flat percentage damage_reduction (resistances layer).
+##   Result is always at least 1.
+func take_damage(amount: int, armor_penetration: int = 0, is_crit: bool = false) -> void:
+	# Step 1 — armor
+	var after_armor: int = amount - maxi(0, data.armor - armor_penetration)
+	after_armor = maxi(1, after_armor)   # armor never negates a hit entirely
+
+	# Step 2 — percentage reduction (elemental resistances etc. feed here)
+	var reduced: int = maxi(1, int(float(after_armor) * (1.0 - data.damage_reduction)))
+
 	health -= reduced
 	DamageNumbers.spawn(global_position + Vector2(0, -16), reduced, is_crit)
 	if health <= 0:
@@ -196,8 +248,8 @@ func apply_dot(dps: float, duration: float) -> void:
 	if reduced_dps <= 0.0:
 		return
 	if _status.has("dot"):
-		var incoming_weight: float  = reduced_dps * duration
-		var existing_weight: float  = _status["dot"]["dps"] * _status["dot"]["duration"]
+		var incoming_weight: float = reduced_dps * duration
+		var existing_weight: float = _status["dot"]["dps"] * _status["dot"]["duration"]
 		if incoming_weight > existing_weight:
 			_status["dot"]["dps"]      = reduced_dps
 			_status["dot"]["duration"] = duration
@@ -232,7 +284,7 @@ func _tick_status(delta: float) -> void:
 		var whole: int   = int(dot["_accum"])
 		if whole > 0:
 			dot["_accum"] -= whole
-			take_damage(whole)
+			take_damage(whole)   # DoT has no armor penetration
 		if not is_inside_tree():
 			return
 		if dot["duration"] <= 0.0:

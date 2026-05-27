@@ -13,16 +13,22 @@ extends CharacterBody2D
 @export var orb_orbit_speed:  float   = 1.25
 @export var orb_reform_flash: float   = 0.2
 
-@export_group("Focus Animation")
-@export var focus_orbit_speed: float = 8.0
-
 @export_group("Starting Orbs")
 const starting_orb:   Orb = preload("res://data/orbs/orb_focus_mine.tres")
 const starting_orb_2: Orb = preload("res://data/orbs/orb_gold_bomb.tres")
 const starting_orb_3: Orb = preload("res://data/orbs/orb_lightning_chain.tres")
 const starting_orb_4: Orb = preload("res://data/orbs/orb_conductor_post.tres")
 
-var max_orb_inputs: int = 5
+@export_group("Basic Attacks")
+## Abilities in this array fire automatically whenever their cooldown expires.
+## They cost no light and are independent of the orb system.
+@export var basic_attacks: Array[AbilityBasicAttack] = []
+
+@export_group("Health")
+@export var max_health: int = 100
+## Flat damage absorbed per hit before percentage reduction.
+## Effective damage = max(1, raw - max(0, armor - attacker_pen)) * (1 - damage_reduction)
+@export var armor:      int = 0
 
 
 # ================================================================ constants ==
@@ -32,15 +38,9 @@ const FOCUS_BLOOM_MAX:      float = 0.75
 const FOCUS_GLOW_MIN:       float = 0.3
 const FOCUS_GLOW_MAX:       float = 1.25
 const FOCUS_DECAY:          float = 4.0
-const CHANNEL_TIME:         float = 5.0
-const CHANNEL_LIGHT_COST:   float = 0.80
-const CHANNEL_POWER_BONUS:  float = 0.5
 
-const ABILITY_STAGGER_SEC:  float = 0.05
-
-const MINE_PRESS_DELAY:     float = 0.05  # seconds of pushing before mining begins
-const MINE_TICK_INTERVAL:   float = 0.33  # seconds between damage ticks while held
-
+const MINE_PRESS_DELAY:     float = 0.05
+const MINE_TICK_INTERVAL:   float = 0.33
 const MINE_BOUNCE_AMOUNT:   float = 6.0
 const MINE_BOUNCE_FALLOFF:  float = 0.85
 const MINE_AOE_RADIUS:      int   = 1
@@ -68,6 +68,15 @@ var movement_enabled: bool  = true
 
 @onready var speed: float = 100.0 * get_parent().scale.x
 
+var health: int:
+	set(value):
+		health = clampi(value, 0, max_health)
+		var health_bar = $"../HUD/health bar"
+		if health_bar:
+			health_bar.set_health(float(health), float(max_health))
+		if health <= 0:
+			_on_died()
+
 var direction: Vector2i = Vector2i.DOWN:
 	set(value):
 		if direction == value:
@@ -82,7 +91,7 @@ var direction: Vector2i = Vector2i.DOWN:
 
 # ==================================================================== light ==
 
-@onready var light_bar = $"../HUD/health bar"
+@onready var light_bar = $"../HUD/power bar"
 
 var light: float = 100.0:
 	set(value):
@@ -99,6 +108,8 @@ func heal(amount: int) -> void:
 
 # ================================================================= orb orbit ==
 
+const ORB_READY_DELAY: float = 0.25
+
 class OrbVisual:
 	var sprite:        Sprite2D
 	var shattered:     bool  = false
@@ -110,17 +121,12 @@ class OrbVisual:
 	var glow_target:   float = 0.0
 	var angle_offset:  float = 0.0
 	var reforming:     bool  = false
+	var ready_delay:   float = 0.0
 
 var orb_visuals:     Array[OrbVisual] = []
-var _orb_visual_map: Dictionary       = {}   # Orb → OrbVisual
+var _orb_visual_map: Dictionary       = {}
 var orbit_time:      float            = 0.0
 var orbit_speed_mult: float           = 1.0
-
-
-# =============================================================== channeling ==
-
-var channeling_orb_index: int   = -1
-var channel_charge:       float = 0.0
 
 
 # ============================================================ pending activations ==
@@ -136,7 +142,7 @@ var _pending: Array[PendingActivation] = []
 class PendingMineDamage:
 	var pos:    Vector2i
 	var damage: int
-	var timer:  float   # seconds remaining before applying
+	var timer:  float
 
 var _pending_mine_damage: Array[PendingMineDamage] = []
 
@@ -145,8 +151,8 @@ var _pending_mine_damage: Array[PendingMineDamage] = []
 
 var _mine_press_timer:    float    = 0.0
 var _mine_target:         Vector2i = Vector2i(-1, -1)
-var _mine_cooldown_timer: float    = 0.0   # counts down after each strike; blocks re-entry
-var _mining_enabled:      bool     = true  # false while cooldown is active
+var _mine_cooldown_timer: float    = 0.0
+var _mining_enabled:      bool     = true
 
 
 # ================================================================== forging ==
@@ -157,6 +163,7 @@ var _nearby_forge: Forge = null
 # ==================================================================== ready ==
 
 func _ready() -> void:
+	health = max_health   # triggers the setter so the bar initialises correctly
 	add_to_group("player")
 	$Inventory.orb_added.connect(_on_orb_added)
 	$Inventory.orb_removed.connect(_on_orb_removed)
@@ -176,9 +183,9 @@ func _process(delta: float) -> void:
 	$head.offset = head_offset + Vector2(0, round(bob_amount * sin(time * 2.0)))
 	$body.offset = body_offset + Vector2(0, round(bob_amount * sin(time * 2.0 + 0.5)))
 
-	_tick_channel(delta)
 	_update_orb_visuals(delta)
 	_tick_abilities(delta)
+	_tick_basic_attacks(delta)
 	_tick_relics(delta)
 	_tick_env(delta)
 	_tick_mining(delta)
@@ -217,115 +224,89 @@ func _physics_process(delta: float) -> void:
 		_mine_press_timer = MINE_PRESS_DELAY
 
 
+# ================================================================== combat ==
+
+## Called by enemies when they deal damage to the player.
+##
+## armor_penetration — flat armor the attacker ignores (from EnemyData).
+## is_crit           — whether the hit was a crit (shown on damage number).
+##
+## Pipeline (mirrors enemy take_damage):
+##   1. Subtract armor offset by penetration. Minimum 1 so armor can't negate.
+##   2. Result shown as a damage number; health reduced.
+func take_damage(amount: int, armor_penetration: int = 0, is_crit: bool = false) -> void:
+	var after_armor: int = amount - maxi(0, armor - armor_penetration)
+	after_armor = maxi(1, after_armor)
+	DamageNumbers.spawn(global_position + Vector2(0, -28), after_armor, is_crit)
+	health -= after_armor
+
+func _on_died() -> void:
+	Log("Player died.")
+	# TODO: trigger death screen / respawn
+
+
+# ============================================================ basic attacks ==
+
+## Ticks every AbilityBasicAttack in basic_attacks[].
+## Each ability manages its own cooldown and fires when ready — no light cost.
+func _tick_basic_attacks(delta: float) -> void:
+	if basic_attacks.is_empty():
+		return
+	var ctx: Dictionary = {
+		"player": self,
+		"delta":  delta,
+	}
+	for attack: AbilityBasicAttack in basic_attacks:
+		attack.tick(ctx)
+
+
 # ================================================================ abilities ==
 
 func _tick_abilities(delta: float) -> void:
-	if channeling_orb_index != -1:
+	var orbs: Array[Orb] = $Inventory.orbs
+
+	if orbs.size() != orb_visuals.size():
 		return
 
-	var orbs:      Array[Orb] = $Inventory.orbs
-	var max_orb_t: float      = 0.0
-
-	_queue_new_orb_presses(orbs)
-	_tick_passive_and_hold_abilities(orbs, delta, max_orb_t)
-	_advance_pending_activations(delta)
-	_update_body_glow(max_orb_t)
-
-
-func _queue_new_orb_presses(orbs: Array[Orb]) -> void:
 	for i in range(orbs.size()):
+		# reset glow target each frame — abilities write upward from here
+		orb_visuals[i].glow_target = 0.0
+
 		var orb: Orb = orbs[i]
-		if not _orb_is_usable(i):
-			_log_blocked_orb(i, orb)
+		if orb.node_index == -1:
 			continue
-		if not Input.is_action_just_pressed(orb.input_action):
+		if orb_visuals[i].shattered:
 			continue
-		if _orb_already_pending(i):
+		if orb_visuals[i].ready_delay > 0.0:
+			continue
+		if not _can_afford_orb(i):
 			continue
 
-		var pa          := PendingActivation.new()
-		pa.orb_index     = i
-		pa.stagger_timer = 0.0
-		pa.any_activated = false
+		var ctx := _make_context(delta, i)
+
 		for ability: AbilityData in orb.abilities:
-			if ability.trigger_type == AbilityData.TriggerType.ACTIVE and not ability.requires_hold:
-				pa.abilities.append(ability)
-		_pending.append(pa)
+			ability.tick(ctx)
+
+		if ctx["activated"] and not orb_visuals[i].shattered:
+			light -= _orb_cost(i)
+			shatter_orb(i)
+			_trigger_connections(i, delta)
+
+		if ctx["lock_movement"]:
+			movement_enabled = false
+
+		orb_visuals[i].glow_target = ctx["orb_t"]
+
+	_update_body_glow_from_visuals()
 
 
-func _orb_already_pending(orb_index: int) -> bool:
-	for p: PendingActivation in _pending:
-		if p.orb_index == orb_index:
-			return true
-	return false
+# ── context helpers ───────────────────────────────────────────────────────
 
-
-func _tick_passive_and_hold_abilities(orbs: Array[Orb], delta: float, max_orb_t: float) -> void:
-	for i in range(orbs.size()):
-		if not _orb_is_usable(i):
-			continue
-		var orb: Orb = orbs[i]
-		for ability: AbilityData in orb.abilities:
-			if ability.trigger_type == AbilityData.TriggerType.PASSIVE:
-				_activate_free(ability, _make_context(delta, false, i))
-			elif ability.trigger_type == AbilityData.TriggerType.ACTIVE and ability.requires_hold:
-				_tick_hold_ability(ability, delta, i)
-		max_orb_t = maxf(max_orb_t, orb_visuals[i].glow)
-
-
-func _advance_pending_activations(delta: float) -> void:
-	var finished: Array[PendingActivation] = []
-
-	for pa: PendingActivation in _pending:
-		if pa.abilities.is_empty():
-			finished.append(pa)
-			continue
-
-		pa.stagger_timer -= delta
-		if pa.stagger_timer > 0.0:
-			continue
-
-		var ability: AbilityData = pa.abilities[0]
-		var ctx                 := _make_context(delta, true, pa.orb_index)
-		if _activate_free(ability, ctx):
-			if not pa.any_activated:
-				light -= _orb_cost(pa.orb_index)
-			pa.any_activated = true
-		_advance_ability_queue(pa)
-
-	for pa: PendingActivation in finished:
-		if pa.any_activated:
-			shatter_orb(pa.orb_index)
-			_trigger_connections(pa.orb_index, delta)
-		_pending.erase(pa)
-
-
-func _tick_hold_ability(ability: AbilityData, delta: float, orb_index: int) -> void:
-	var orb: Orb = $Inventory.orbs[orb_index]
-	if Input.is_action_pressed(orb.input_action):
-		var ctx := _make_context(delta, true, orb_index)
-		if _activate_free(ability, ctx):
-			orb_visuals[orb_index].glow_target = 1.0
-			shatter_orb(orb_index)
-			_trigger_connections(orb_index, delta)
-	elif Input.is_action_just_released(orb.input_action):
-		_activate_free(ability, _make_context(delta, false, orb_index))
-		orb_visuals[orb_index].glow_target = 0.0
-
-
-func _advance_ability_queue(pa: PendingActivation) -> void:
-	pa.abilities.pop_front()
-	pa.stagger_timer = ABILITY_STAGGER_SEC
-
-
-# ── context / cost helpers ─────────────────────────────────────────────────
-
-func _make_context(delta: float, pressed: bool, orb_index: int) -> Dictionary:
+func _make_context(delta: float, orb_index: int) -> Dictionary:
 	return {
 		"player":        self,
 		"tilemap":       %TilemapManager,
 		"delta":         delta,
-		"pressed":       pressed,
 		"lock_movement": false,
 		"orb_t":         0.0,
 		"activated":     false,
@@ -333,13 +314,6 @@ func _make_context(delta: float, pressed: bool, orb_index: int) -> Dictionary:
 		"orb_index":     orb_index,
 		"potency":       $Inventory.orbs[orb_index].orb_potency,
 	}
-
-
-func _activate_free(ability: AbilityData, ctx: Dictionary) -> bool:
-	ability.activate(ctx)
-	if ctx["lock_movement"]:
-		movement_enabled = false
-	return ctx["activated"]
 
 
 func _orb_cost(orb_index: int) -> float:
@@ -350,89 +324,17 @@ func _can_afford_orb(orb_index: int) -> bool:
 	return light >= _orb_cost(orb_index)
 
 
-func _orb_is_usable(i: int) -> bool:
-	var orb: Orb = $Inventory.orbs[i]
-	return orb.node_index != -1 and not orb_visuals[i].shattered and orb.input_action != "" and _can_afford_orb(i)
-
-
-func _log_blocked_orb(i: int, orb: Orb) -> void:
-	if orb.input_action == "" or not Input.is_action_just_pressed(orb.input_action):
-		return
-	if not _can_afford_orb(i):
-		print("[orb %d] blocked: can't afford (cost %.1f, have %.1f)" % [
-			i, _orb_cost(i), light])
-	if orb.node_index == -1:
-		print("[orb %d] blocked: not placed in graph" % i)
-	elif orb_visuals[i].shattered:
-		print("[orb %d] blocked: shattered (%.2fs remaining)" % [i,
-			orb_visuals[i].cooldown - orb_visuals[i].cooldown_age])
+func _update_body_glow_from_visuals() -> void:
+	var max_t: float = 0.0
+	for ov: OrbVisual in orb_visuals:
+		max_t = maxf(max_t, ov.glow)
+	_update_body_glow(max_t)
 
 
 func _update_body_glow(t: float) -> void:
 	var glow: Color = Color(lerpf(1.0, 2.0, t), lerpf(1.0, 2.0, t), lerpf(1.0, 2.0, t))
 	%body.self_modulate = glow if t > 0.0 else Color.WHITE
 	%head.self_modulate = glow if t > 0.0 else Color.WHITE
-
-
-# ================================================================ channeling ==
-
-func _tick_channel(delta: float) -> void:
-	var channel_held: bool = Input.is_action_pressed("channel_light")
-
-	if channeling_orb_index != -1:
-		if not channel_held:
-			_cancel_channel()
-			return
-		movement_enabled  = false
-		channel_charge   += delta
-		var t: float       = minf(channel_charge / CHANNEL_TIME, 1.0)
-		env_t              = t
-		_set_env(t)
-		orb_visuals[channeling_orb_index].glow = t
-		orbit_speed_mult   = lerpf(1.0, focus_orbit_speed, t)
-		ParticleManager.spawn_focus_particles(global_position, t)
-		if channel_charge >= CHANNEL_TIME:
-			_complete_channel()
-		return
-
-	if not channel_held:
-		return
-
-	ParticleManager.spawn_focus_particles(global_position, 0.02)
-	for i in range($Inventory.orbs.size()):
-		var orb: Orb = $Inventory.orbs[i]
-		if orb.input_action == "" or orb.node_index == -1 or orb_visuals[i].shattered:
-			continue
-		if Input.is_action_just_pressed(orb.input_action):
-			channeling_orb_index = i
-			channel_charge       = 0.0
-			break
-
-
-func _cancel_channel() -> void:
-	if channeling_orb_index < orb_visuals.size():
-		orb_visuals[channeling_orb_index].glow = 0.0
-	channeling_orb_index = -1
-	channel_charge       = 0.0
-	env_t                = 0.0
-	orbit_speed_mult     = 1.0
-	_set_env(0.0)
-
-
-func _complete_channel() -> void:
-	var orb: Orb = $Inventory.orbs[channeling_orb_index]
-	light        = maxf(5.0, light - (light - 5.0) * CHANNEL_LIGHT_COST)
-	for ability: AbilityData in orb.abilities:
-		if ability != null and ability.stats != null:
-			ability.stats.power *= (1.0 + CHANNEL_POWER_BONUS)
-	if channeling_orb_index < orb_visuals.size():
-		orb_visuals[channeling_orb_index].reform_flash = orb_reform_flash * 3.0
-		orb_visuals[channeling_orb_index].glow         = 0.0
-	channeling_orb_index = -1
-	channel_charge       = 0.0
-	env_t                = 0.0
-	orbit_speed_mult     = 1.0
-	_set_env(0.0)
 
 
 # ================================================================ orb visuals ==
@@ -454,6 +356,7 @@ func _update_orb_visuals(delta: float) -> void:
 		ov.reforming      = true
 		ov.reform_flash   = orb_reform_flash
 		ov.cooldown_age   = 0.0
+		ov.ready_delay = ORB_READY_DELAY if ov.ready_delay <= 0.0 else ov.ready_delay
 		ov.glow           = 0.0
 		ov.glow_target    = 0.0
 		ov.sprite.visible = false
@@ -468,6 +371,9 @@ func _update_orb_visuals(delta: float) -> void:
 		ov.glow = lerpf(ov.glow, ov.glow_target, minf(12.0 * delta, 1.0))
 		if absf(ov.glow - ov.glow_target) < 0.01:
 			ov.glow = ov.glow_target
+
+		if ov.ready_delay > 0.0:
+			ov.ready_delay = maxf(0.0, ov.ready_delay - delta)
 
 		if orb.node_index == -1 or ov.shattered:
 			ov.sprite.visible = false
@@ -523,7 +429,6 @@ func _on_orb_added(orb: Orb) -> void:
 	add_child(ov.sprite)
 	orb_visuals.append(ov)
 	_orb_visual_map[orb] = ov
-	_auto_assign_slot(orb)
 
 
 func _on_orb_removed(orb: Orb) -> void:
@@ -542,19 +447,6 @@ func _on_relic_added(relic: RelicData, _qty: int) -> void:
 func _tick_relics(delta: float) -> void:
 	for relic: RelicData in $Inventory.relics:
 		relic.tick(delta, self)
-
-
-func _auto_assign_slot(orb: Orb) -> void:
-	var taken: Dictionary = {}
-	for o: Orb in $Inventory.orbs:
-		if o != orb and o.input_action != "":
-			taken[o.input_action] = true
-	for n in range(1, max_orb_inputs + 1):
-		var action: String = "orb_%d" % n
-		if not taken.has(action):
-			orb.input_action = action
-			return
-	orb.input_action = ""
 
 
 func shatter_orb(orb_index: int) -> void:
@@ -610,7 +502,6 @@ func store_light_in_orb(orb_index: int, amount: float) -> void:
 func _tick_mining(delta: float) -> void:
 	var tilemap: Node = %TilemapManager
 
-	# ── mining cooldown gate ──────────────────────────────────────────
 	if not _mining_enabled:
 		_mine_cooldown_timer -= delta
 		if _mine_cooldown_timer <= 0.0:
@@ -627,7 +518,6 @@ func _tick_mining(delta: float) -> void:
 			_pending_mine_damage = still_pending
 			return
 
-	# ── drain pending damage ──────────────────────────────────────────
 	var still_pending: Array[PendingMineDamage] = []
 	for pd: PendingMineDamage in _pending_mine_damage:
 		pd.timer -= delta
@@ -650,12 +540,11 @@ func _tick_mining(delta: float) -> void:
 	if _mine_press_timer < MINE_PRESS_DELAY:
 		return
 
-	# ── strike ───────────────────────────────────────────────────────
-	var max_hp: int    = tilemap.get_tile_max_health(tilemap.tile_types.get(_mine_target, Util.tile.STONE))
-	var cur_hp: int    = tilemap.tile_health.get(_mine_target, max_hp)
-	var dmg_ratio:     float = 1.0 - clampf(float(cur_hp - 6) / float(max_hp), 0.0, 1.0)
-	var bounce_px:     float = lerpf(MINE_BOUNCE_AMOUNT * 0.5, MINE_BOUNCE_AMOUNT, dmg_ratio)
-	var dig_dir:       Vector2 = Vector2(direction)
+	var max_hp: int      = tilemap.get_tile_max_health(tilemap.tile_types.get(_mine_target, Util.tile.STONE))
+	var cur_hp: int      = tilemap.tile_health.get(_mine_target, max_hp)
+	var dmg_ratio: float = 1.0 - clampf(float(cur_hp - 6) / float(max_hp), 0.0, 1.0)
+	var bounce_px: float = lerpf(MINE_BOUNCE_AMOUNT * 0.5, MINE_BOUNCE_AMOUNT, dmg_ratio)
+	var dig_dir:   Vector2 = Vector2(direction)
 
 	var world_pos: Vector2   = tilemap.map_to_world(_mine_target)
 	var base_type: Util.tile = tilemap.tile_types.get(_mine_target, Util.tile.STONE)
@@ -676,18 +565,13 @@ func _tick_mining(delta: float) -> void:
 			var delay: float = float(dist) * 0.06
 			tilemap.bounce_tile(nb, bounce_px * MINE_BOUNCE_FALLOFF, delay, bounce_dur)
 			_schedule_mine_damage(nb, 2, delay + bounce_dur)
-
-			# Only spawn dust on tiles that actually exist.
-			# AOE deals 2 damage vs center's 4, so intensity = 0.5.
-			# Scale further by dist so diagonal tiles feel lighter than cardinals.
 			if tilemap.tile_exists(nb):
-				var nb_world:    Vector2   = tilemap.map_to_world(nb)
-				var nb_type:     Util.tile = tilemap.tile_types.get(nb, Util.tile.STONE)
-				var nb_intensity: float    = 0.5 / float(dist)   # 0.5 cardinal, 0.25 diagonal
+				var nb_world:     Vector2   = tilemap.map_to_world(nb)
+				var nb_type:      Util.tile = tilemap.tile_types.get(nb, Util.tile.STONE)
+				var nb_intensity: float     = 0.5 / float(dist)
 				ParticleManager.spawn_mining_chunks(nb_world, nb_type, dig_dir, nb_intensity)
 
-	if tilemap.camera and tilemap.camera.has_method("shake"):
-		tilemap.camera.shake(0.2)
+	%Camera2D.shake(0.2)
 
 	_mine_cooldown_timer = MINE_TICK_INTERVAL
 	_mining_enabled      = false
@@ -727,7 +611,7 @@ func _try_open_forge() -> void:
 # =============================================================== environment ==
 
 func _tick_env(delta: float) -> void:
-	if channeling_orb_index == -1 and env_t > 0.0:
+	if env_t > 0.0:
 		env_t = maxf(0.0, env_t - delta * FOCUS_DECAY)
 		_set_env(env_t)
 
@@ -753,8 +637,7 @@ func _tick_dev_input() -> void:
 			%CanvasModulate.color      = Color.WHITE
 			_dev_reset_cooldowns()
 	if Input.is_action_just_pressed("dev_call_wave"):
-		WaveManager.timer = 0.0
-		WaveManager._launch_wave()
+		WaveManager._spawn_enemy()
 	if Input.is_action_just_pressed("interact") and _nearby_forge != null:
 		_try_open_forge()
 	if Input.is_action_just_pressed("zoom_in"):
@@ -768,6 +651,7 @@ func _dev_reset_cooldowns() -> void:
 		ov.shattered    = false
 		ov.cooldown_age = 0.0
 		ov.cooldown     = 0.0
+		ov.ready_delay  = 0.0
 		ov.reform_flash = orb_reform_flash
 		ov.reforming    = true
 		ov.glow_target  = 0.0

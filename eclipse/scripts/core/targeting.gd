@@ -133,8 +133,41 @@ static func enemies_in_radius(
 	return results
 
 
+## First target for a new lightning chain.
+## Prefers a ConductorPost over an enemy when the post is closer AND has at
+## least one enemy within hop_radius of it (so routing through it is useful).
+## Falls back to the nearest enemy directly when no qualifying post exists.
+static func nearest_chain_first_target(
+		origin:     Vector2,
+		range:      float,
+		hop_radius: float
+) -> Node2D:
+	var nearest_enemy: Node2D = _nearest_enemy_to(origin, range)
+	var nearest_post:  Node2D = _nearest_conductor_post(origin, range)
+
+	# No post in range — just use the nearest enemy.
+	if nearest_post == null:
+		return nearest_enemy
+
+	# Post is in range: only prefer it if it's closer than the enemy AND has
+	# at least one enemy within hop_radius (otherwise it's a dead-end).
+	var post_d2:  float = origin.distance_squared_to(nearest_post.global_position)
+	var enemy_d2: float = INF if nearest_enemy == null 			else origin.distance_squared_to(nearest_enemy.global_position)
+
+	if post_d2 < enemy_d2:
+		for enemy: Enemy in EnemyManager.living_enemies:
+			if not is_instance_valid(enemy):
+				continue
+			if nearest_post.global_position.distance_squared_to(enemy.global_position) <= hop_radius * hop_radius:
+				return nearest_post  # post wins: closer and has a reachable enemy
+
+	# Enemy is closer, or post has no reachable enemies nearby.
+	return nearest_enemy
+
+
 ## Nearest enemy or ConductorPost for chain-hop logic (used by LightningChain).
-## Excludes already-hit nodes.
+## Excludes already-hit nodes.  Posts are preferred over enemies mid-chain
+## because they amplify subsequent hops.
 static func nearest_chain_target(
 		origin:  Vector2,
 		radius:  float,
@@ -143,17 +176,6 @@ static func nearest_chain_target(
 	var best_d: float  = radius * radius
 	var best:   Node2D = null
 
-	for enemy: Enemy in EnemyManager.living_enemies:
-		if not is_instance_valid(enemy) or enemy in exclude:
-			continue
-		var d2: float = origin.distance_squared_to(enemy.global_position)
-		if d2 <= best_d:
-			best_d = d2
-			best   = enemy
-
-	if best != null:
-		return best   # enemies beat posts
-
 	for post: ConductorPost in ConductorPost.all_posts:
 		if not is_instance_valid(post) or post in exclude:
 			continue
@@ -161,6 +183,17 @@ static func nearest_chain_target(
 		if d2 <= best_d:
 			best_d = d2
 			best   = post
+
+	if best != null:
+		return best  # posts beat enemies mid-chain
+
+	for enemy: Enemy in EnemyManager.living_enemies:
+		if not is_instance_valid(enemy) or enemy in exclude:
+			continue
+		var d2: float = origin.distance_squared_to(enemy.global_position)
+		if d2 <= best_d:
+			best_d = d2
+			best   = enemy
 
 	return best
 

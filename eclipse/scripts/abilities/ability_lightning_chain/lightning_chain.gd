@@ -99,7 +99,7 @@ func _make_arc(
 	return line
 
 func _apply_hit(target: Enemy, damage: float, is_crit: bool, from_pos: Vector2) -> void:
-	target.take_damage(int(damage), is_crit)
+	target.take_damage(int(damage), _stats.get_armor_pen(), is_crit)
 	if _stats.knockback > 0.0:
 		var dir: Vector2 = (target.global_position - from_pos).normalized()
 		if target.has_method("apply_knockback"):

@@ -29,6 +29,7 @@ SteamStats="*uid://dybuak8nc0jmu"
 SteamAchievements="*uid://okcogwrejctr"
 DamageNumbers="*uid://6dbh0uxmi4i4"
 Targeting="*uid://n3fcvcquvatl"
+ProjectileManager="*uid://dau7r6i2one0e"
 
 [debug]
 

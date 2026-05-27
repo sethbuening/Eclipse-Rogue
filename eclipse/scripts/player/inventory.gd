@@ -8,11 +8,13 @@ signal orb_removed(orb: Orb)
 signal metal_added(metal: MetalData, quantity: int)
 signal metal_removed(metal: MetalData, quantity: int)
 
-var relics: Dictionary = {}   # Util.tile → int
+var relics: Dictionary = {}   # RelicData → int
 var orbs:   Array[Orb] = []
 var metals: Dictionary = {}   # MetalData → int
 
+
 # ── relics ────────────────────────────────────────────────────────────────────
+
 func add_relic(relic: RelicData, quantity: int = 1) -> void:
 	relics[relic] = relics.get(relic, 0) + quantity
 	emit_signal("relic_added", relic, quantity)
@@ -32,7 +34,9 @@ func has_relic(relic: RelicData, quantity: int = 1) -> bool:
 func get_relic_quantity(relic: RelicData) -> int:
 	return relics.get(relic, 0)
 
+
 # ── metals ────────────────────────────────────────────────────────────────────
+
 func add_metal(metal: MetalData, quantity: int = 1) -> void:
 	metals[metal] = metals.get(metal, 0) + quantity
 	emit_signal("metal_added", metal, quantity)
@@ -55,7 +59,9 @@ func get_metal_quantity(metal: MetalData) -> int:
 func get_metals() -> Dictionary:
 	return metals.duplicate()
 
+
 # ── orbs ──────────────────────────────────────────────────────────────────────
+
 func add_orb(orb: Orb) -> void:
 	orbs.append(orb)
 	emit_signal("orb_added", orb)
@@ -66,16 +72,3 @@ func remove_orb(orb: Orb) -> bool:
 	orbs.erase(orb)
 	emit_signal("orb_removed", orb)
 	return true
-
-func get_orbs_by_trigger(trigger: AbilityData.TriggerType) -> Array[Orb]:
-	return orbs.filter(func(o: Orb) -> bool:
-		return o.abilities.any(func(a: AbilityData) -> bool:
-			return a != null and a.trigger_type == trigger
-		)
-	)
-
-func get_all_active_orbs() -> Array[Orb]:
-	return get_orbs_by_trigger(AbilityData.TriggerType.ACTIVE)
-
-func get_all_passive_orbs() -> Array[Orb]:
-	return get_orbs_by_trigger(AbilityData.TriggerType.PASSIVE)

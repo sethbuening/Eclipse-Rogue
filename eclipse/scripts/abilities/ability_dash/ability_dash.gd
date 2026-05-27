@@ -4,23 +4,20 @@ extends AbilityData
 func _init() -> void:
 	main_stats = ["range"]
 
-func activate(context: Dictionary) -> void:
-	if not context.get("pressed", false):
-		return
+func tick(context: Dictionary) -> void:
+	super.tick(context)
 	var player: CharacterBody2D = context["player"]
 
-	# Dash toward the nearest enemy, falling back to movement / facing direction.
-	var dir: Vector2 = Targeting.dash_direction(player)
-
-	# If there is a nearby enemy, prefer dashing toward it instead.
+	# Only dash if there is an enemy to dash toward.
 	@warning_ignore("shadowed_global_identifier")
-	var range: float  = get_stat("range")
+	var range: float = get_stat("range")
 	var nearest: Util.TargetingResult = Targeting.nearest_enemy(player, range * 2.0)
-	if nearest.found:
-		dir = (nearest.position - player.global_position).normalized()
+	if not nearest.found:
+		return
 
-	# Step along the dash, stopping before any collision.
-	var space:  PhysicsDirectSpaceState2D  = player.get_world_2d().direct_space_state
+	var dir: Vector2 = (nearest.position - player.global_position).normalized()
+
+	var space:  PhysicsDirectSpaceState2D   = player.get_world_2d().direct_space_state
 	var params: PhysicsRayQueryParameters2D = PhysicsRayQueryParameters2D.create(
 		player.global_position,
 		player.global_position + dir * range

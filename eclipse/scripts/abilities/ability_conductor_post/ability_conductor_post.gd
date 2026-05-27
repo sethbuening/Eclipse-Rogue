@@ -3,9 +3,8 @@ extends AbilityData
 
 const ConductorPostScene := preload("res://scenes/abilities/conductor_post.tscn")
 
-func activate(context: Dictionary) -> void:
-	if not context.get("pressed", false):
-		return
+func tick(context: Dictionary) -> void:
+	super.tick(context)
 	var player:    Node2D = context["player"]
 	var tilemap:   Node   = context.get("tilemap")
 	var orb_index: int    = context.get("orb_index", -1)
@@ -13,9 +12,18 @@ func activate(context: Dictionary) -> void:
 	var cast_range: float = get_stat("range") if stats and stats.range > 0.0 else 0.0
 	var aoe:        float = get_stat("aoe_radius") if stats else 32.0
 
-	# Auto-place: find the best open position that covers the most enemies,
-	# radiating from the player — no cursor or aim input needed.
+	# Only place if the best position would immediately cover at least one enemy.
+	if EnemyManager.living_enemies.is_empty():
+		return
+
 	var spawn_pos: Vector2 = _best_placement(player, tilemap, cast_range, aoe)
+
+	var enemies_covered: int = 0
+	for enemy: Enemy in EnemyManager.living_enemies:
+		if is_instance_valid(enemy) and spawn_pos.distance_to(enemy.global_position) <= aoe:
+			enemies_covered += 1
+	if enemies_covered == 0:
+		return
 
 	if orb_index >= 0 and orb_index < player.orb_visuals.size():
 		player.orb_visuals[orb_index].sprite.global_position = spawn_pos
@@ -36,16 +44,12 @@ func _best_placement(player: Node2D, tilemap: Node, cast_range: float, aoe: floa
 	if tilemap == null or EnemyManager.living_enemies.is_empty():
 		return _safe_position(player, tilemap, player.global_position, cast_range)
 
-	# Score candidate positions by how many enemies fall within aoe.
-	# Candidates: a ring of points at cast_range around the player, plus the
-	# centroid of nearby enemies (which tends to be the sweet spot).
 	var candidates: Array[Vector2] = []
 	var step_count: int = 12
 	for i in range(step_count):
 		var angle: float = (float(i) / float(step_count)) * TAU
 		candidates.append(player.global_position + Vector2(cos(angle), sin(angle)) * cast_range * 0.85)
 
-	# Add centroid of enemies within 2× cast_range as a bonus candidate.
 	var centroid := Vector2.ZERO
 	var count:     int = 0
 	for enemy: Enemy in EnemyManager.living_enemies:
@@ -72,8 +76,6 @@ func _best_placement(player: Node2D, tilemap: Node, cast_range: float, aoe: floa
 	return best_pos
 
 
-## Walk from `target` toward the player until we reach an open air tile,
-## clamped to cast_range.
 func _safe_position(player: Node2D, tilemap: Node, target: Vector2, cast_range: float) -> Vector2:
 	var pos: Vector2 = _clamp_to_range(player.global_position, target, cast_range)
 	if tilemap == null or tilemap.is_air(tilemap.world_to_map(pos)):
@@ -83,9 +85,9 @@ func _safe_position(player: Node2D, tilemap: Node, target: Vector2, cast_range: 
 	var dist:      float   = to_player.length()
 	if dist < 1.0:
 		return pos
-	var dir:  Vector2 = to_player / dist
-	var step: float   = 2.0
-	var walked: float = 0.0
+	var dir:    Vector2 = to_player / dist
+	var step:   float   = 2.0
+	var walked: float   = 0.0
 	while walked < dist:
 		walked   += step
 		var candidate: Vector2 = pos + dir * walked

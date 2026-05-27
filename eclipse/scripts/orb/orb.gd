@@ -14,7 +14,6 @@ var node_power_base:        float              = -1.0
 @export var input_action:   String             = ""
 var cooldown:               float              = 0.0
 var light_cost:             float              = 0.0
-var nonhold_fired:          bool               = false
 
 var node_index: int = -1:
 	set(value):
@@ -46,21 +45,9 @@ func primary_ability() -> AbilityData:
 		return null
 	return abilities[0]
 
-func activate_all(context: Dictionary) -> void:
-	context["orb_potency"] = orb_potency   # renamed key
-	for ability: AbilityData in abilities:
-		if ability != null:
-			ability.activate(context)
-
-func activate_trigger(trigger: AbilityData.TriggerType, context: Dictionary) -> void:
-	context["orb_potency"] = orb_potency   # renamed key
-	for ability: AbilityData in abilities:
-		if ability != null and ability.trigger_type == trigger:
-			ability.activate(context)
-
 func store_light(amount: float) -> void:
-	light_stored  += amount
-	orb_potency    = 1.0 + light_stored * 0.01
+	light_stored += amount
+	orb_potency   = 1.0 + light_stored * 0.01
 
 func add_charge(stacks: int) -> void:
 	var base: float = node_power_base if node_power_base >= 0.0 else orb_potency

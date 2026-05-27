@@ -85,7 +85,7 @@ func _apply_hits(origin: Vector2) -> void:
 		var is_crit:      bool  = _stats.roll_crit(_player)
 		var scaled_power: float = _stats.get_stat("power", _orb_potency, _main_stats)
 		var damage:       float = scaled_power * (_stats.crit_damage if is_crit else 1.0)
-		(body as Enemy).take_damage(int(damage), is_crit)
+		(body as Enemy).take_damage(int(damage), _stats.get_armor_pen(), is_crit)
 
 func _mine_tiles_async(origin: Vector2) -> void:
 	_mining           = true

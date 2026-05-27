@@ -18,7 +18,6 @@ script = ExtResource("1_kqyj5")
 id = "FocusMine"
 display_name = "Focus Explosion"
 description = "Focus and explode tiles in front of yourself. If you are not facing any tiles, focus and receive 3 guaranteed critical hits on your next 3 attacks."
-requires_hold = true
 targeting_type = 4
 stats = SubResource("Resource_ca384")
 main_stats = Array[String](["mining_radius", "mining_power"])

@@ -99,10 +99,10 @@ func _find_best_target() -> Vector2:
 
 # ── combat ────────────────────────────────────────────────────────────────────
 
-func take_damage(amount: int, is_crit: bool = false) -> void:
+func take_damage(amount: int, armor_penetration: int = 0, is_crit: bool = false) -> void:
 	if not _vulnerable:
 		return
-	super.take_damage(amount, is_crit)
+	super.take_damage(amount, armor_penetration, is_crit)
 
 func die() -> void:
 	for pylon: E_Pylon in _pylons:

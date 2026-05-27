@@ -3,18 +3,16 @@ extends AbilityData
 
 const GoldBombScene := preload("res://scenes/abilities/gold_bomb.tscn")
 
-func activate(context: Dictionary) -> void:
-	if not context.get("pressed", false):
-		return
+func tick(context: Dictionary) -> void:
+	super.tick(context)
 	var player:    Node2D  = context["player"]
 	var orb_index: int     = context.get("orb_index", -1)
 	var orb_spawn: Vector2 = player.global_position
 	if orb_index >= 0 and orb_index < player.orb_visuals.size():
 		orb_spawn = player.orb_visuals[orb_index].sprite.global_position
 
-	# Auto-target: nearest enemy, fall back to nearest tile — no aiming needed.
-	var result: Util.TargetingResult = Targeting.nearest_enemy_or_tile(
-		player, context.get("tilemap"), get_stat("range")
+	var result: Util.TargetingResult = Targeting.nearest_enemy(
+		player, get_stat("range")
 	)
 	if not result.found:
 		return

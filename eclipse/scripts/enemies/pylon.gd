@@ -51,14 +51,10 @@ func _physics_process(delta: float) -> void:
 
 # ── combat ────────────────────────────────────────────────────────────────────
 
-func take_damage(amount: int, is_crit: bool = false) -> void:
+func take_damage(amount: int, armor_penetration: int = 0, is_crit: bool = false) -> void:
 	if not _alive:
 		return
-	var reduced: int = int(amount * (1.0 - data.damage_reduction))
-	health -= reduced
-	DamageNumbers.spawn(global_position + Vector2(0, -16), reduced, is_crit)
-	if health <= 0:
-		die()
+	super.take_damage(amount, armor_penetration, is_crit)
 
 func die() -> void:
 	_alive = false

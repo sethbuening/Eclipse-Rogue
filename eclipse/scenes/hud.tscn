@@ -1,11 +1,12 @@
 [gd_scene format=3 uid="uid://bip2hrfg3w2fv"]
 
-[ext_resource type="Script" uid="uid://dwdhweosf1n2y" path="res://scripts/player/health_bar.gd" id="1_047uy"]
+[ext_resource type="Script" uid="uid://dwdhweosf1n2y" path="res://scripts/player/power_bar.gd" id="1_047uy"]
 [ext_resource type="Shader" uid="uid://cbu17c4fxjgja" path="res://scripts/world/liquid_body.gdshader" id="2_5pdws"]
 [ext_resource type="Texture2D" uid="uid://bg1lr7frs5kir" path="res://art/liquid_body.png" id="3_hd3ao"]
 [ext_resource type="Shader" uid="uid://ct3iy23q2ae7x" path="res://scripts/world/liquid_swirl.gdshader" id="4_0i1j5"]
 [ext_resource type="Texture2D" uid="uid://bklt0ds8qdplu" path="res://art/swirl.png" id="5_mphia"]
 [ext_resource type="Texture2D" uid="uid://ci6spge5ieckt" path="res://art/glass_container.png" id="6_0m4u7"]
+[ext_resource type="Script" uid="uid://drrrbvsol7dc4" path="res://scripts/player/health_bar.gd" id="7_5pdws"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_dinhu"]
 shader = ExtResource("2_5pdws")
@@ -22,31 +23,65 @@ shader_parameter/fps = 12.0
 scale = Vector2(4, 4)
 transform = Transform2D(4, 0, 0, 4, 0, 0)
 
-[node name="health bar" type="Control" parent="." unique_id=909787700]
+[node name="power bar" type="Control" parent="." unique_id=909787700]
 layout_mode = 3
 anchors_preset = 0
-offset_right = 18.75
+offset_left = -1.5
+offset_right = 17.25
 offset_bottom = 325.25
 script = ExtResource("1_047uy")
 bar_height = 300.0
 
-[node name="liquid_parent" type="Node2D" parent="health bar" unique_id=1854861087]
+[node name="liquid_parent" type="Node2D" parent="power bar" unique_id=1854861087]
 position = Vector2(10, 15)
 
-[node name="body" type="TextureRect" parent="health bar/liquid_parent" unique_id=1300397436]
+[node name="body" type="TextureRect" parent="power bar/liquid_parent" unique_id=1300397436]
 material = SubResource("ShaderMaterial_dinhu")
 offset_right = 11.0
 offset_bottom = 315.0
 texture = ExtResource("3_hd3ao")
 
-[node name="swirl" type="TextureRect" parent="health bar/liquid_parent" unique_id=569135978]
+[node name="swirl" type="TextureRect" parent="power bar/liquid_parent" unique_id=569135978]
 material = SubResource("ShaderMaterial_rysoc")
 offset_top = -4.0
 offset_right = 11.0
 offset_bottom = 4.0
 texture = ExtResource("5_mphia")
 
-[node name="glass_frame" type="TextureRect" parent="health bar" unique_id=903792872]
+[node name="glass_frame" type="TextureRect" parent="power bar" unique_id=903792872]
+layout_mode = 0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 40.0
+offset_bottom = 358.0
+texture = ExtResource("6_0m4u7")
+
+[node name="health bar" type="Control" parent="." unique_id=1119091265]
+layout_mode = 3
+anchors_preset = 0
+offset_left = 21.5
+offset_top = -0.25
+offset_right = 21.5
+offset_bottom = -0.25
+script = ExtResource("7_5pdws")
+
+[node name="liquid_parent" type="Node2D" parent="health bar" unique_id=431274752]
+position = Vector2(10, 15)
+
+[node name="body" type="TextureRect" parent="health bar/liquid_parent" unique_id=1848087896]
+material = SubResource("ShaderMaterial_dinhu")
+offset_right = 11.0
+offset_bottom = 315.0
+texture = ExtResource("3_hd3ao")
+
+[node name="swirl" type="TextureRect" parent="health bar/liquid_parent" unique_id=180327057]
+material = SubResource("ShaderMaterial_rysoc")
+offset_top = -4.0
+offset_right = 11.0
+offset_bottom = 4.0
+texture = ExtResource("5_mphia")
+
+[node name="glass_frame" type="TextureRect" parent="health bar" unique_id=1170123230]
 layout_mode = 0
 offset_left = 8.0
 offset_top = 8.0

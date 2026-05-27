@@ -15,8 +15,8 @@ func _ready() -> void:
 	ItemManager.player              = %Player
 	ItemManager.game                = self
 	ItemManager.tilemap_manager     = %TilemapManager
-	WaveManager.wave_started.connect(_on_wave_started)
-	WaveManager.wave_cleared.connect(_on_wave_cleared)
+	WaveManager.swell_started.connect(_on_wave_started)
+	WaveManager.swell_ended.connect(_on_wave_cleared)
 	%TilemapManager.camera = %Camera2D
 	%GraphManager.generate()
 	%OrbGraphMenu.player            = %Player
@@ -70,8 +70,8 @@ func _build_debug_text(fps: int, env: Environment, player: CharacterBody2D) -> S
 		"fps: "     + str(fps),
 		"bloom: "   + str(snappedf(env.glow_bloom, 0.01)),
 		"glow: "    + str(snappedf(env.glow_intensity, 0.01)),
-		"wave: "    + str(WaveManager.wave_number),
-		"enemies: " + str(WaveManager.enemies_alive) + " / " + str(EnemyManager.living_enemies.size()),
+		"wave: "    + str(WaveManager._wave_number),
+		"enemies: " + str(WaveManager._enemies_alive) + " / " + str(EnemyManager.living_enemies.size()),
 	]
 
 	# ── ore collection counts ─────────────────────────────────────────────────
@@ -96,8 +96,8 @@ func _build_debug_text(fps: int, env: Environment, player: CharacterBody2D) -> S
 
 	return "\n".join(lines)
 
-func _on_wave_started(wave: int, modifier: Util.Modifier) -> void:
-	push_debug("WAVE " + str(wave) + " — " + Util.Modifier.keys()[modifier], true)
+func _on_wave_started(wave: int) -> void:
+	push_debug("WAVE " + str(wave) + " — ", true)
 
 func _on_wave_cleared(wave: int) -> void:
 	push_debug("wave " + str(wave) + " cleared", false)

@@ -12,9 +12,7 @@
 [ext_resource type="Texture2D" uid="uid://dk2dsiedhs7ns" path="res://art/tempatlasore.png" id="7_u5sy4"]
 [ext_resource type="Texture2D" uid="uid://be7nay14rgi7b" path="res://art/tempatlasground.png" id="8_ir15t"]
 [ext_resource type="PackedScene" uid="uid://bip2hrfg3w2fv" path="res://scenes/hud.tscn" id="10_kvpfn"]
-[ext_resource type="Script" uid="uid://b5xe63qyvkknf" path="res://scripts/abilities/ability_basic_attack/ability_basic_attack.gd" id="11_rysoc"]
 [ext_resource type="PackedScene" uid="uid://dnytw6xewr0j0" path="res://scenes/forge.tscn" id="12_dinhu"]
-[ext_resource type="Resource" uid="uid://5bwbo1rke82w" path="res://data/abilities/basic_attack.tres" id="12_ssvqc"]
 [ext_resource type="PackedScene" uid="uid://3u75bkav35jp" path="res://scenes/relic_popup.tscn" id="13_kvuet"]
 [ext_resource type="Script" uid="uid://4dxt4mgyo7pu" path="res://scripts/forging/forge_ui.gd" id="15_ir15t"]
 [ext_resource type="Script" uid="uid://cyy2cy40xuqyu" path="res://scripts/nodegraph/graph_manager.gd" id="17_ssvqc"]
@@ -63,7 +61,6 @@ atlas_variants_rock = 1
 [node name="Player" parent="." unique_id=341096909 instance=ExtResource("1_uwrxv")]
 unique_name_in_owner = true
 z_as_relative = false
-basic_attacks = Array[ExtResource("11_rysoc")]([ExtResource("12_ssvqc")])
 
 [node name="Inventory" type="Node" parent="Player" unique_id=1698984047]
 script = ExtResource("5_gee14")
