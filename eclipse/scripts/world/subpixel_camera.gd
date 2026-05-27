@@ -7,9 +7,9 @@ extends Camera2D
 
 # Increase SHAKE_MAX_OFFSET until it feels right in your zoom level.
 # At zoom=1 with 32px tiles, 5–8px is subtle; 12–20px is Vampire Survivors-level punch.
-const SHAKE_DECAY:      float = 7.0   # trauma lost per second
-const SHAKE_MAX_OFFSET: float = 16.0  # max pixel offset at full trauma — was 3.0, too small
-const SHAKE_MAX_ROLL:   float = 0.008 # max rotation in radians at full trauma
+const SHAKE_DECAY:      float = 5.0   # trauma lost per second
+const SHAKE_MAX_OFFSET: float = 20.0  # max pixel offset at full trauma — was 3.0, too small
+const SHAKE_MAX_ROLL:   float = 0.01 # max rotation in radians at full trauma
 
 var _trauma:  float = 0.0
 var _shake_t: float = 0.0
@@ -39,7 +39,7 @@ func _physics_process(delta: float) -> void:
 	if _trauma > 0.0:
 		_trauma  = maxf(0.0, _trauma - SHAKE_DECAY * delta)
 		_shake_t += delta * 45.0
-		var s    := _trauma * _trauma  # square = punchy at high values, subtle at low
+		var s := _trauma  # was _trauma * _trauma
 		offset    = Vector2(
 			SHAKE_MAX_OFFSET * s * _noise(_shake_t),
 			SHAKE_MAX_OFFSET * s * _noise(_shake_t + 100.0)

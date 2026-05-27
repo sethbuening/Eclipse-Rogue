@@ -9,10 +9,15 @@ func activate(context: Dictionary) -> void:
 		return
 	var player: Node2D = context["player"]
 	var tilemap: Node  = context["tilemap"]
-	# Use the auto-targeted position supplied by the player script.
-	# Falls back to mouse position if not provided (e.g. hold-ability path).
-	var target: Vector2 = context.get("target_pos", player.get_global_mouse_position())
-	var dir:    Vector2 = (target - player.global_position).normalized()
+
+	# Auto-target: nearest enemy, fall back to nearest tile — no aiming required.
+	var result: Util.TargetingResult = Targeting.nearest_enemy_or_tile(
+		player, tilemap, get_stat("range")
+	)
+	if not result.found:
+		return
+
+	var dir: Vector2 = (result.position - player.global_position).normalized()
 	var traveller := BasicAttackTraveller.new()
 	traveller.init(
 		player.global_position,

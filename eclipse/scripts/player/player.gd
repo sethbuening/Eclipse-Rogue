@@ -39,13 +39,13 @@ const CHANNEL_POWER_BONUS:  float = 0.5
 const ABILITY_STAGGER_SEC:  float = 0.05
 
 const MINE_PRESS_DELAY:     float = 0.05  # seconds of pushing before mining begins
-const MINE_TICK_INTERVAL:   float = 0.44  # seconds between damage ticks while held
+const MINE_TICK_INTERVAL:   float = 0.33  # seconds between damage ticks while held
 
-const MINE_BOUNCE_AMOUNT:   float = 10.0
-const MINE_BOUNCE_FALLOFF:  float = 0.50
+const MINE_BOUNCE_AMOUNT:   float = 6.0
+const MINE_BOUNCE_FALLOFF:  float = 0.85
 const MINE_AOE_RADIUS:      int   = 1
 var MINE_BOUNCE_DURATION: float:
-	get: return MINE_TICK_INTERVAL * 0.9
+	get: return MINE_TICK_INTERVAL * 0.75
 
 
 # ================================================================= textures ==
@@ -332,7 +332,6 @@ func _make_context(delta: float, pressed: bool, orb_index: int) -> Dictionary:
 		"orb_shattered": orb_visuals[orb_index].shattered,
 		"orb_index":     orb_index,
 		"potency":       $Inventory.orbs[orb_index].orb_potency,
-		"targets":       [],
 	}
 
 
@@ -656,16 +655,11 @@ func _tick_mining(delta: float) -> void:
 	var cur_hp: int    = tilemap.tile_health.get(_mine_target, max_hp)
 	var dmg_ratio:     float = 1.0 - clampf(float(cur_hp - 6) / float(max_hp), 0.0, 1.0)
 	var bounce_px:     float = lerpf(MINE_BOUNCE_AMOUNT * 0.5, MINE_BOUNCE_AMOUNT, dmg_ratio)
+	var dig_dir:       Vector2 = Vector2(direction)
 
 	var world_pos: Vector2   = tilemap.map_to_world(_mine_target)
 	var base_type: Util.tile = tilemap.tile_types.get(_mine_target, Util.tile.STONE)
-	var dig_dir:   Vector2   = Vector2(direction)
-	ParticleManager.spawn_mine_dust(world_pos, base_type)
-	ParticleManager.spawn_mine_chunk_directional(
-		world_pos,
-		ParticleManager._tile_dust_color(base_type),
-		dig_dir * 40.0
-	)
+	ParticleManager.spawn_mining_chunks(world_pos, base_type, dig_dir, 1.0)
 
 	var bounce_dur: float = MINE_BOUNCE_DURATION
 	tilemap.bounce_tile(_mine_target, bounce_px, 0.0, bounce_dur)
@@ -675,14 +669,25 @@ func _tick_mining(delta: float) -> void:
 		for dy: int in range(-MINE_AOE_RADIUS, MINE_AOE_RADIUS + 1):
 			if dx == 0 and dy == 0:
 				continue
-			var nb:    Vector2i = _mine_target + Vector2i(dx, dy)
-			var dist:  int      = absi(dx) + absi(dy)
-			var delay: float    = float(dist) * 0.06
+			var nb: Vector2i = _mine_target + Vector2i(dx, dy)
+			if Vector2i(dx, dy).length() > MINE_AOE_RADIUS:
+				continue
+			var dist:  int   = absi(dx) + absi(dy)
+			var delay: float = float(dist) * 0.06
 			tilemap.bounce_tile(nb, bounce_px * MINE_BOUNCE_FALLOFF, delay, bounce_dur)
 			_schedule_mine_damage(nb, 2, delay + bounce_dur)
 
+			# Only spawn dust on tiles that actually exist.
+			# AOE deals 2 damage vs center's 4, so intensity = 0.5.
+			# Scale further by dist so diagonal tiles feel lighter than cardinals.
+			if tilemap.tile_exists(nb):
+				var nb_world:    Vector2   = tilemap.map_to_world(nb)
+				var nb_type:     Util.tile = tilemap.tile_types.get(nb, Util.tile.STONE)
+				var nb_intensity: float    = 0.5 / float(dist)   # 0.5 cardinal, 0.25 diagonal
+				ParticleManager.spawn_mining_chunks(nb_world, nb_type, dig_dir, nb_intensity)
+
 	if tilemap.camera and tilemap.camera.has_method("shake"):
-		tilemap.camera.shake(0.1)
+		tilemap.camera.shake(0.2)
 
 	_mine_cooldown_timer = MINE_TICK_INTERVAL
 	_mining_enabled      = false

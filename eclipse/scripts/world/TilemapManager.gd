@@ -113,6 +113,7 @@ class OverlayLayer:
 	var has_data:    Callable
 	var get_uv_rect: Callable
 	var get_uv:      Callable
+	var needs_clip:  bool                = false
 
 # Background multimesh layers (no z-row splitting needed — drawn at z=-1 globally)
 var _wall_layer:   OverlayLayer
@@ -471,6 +472,7 @@ func _setup_rendering() -> void:
 	# ── ore overlay (non-occluder) ────────────────────────────────────
 	_ore_layer             = OverlayLayer.new()
 	_ore_layer.atlas       = ore_atlas
+	_ore_layer.needs_clip   = true
 	_ore_layer.has_data    = func(pos: Vector2i) -> bool: return ore_types.has(pos)
 	_ore_layer.get_uv      = func(pos: Vector2i) -> Rect2: return _ore_atlas_uv(pos)
 	_ore_layer.get_uv_rect = func(pos: Vector2i) -> Rect2:
@@ -491,6 +493,7 @@ func _setup_rendering() -> void:
 	# ── relic overlay (non-occluder) ──────────────────────────────────
 	_relic_layer             = OverlayLayer.new()
 	_relic_layer.atlas       = relic_atlas
+	_relic_layer.needs_clip = true
 	_relic_layer.has_data    = func(pos: Vector2i) -> bool: return relic_tiles.has(pos)
 	_relic_layer.get_uv      = func(pos: Vector2i) -> Rect2: return _relic_atlas_uv(pos)
 	_relic_layer.get_uv_rect = func(pos: Vector2i) -> Rect2:
@@ -574,6 +577,13 @@ func _clip_for(pos: Vector2i) -> float:
 	var below_offset: float = _get_bounce_offset(below)
 	return OCCLUDER_CLIP - below_offset
 
+func _clip_for_layer(pos: Vector2i) -> float:
+	var below: Vector2i = pos + Vector2i(0, 1)
+	if is_air(below):
+		return 0.0
+	var below_offset: float = _get_bounce_offset(below)
+	return OCCLUDER_CLIP - below_offset
+
 func _write_occluder_instance(orow: OccluderRow, pos: Vector2i, atlas: Texture2D) -> void:
 	var idx: int = orow.index[pos]
 	var t := Transform2D.IDENTITY
@@ -600,14 +610,15 @@ func _hide_occluder_instance(pos: Vector2i) -> void:
 		t.origin = Vector2(-999999, -999999)
 		orow.multimesh.set_instance_transform_2d(orow.index[pos], t)
 
-# ── multimesh write / hide helpers ────────────────────────────────────
 func _write_layer_instance(layer: OverlayLayer, idx: int, pos: Vector2i) -> void:
 	var t := Transform2D.IDENTITY
 	t.origin = _world_origin(pos)
 	layer.multimesh.set_instance_transform_2d(idx, t)
-	layer.multimesh.set_instance_color(idx, Color(1.0, 1.0, 1.0, 1.0))
+	var alpha: float = 1.0 + _clip_for_layer(pos) if layer.needs_clip else 1.0
+	layer.multimesh.set_instance_color(idx, Color(1.0, 1.0, 1.0, alpha))
 	var uv: Rect2 = layer.get_uv.call(pos)
 	layer.multimesh.set_instance_custom_data(idx, Color(uv.position.x, uv.position.y, uv.size.x, uv.size.y))
+
 
 func _write_ground_instance(idx: int, pos: Vector2i) -> void:
 	var t := Transform2D.IDENTITY
@@ -667,15 +678,18 @@ func set_tile_color(pos: Vector2i, color: Color) -> void:
 			var idx: int   = orow_o.index[pos]
 			var cur: Color = orow_o.multimesh.get_instance_color(idx)
 			orow_o.multimesh.set_instance_color(idx, Color(color.r, color.g, color.b, cur.a))
+		var orow_r: OccluderRow = _occ_relic.get(row, null)
+		if orow_r != null and orow_r.index.has(pos):
+			var idx: int   = orow_r.index[pos]
+			var cur: Color = orow_r.multimesh.get_instance_color(idx)
+			orow_r.multimesh.set_instance_color(idx, Color(color.r, color.g, color.b, cur.a))
 	else:
-		if _wall_layer.index.has(pos):
-			var idx: int = _wall_layer.index[pos]
-			var a: float = _wall_layer.multimesh.get_instance_color(idx).a
-			_wall_layer.multimesh.set_instance_color(idx, Color(color.r, color.g, color.b, a))
-		if _ore_layer.index.has(pos):
-			var idx: int = _ore_layer.index[pos]
-			var a: float = _ore_layer.multimesh.get_instance_color(idx).a
-			_ore_layer.multimesh.set_instance_color(idx, Color(color.r, color.g, color.b, a))
+		for layer: OverlayLayer in [_wall_layer, _ore_layer, _relic_layer]:
+			if not layer.index.has(pos):
+				continue
+			var idx: int = layer.index[pos]
+			var a: float = layer.multimesh.get_instance_color(idx).a
+			layer.multimesh.set_instance_color(idx, Color(color.r, color.g, color.b, a))
 
 # ══════════════════════════════════════════════════════════ collision ══
 func _build_collision() -> void:
@@ -732,86 +746,109 @@ func _update_tile_bounces() -> void:
 		var offset: float = sin(t * PI) * b.amplitude
 		_apply_tile_offset(pos, offset)
 		var above: Vector2i = pos + Vector2i(0, -1)
-		if _is_occluder_tile(above):
+		if tile_types.has(above):
 			var above_offset: float = _get_bounce_offset(above)
 			_apply_tile_offset(above, above_offset)
 	for pos: Vector2i in finished:
 		_tile_bounces.erase(pos)
 		_restore_tile_transform(pos)
 		var above: Vector2i = pos + Vector2i(0, -1)
-		if _is_occluder_tile(above):
-			_restore_tile_transform(above)
+		if _is_occluder_tile(above) and not _tile_bounces.has(above):
+			# Drive the occluder above through one update cycle at zero offset
+			# so _clip_for re-evaluates now that pos may have been destroyed.
+			var b        := BounceState.new()
+			b.start_time  = Time.get_ticks_msec() / 1000.0
+			b.amplitude   = 0.0
+			b.delay       = 0.0
+			b.duration    = 0.05   # just long enough to tick once or twice
+			_tile_bounces[above] = b
+
+const MINE_FLASH_BRIGHTNESS: float = 0.25   # extra RGB added at impact; tune freely
 
 func _apply_tile_offset(pos: Vector2i, offset_y: float) -> void:
 	offset_y = clampf(offset_y, -TILE_SIZE.y / 2.0, TILE_SIZE.y / 2.0)
 	var base: Vector2 = _world_origin(pos)
+	var t := Transform2D.IDENTITY
+	t.origin = base + Vector2(0.0, offset_y)
+
+	var flash: float = 0.0
+	if _tile_bounces.has(pos):
+		var b: BounceState = _tile_bounces[pos]
+		var age: float = (Time.get_ticks_msec() / 1000.0) - b.start_time - b.delay
+		if age >= 0.0:
+			var anim_t: float = age / b.duration
+			if anim_t < 0.5:
+				flash = lerpf(MINE_FLASH_BRIGHTNESS, 0.0, anim_t / 0.5)
+	var fc: float = 1.0 + flash
 
 	if _is_occluder_tile(pos):
 		var clip: float          = _clip_for(pos)
 		var encoded_alpha: float = 1.0 + clip + offset_y
-		var row: int = pos.y
-		var t := Transform2D.IDENTITY
-		t.origin = base + Vector2(0.0, offset_y)
+		var row: int             = pos.y
 
 		var orow_w: OccluderRow = _occ_wall.get(row, null)
 		if orow_w != null and orow_w.index.has(pos):
-			var idx: int   = orow_w.index[pos]
-			var cur: Color = orow_w.multimesh.get_instance_color(idx)
+			var idx: int = orow_w.index[pos]
+			var cur_a: float = orow_w.multimesh.get_instance_color(idx).a
 			orow_w.multimesh.set_instance_transform_2d(idx, t)
-			orow_w.multimesh.set_instance_color(idx, Color(cur.r, cur.g, cur.b, encoded_alpha))
+			orow_w.multimesh.set_instance_color(idx, Color(fc, fc, fc, encoded_alpha))
 
 		var orow_o: OccluderRow = _occ_ore.get(row, null)
 		if orow_o != null and orow_o.index.has(pos):
-			var idx: int   = orow_o.index[pos]
-			var cur: Color = orow_o.multimesh.get_instance_color(idx)
+			var idx: int = orow_o.index[pos]
 			orow_o.multimesh.set_instance_transform_2d(idx, t)
-			orow_o.multimesh.set_instance_color(idx, Color(cur.r, cur.g, cur.b, encoded_alpha))
+			orow_o.multimesh.set_instance_color(idx, Color(fc, fc, fc, encoded_alpha))
 
 		var orow_r: OccluderRow = _occ_relic.get(row, null)
 		if orow_r != null and orow_r.index.has(pos):
-			var idx: int   = orow_r.index[pos]
-			var cur: Color = orow_r.multimesh.get_instance_color(idx)
+			var idx: int = orow_r.index[pos]
 			orow_r.multimesh.set_instance_transform_2d(idx, t)
-			orow_r.multimesh.set_instance_color(idx, Color(cur.r, cur.g, cur.b, encoded_alpha))
+			orow_r.multimesh.set_instance_color(idx, Color(fc, fc, fc, encoded_alpha))
 	else:
-		var t := Transform2D.IDENTITY
-		t.origin = base + Vector2(0.0, offset_y)
-		for layer: OverlayLayer in [_wall_layer, _ore_layer, _relic_layer]:
+		# Wall layer: wall-mode encoding (negative alpha = clip at rest bottom edge)
+		if _wall_layer != null and _wall_layer.index.has(pos) and _wall_layer.has_data.call(pos):
+			var idx: int = _wall_layer.index[pos]
+			_wall_layer.multimesh.set_instance_transform_2d(idx, t)
+			_wall_layer.multimesh.set_instance_color(idx, Color(fc, fc, fc, 1.0 - offset_y))
+
+		# Ore and relic overlays: always occluder-mode encoding (clip front face like occluders)
+		for layer: OverlayLayer in [_ore_layer, _relic_layer]:
 			if layer == null or not layer.index.has(pos):
 				continue
 			if not layer.has_data.call(pos):
 				continue
-			layer.multimesh.set_instance_transform_2d(layer.index[pos], t)
+			var idx:          int   = layer.index[pos]
+			var clip:         float = _clip_for_layer(pos)
+			var encoded_alpha: float = 1.0 + clip + offset_y
+			layer.multimesh.set_instance_transform_2d(idx, t)
+			layer.multimesh.set_instance_color(idx, Color(fc, fc, fc, encoded_alpha))
 
 const OCCLUDER_CLIP: float = 16.0
 
 func _restore_tile_transform(pos: Vector2i) -> void:
-	var base: Vector2 = _world_origin(pos)
-	var t := Transform2D.IDENTITY
-	t.origin = base
-
 	if _is_occluder_tile(pos):
-		var clip: float = _clip_for(pos)
-		var rest_alpha: float = 1.0 + clip
 		var row: int = pos.y
 		var orow_w: OccluderRow = _occ_wall.get(row, null)
 		if orow_w != null and orow_w.index.has(pos):
-			var idx: int   = orow_w.index[pos]
-			var cur: Color = orow_w.multimesh.get_instance_color(idx)
-			orow_w.multimesh.set_instance_transform_2d(idx, t)
-			orow_w.multimesh.set_instance_color(idx, Color(cur.r, cur.g, cur.b, rest_alpha))
+			var cur: Color = orow_w.multimesh.get_instance_color(orow_w.index[pos])
+			_write_occluder_instance(orow_w, pos, tile_atlas)
+			var idx: int = orow_w.index[pos]
+			var written: Color = orow_w.multimesh.get_instance_color(idx)
+			orow_w.multimesh.set_instance_color(idx, Color(cur.r, cur.g, cur.b, written.a))
 		var orow_o: OccluderRow = _occ_ore.get(row, null)
 		if orow_o != null and orow_o.index.has(pos):
-			var idx: int   = orow_o.index[pos]
-			var cur: Color = orow_o.multimesh.get_instance_color(idx)
-			orow_o.multimesh.set_instance_transform_2d(idx, t)
-			orow_o.multimesh.set_instance_color(idx, Color(cur.r, cur.g, cur.b, rest_alpha))
+			var cur: Color = orow_o.multimesh.get_instance_color(orow_o.index[pos])
+			_write_occluder_instance(orow_o, pos, ore_atlas)
+			var idx: int = orow_o.index[pos]
+			var written: Color = orow_o.multimesh.get_instance_color(idx)
+			orow_o.multimesh.set_instance_color(idx, Color(cur.r, cur.g, cur.b, written.a))
 		var orow_r: OccluderRow = _occ_relic.get(row, null)
 		if orow_r != null and orow_r.index.has(pos):
-			var idx: int   = orow_r.index[pos]
-			var cur: Color = orow_r.multimesh.get_instance_color(idx)
-			orow_r.multimesh.set_instance_transform_2d(idx, t)
-			orow_r.multimesh.set_instance_color(idx, Color(cur.r, cur.g, cur.b, rest_alpha))
+			var cur: Color = orow_r.multimesh.get_instance_color(orow_r.index[pos])
+			_write_occluder_instance(orow_r, pos, relic_atlas)
+			var idx: int = orow_r.index[pos]
+			var written: Color = orow_r.multimesh.get_instance_color(idx)
+			orow_r.multimesh.set_instance_color(idx, Color(cur.r, cur.g, cur.b, written.a))
 	else:
 		for layer: OverlayLayer in [_wall_layer, _ore_layer, _relic_layer]:
 			if layer == null or not layer.index.has(pos):
@@ -912,7 +949,9 @@ func remove_tile(pos: Vector2i) -> void:
 	_tile_bounces.erase(pos)
 	for nb: Vector2i in [pos + Vector2i(0,-1), pos + Vector2i(1,0),
 						 pos + Vector2i(0,1),  pos + Vector2i(-1,0)]:
-		_tile_bounces.erase(nb)
+		if _tile_bounces.has(nb):
+			_tile_bounces.erase(nb)
+			_restore_tile_transform(nb)
 
 	_hide_tile_visuals(pos)
 	_erase_tile_data(pos)

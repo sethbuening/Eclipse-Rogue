@@ -12,13 +12,16 @@ func activate(context: Dictionary) -> void:
 	if orb_index >= 0 and orb_index < player.orb_visuals.size():
 		orb_spawn = player.orb_visuals[orb_index].sprite.global_position
 
-	# target_pos is already resolved by the player (mouse or joystick position
-	# clamped to the ability's range) — use it directly.
-	var target: Vector2 = context.get("target_pos", player.get_global_mouse_position())
+	# Auto-target: nearest enemy, fall back to nearest tile — no aiming needed.
+	var result: Util.TargetingResult = Targeting.nearest_enemy_or_tile(
+		player, context.get("tilemap"), get_stat("range")
+	)
+	if not result.found:
+		return
 
 	var bomb := GoldBombScene.instantiate() as GoldBomb
 	player.get_parent().add_child(bomb)
-	bomb.launch(orb_spawn, target, stats, context.get("orb_potency", 1.0), context["tilemap"], main_stats, player)
+	bomb.launch(orb_spawn, result.position, stats, context.get("orb_potency", 1.0), context["tilemap"], main_stats, player)
 	context["orb_t"]     = 1.0
 	context["activated"] = true
 	stats.apply_to_player(player)

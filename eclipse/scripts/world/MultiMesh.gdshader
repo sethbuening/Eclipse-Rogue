@@ -26,12 +26,13 @@ void fragment() {
 	vec2  atlas_uv = uv_origin + local_uv * uv_size;
 	vec4  col      = texture(atlas, atlas_uv) * vec4(instance_color.rgb, 1.0);
 
-	// world_uv.y > 0 means below the tile center.
-	// sprite_size.y * 0.5 is the distance from center to original bottom edge.
-	// instance_color.a carries the bounce offset_y (set per-instance).
-	float bounce_offset = instance_color.a - 1.0;  // we'll encode offset into alpha
-	if (bounce_offset > 0.0 && world_uv.y > (sprite_size.y * 0.5 - bounce_offset)) {
-		discard;
+	float encoded  = instance_color.a - 1.0;
+	if (encoded > 0.0) {
+		// ore/relic/occluder mode: clip bottom N pixels (front face hidden)
+		if (world_uv.y > (sprite_size.y * 0.5 - encoded)) discard;
+	} else if (encoded < 0.0) {
+		// wall mode: never draw below rest bottom edge regardless of bounce
+		if (world_uv.y > (sprite_size.y * 0.5 + encoded)) discard;
 	}
 
 	if (darkness_power > 0.0) {

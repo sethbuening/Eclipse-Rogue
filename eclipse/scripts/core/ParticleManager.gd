@@ -13,6 +13,14 @@ class Particle:
 	var size:       float
 	var use_gravity: bool
 	var canvas_item: RID        # own canvas item for z-sorting
+	# ── smart floor (tile-aware landing) ──────────────────────────────
+	# When true, the bounce floor is not z=0 but is recomputed each frame
+	# from whichever tile is directly under p.pos:
+	#   • solid tile at p.pos   →  floor_z = +16  (top face of that tile)
+	#   • air at p.pos          →  floor_z = -16  (bottom of the air cell / top of tile below)
+	# This lets dust grains settle on the tile surface OR fall into gaps.
+	var use_smart_floor: bool  = false
+	var floor_z:         float = 0.0   # updated by _resolve_floor(); ignored when use_smart_floor=false
 
 const GRAVITY: float = 400.0
 var particles: Array[Particle] = []
@@ -64,56 +72,70 @@ func spawn_focus_spark(pos: Vector2) -> void:
 			true
 		)
 
-func spawn_mine_chunk(pos: Vector2, tile_color: Color) -> void:
+func _tile_chunk_color(tile_type: Util.tile) -> Color:
+	match tile_type:
+		# More saturated and distinct than the old dust colors —
+		# reads as a solid material fragment under pixel art lighting.
+		Util.tile.STONE:   return Color(0.451, 0.459, 0.38, 1.0)   # warm grey-brown
+		Util.tile.ROCK:    return Color(0.282, 0.253, 0.234, 1.0)   # dark charcoal
+		Util.tile.GOLD:    return Color(0.95, 0.78, 0.10)   # vivid gold
+		Util.tile.COPPER:  return Color(0.80, 0.42, 0.18)   # burnt orange
+		Util.tile.CRYSTAL: return Color(0.45, 0.72, 1.00)   # bright ice-blue
+		_:                 return Color(0.52, 0.46, 0.38)
+
+func spawn_mining_chunks(
+		world_pos: Vector2,
+		tile_type: Util.tile,
+		dig_dir:   Vector2 = Vector2.ZERO,
+		intensity: float   = 1.0
+) -> void:
+	var base_color: Color = _tile_chunk_color(tile_type)
+
 	var gradient := Gradient.new()
-	gradient.set_color(0, tile_color)
-	gradient.set_color(1, Color(tile_color.r * 0.5, tile_color.g * 0.5, tile_color.b * 0.5))
-	for i: int in range(randi_range(2, 4)):
-		spawn(
-			pos,
-			Vector2(randf_range(-60, 60), randf_range(-60, 0)),
-			randf_range(40, 120),
+	gradient.set_color(0, Color(base_color.r, base_color.g, base_color.b, 1.0))
+	gradient.set_color(1, Color(base_color.r, base_color.g, base_color.b, 0.0))
+
+	# Spawn at the tile center in world space — world_to_map will map this
+	# to air above the tile, not the tile itself, so wall collision doesn't
+	# fire on frame 1 and kill horizontal velocity.
+	var spawn_origin: Vector2 = Vector2(world_pos.x, world_pos.y - 16.0)
+
+	var count: int = randi_range(3, 4) if intensity >= 1.0 else randi_range(1, 1)
+
+	for i in range(count):
+		var base_angle: float
+		if dig_dir.length() > 0.1:
+			var away_angle: float = (-dig_dir).angle()
+			base_angle = away_angle + randf_range(-PI, PI)
+		else:
+			base_angle = randf_range(-PI, PI)
+
+		var horiz_speed: float   = randf_range(10.0, 20.0)
+		var grain_dir:   Vector2 = Vector2(cos(base_angle), sin(base_angle))
+		var vel_2d:      Vector2 = grain_dir * horiz_speed
+
+		var spawn_offset: Vector2 = Vector2(randf_range(-15.0, 15.0), randf_range(-15.0, 15.0))
+
+		var z_vel_up:  float = randf_range(55.0, 95.0)
+
+		var chunk_size: float = randf_range(2.0, 4.0) if intensity >= 1.0 else randf_range(1.5, 3.0)
+
+		var p: Particle = spawn(
+			spawn_origin + spawn_offset,
+			vel_2d,
+			z_vel_up,
 			gradient,
-			randf_range(0.2, 0.5),
-			randf_range(3.0, 6.0),
-			0.5,
-			true,
+			randf_range(0.55, 1.0),
+			chunk_size,
+			0.25,
+			false,
 			true
 		)
-
-func spawn_mine_chunk_directional(pos: Vector2, tile_color: Color, vel_bias: Vector2) -> void:
-	var gradient := Gradient.new()
-	gradient.set_color(0, tile_color)
-	gradient.set_color(1, Color(tile_color.r * 0.5, tile_color.g * 0.5, tile_color.b * 0.5))
-	for i: int in range(randi_range(2, 4)):
-		spawn(
-			pos,
-			Vector2(randf_range(-50, 50), randf_range(-70, 0)) + vel_bias,
-			randf_range(40, 120),
-			gradient,
-			randf_range(0.2, 0.45),
-			randf_range(3.0, 6.0),
-			0.5,
-			true,
-			true
-		)
-
-func spawn_mine_dust(pos: Vector2, tile_type: Util.tile) -> void:
-	var color: Color = _tile_dust_color(tile_type)
-	var gradient     := Gradient.new()
-	gradient.set_color(0, Color(color.r, color.g, color.b, 0.7))
-	gradient.set_color(1, Color(color.r * 0.6, color.g * 0.6, color.b * 0.6, 0.0))
-	for i in range(randi_range(3, 6)):
-		spawn(
-			pos + Vector2(randf_range(-8, 8), randf_range(-8, 8)),
-			Vector2(randf_range(-30, 30), randf_range(-50, -10)),
-			randf_range(20, 60),
-			gradient,
-			randf_range(0.3, 0.6),
-			randf_range(2.0, 4.0),
-			0.1,
-			false
-		)
+		# Start slightly above z=0 so the particle doesn't immediately re-enter
+		# the source tile's collision volume on the first physics frame.
+		p.z             = 4.0
+		p.use_smart_floor = true
+		p.floor_z       = _resolve_floor(p)
 
 func _tile_dust_color(tile_type: Util.tile) -> Color:
 	match tile_type:
@@ -123,6 +145,85 @@ func _tile_dust_color(tile_type: Util.tile) -> Color:
 		Util.tile.COPPER:  return Color(0.7, 0.4, 0.2)
 		Util.tile.CRYSTAL: return Color(0.4, 0.6, 0.9)
 		_:                 return Color(0.5, 0.45, 0.4)
+
+
+# _resolve_floor: solid tile → 0.0 (grain rests at its spawn Y, which IS the top face)
+#                 air       → -16.0 (grain falls one row down before resting)
+func _resolve_floor(p: Particle) -> float:
+	if tilemap_manager == null:
+		return 0.0
+	var map_pos: Vector2i = tilemap_manager.world_to_map(p.pos)
+	if tilemap_manager.tile_exists(map_pos):
+		# Resting surface is z=0 at spawn height (top face).
+		return 0.0
+	else:
+		# Air — fall to the tile row below (16px drop).
+		return -16.0
+
+
+## General tile-dust spawner.
+## Launches dust grains up and outward from world_pos (the center of the
+## struck tile).  Grains have gravity and use the smart-floor system so they
+## settle on top of whatever tile they land on, or drop 16 px into any air gap.
+##
+## Parameters
+##   world_pos  – center of the tile being struck (map_to_world result)
+##   tile_type  – determines dust colour
+##   dig_dir    – the direction the player is digging (used to bias the burst)
+##   intensity  – 0..1 scale; controls count and speed (default 1.0)
+func spawn_tile_dust(
+		world_pos: Vector2,
+		tile_type: Util.tile,
+		dig_dir:   Vector2 = Vector2.ZERO,
+		intensity: float   = 1.0
+) -> void:
+	var base_color: Color = _tile_dust_color(tile_type)
+
+	var gradient := Gradient.new()
+	gradient.set_color(0, Color(base_color.r, base_color.g, base_color.b, 0.9))
+	gradient.add_point(0.35, Color(base_color.r * 0.85, base_color.g * 0.85, base_color.b * 0.85, 0.7))
+	gradient.set_color(1, Color(base_color.r * 0.55, base_color.g * 0.55, base_color.b * 0.55, 0.0))
+
+	var top_face_y:   float   = world_pos.y - 16.0
+	var spawn_origin: Vector2 = Vector2(world_pos.x, top_face_y)
+
+	var count: int = randi_range(6, 10) if intensity >= 1.0 else randi_range(2, 4)
+
+	for i in range(count):
+		var base_angle: float
+		if dig_dir.length() > 0.1:
+			var away_angle: float = (-dig_dir).angle()
+			base_angle = away_angle + randf_range(-PI, PI)
+		else:
+			base_angle = randf_range(-PI, PI)
+
+		# Reduced horizontal speed — grains pop up and land nearby rather than flying out
+		var horiz_speed: float   = randf_range(10.0, 40.0) * intensity
+		var grain_dir:   Vector2 = Vector2(cos(base_angle), sin(base_angle))
+		var vel_2d:      Vector2 = grain_dir * horiz_speed
+
+		var spawn_offset: Vector2 = Vector2(randf_range(-14.0, 14.0), randf_range(-8.0, 8.0))
+
+		# Low-intensity grains get a strong upward kick so they arc visibly
+		# before settling — like a chunk flicked off the surface, not fine dust.
+		var min_z_vel: float = lerpf(80.0, 50.0, intensity)   # more kick at low intensity
+		var max_z_vel: float = lerpf(180.0, 140.0, intensity)
+		var z_vel_up:  float = randf_range(min_z_vel, max_z_vel)
+
+		var p: Particle = spawn(
+			spawn_origin + spawn_offset,
+			vel_2d,
+			z_vel_up,
+			gradient,
+			randf_range(0.6, 1.2),
+			randf_range(1.5, 3.0),
+			0.2,
+			false,
+			true
+		)
+		p.use_smart_floor = true
+		p.floor_z = _resolve_floor(p)
+
 
 func spawn_focus_particles(pos: Vector2, charge_t: float) -> void:
 	var count: int = 0
@@ -362,7 +463,11 @@ func _process(delta: float) -> void:
 
 		# physics
 		var next_pos: Vector2 = p.pos + p.vel * delta
-		if tilemap_manager != null:
+		var effective_floor: float = p.floor_z if p.use_smart_floor else 0.0
+
+		# Only do 2D wall collision when the particle is at or near ground level.
+		# Airborne particles (z > a small threshold) fly freely over tile geometry.
+		if p.z <= 2.0 and tilemap_manager != null:
 			var map_pos: Vector2i = tilemap_manager.world_to_map(next_pos)
 			if tilemap_manager.tile_exists(map_pos):
 				var tile_center: Vector2 = tilemap_manager.map_to_world(map_pos)
@@ -377,13 +482,23 @@ func _process(delta: float) -> void:
 				p.pos = next_pos
 		else:
 			p.pos = next_pos
+
 		if p.use_gravity:
 			p.z_vel -= GRAVITY * delta
 			p.z     += p.z_vel * delta
-			if p.z < 0.0:
-				p.z     = 0.0
+
+			if p.use_smart_floor and tilemap_manager != null:
+				p.floor_z = _resolve_floor(p)
+
+			effective_floor = p.floor_z if p.use_smart_floor else 0.0
+
+			if p.z < effective_floor:
+				p.z     = effective_floor
 				p.z_vel = -p.z_vel * p.bounce
-				p.vel   *= 0.8
+				p.vel  *= 0.8
+				if absf(p.z_vel) < 8.0:
+					p.z_vel = 0.0
+					p.z     = effective_floor
 		else:
 			p.z += p.z_vel * delta
 
