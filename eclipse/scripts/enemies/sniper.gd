@@ -13,18 +13,6 @@ func _tick_behavior(delta: float) -> void:
 		_attack_timer = 0.0
 		_fire()
 
-func _compute_nav_velocity(delta: float) -> Vector2:
-	var dist: float   = global_position.distance_to(player.global_position)
-	var target: Vector2
-	if dist < FLEE_DIST:
-		# flee directly away
-		target = global_position + (global_position - player.global_position).normalized() * PREFERRED_DIST
-	else:
-		target = _range_offset_target(player.global_position, PREFERRED_DIST)
-	if NavManager._built:
-		return _navigator.navigate_toward(target, delta) + _separation_velocity()
-	return (target - global_position).normalized() * data.speed + _separation_velocity()
-
 func _fire() -> void:
 	var is_crit: bool = data.stats_roll_crit()  # see note below
 	var damage:  int  = data.damage * (3 if is_crit else 1)

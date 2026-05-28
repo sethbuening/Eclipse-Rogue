@@ -23,13 +23,13 @@ ParticleManager="*uid://dsgx4d76etqud"
 EnemyManager="*uid://fcmsyn7h7a2m"
 WaveManager="*uid://ct3irpix2qrbu"
 ItemManager="*uid://ch60r00nky0hr"
-NavManager="*uid://cosh12f6isoqo"
 SteamManager="*uid://kgequth817ek"
 SteamStats="*uid://dybuak8nc0jmu"
 SteamAchievements="*uid://okcogwrejctr"
 DamageNumbers="*uid://6dbh0uxmi4i4"
 Targeting="*uid://n3fcvcquvatl"
 ProjectileManager="*uid://dau7r6i2one0e"
+FlowField="*uid://cq2nlwrm3cnki"
 
 [debug]
 

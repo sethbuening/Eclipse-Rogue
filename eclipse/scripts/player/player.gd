@@ -637,7 +637,7 @@ func _tick_dev_input() -> void:
 			%CanvasModulate.color      = Color.WHITE
 			_dev_reset_cooldowns()
 	if Input.is_action_just_pressed("dev_call_wave"):
-		WaveManager._spawn_enemy()
+		WaveManager._enter_swell()
 	if Input.is_action_just_pressed("interact") and _nearby_forge != null:
 		_try_open_forge()
 	if Input.is_action_just_pressed("zoom_in"):

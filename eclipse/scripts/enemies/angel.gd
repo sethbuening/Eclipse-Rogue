@@ -64,39 +64,6 @@ func _tick_healing(delta: float) -> void:
 			enemy.health += actual
 			DamageNumbers.spawn_heal(enemy.global_position + Vector2(0, -16), actual)
 
-# ── movement ──────────────────────────────────────────────────────────────────
-
-func _compute_nav_velocity(delta: float) -> Vector2:
-	_nav_update_timer += delta
-	if _nav_update_timer >= NAV_UPDATE_INTERVAL:
-		_nav_update_timer = 0.0
-		_nav_target_raw   = _find_best_target()
-
-	_nav_target       = _nav_target.lerp(_nav_target_raw, NAV_TARGET_LERP * delta)
-	_smoothed_sep_vel = _smoothed_sep_vel.lerp(_separation_velocity(), 10.0 * delta)
-
-	var target: Vector2 = _range_offset_target(_nav_target, data.preferred_range)
-	if NavManager._built:
-		return _navigator.navigate_toward(target, delta) + _smoothed_sep_vel
-	return (target - global_position).normalized() * data.speed + _smoothed_sep_vel
-
-func _find_best_target() -> Vector2:
-	var best_pos:   Vector2 = Vector2.ZERO
-	var best_count: int     = 0
-	for candidate: Enemy in EnemyManager.living_enemies:
-		if not is_instance_valid(candidate) or candidate == self or candidate is E_Pylon:
-			continue
-		var count: int = 0
-		for other: Enemy in EnemyManager.living_enemies:
-			if not is_instance_valid(other) or other == self or other is E_Pylon:
-				continue
-			if candidate.global_position.distance_to(other.global_position) < data.heal_radius:
-				count += 1
-		if count > best_count:
-			best_count = count
-			best_pos   = candidate.global_position
-	return best_pos if best_count > 0 else player.global_position
-
 # ── combat ────────────────────────────────────────────────────────────────────
 
 func take_damage(amount: int, armor_penetration: int = 0, is_crit: bool = false) -> void:

@@ -955,7 +955,7 @@ func remove_tile(pos: Vector2i) -> void:
 
 	_hide_tile_visuals(pos)
 	_erase_tile_data(pos)
-	NavManager.on_tile_removed(pos)
+	#NavManager.on_tile_removed(pos)
 
 	var below: Vector2i = pos + Vector2i(0, 1)
 	if tile_types.has(below) and not _is_occluder_tile(below):
@@ -1039,17 +1039,14 @@ func _apply_df_to_occluder_instance(inst: MultiMeshInstance2D) -> void:
 func flush_removed_tiles(removed: Array[Vector2i]) -> void:
 	if removed.is_empty():
 		return
-	var nav_touched: Dictionary = {}
-	var df_touched:  Dictionary = {}
+	var df_touched: Dictionary = {}
 	for pos in removed:
 		var below: Vector2i = pos + Vector2i(0, 1)
 		if tile_types.has(below) and not _is_occluder_tile(below):
 			_promote_to_occluder(below)
 		_redraw_neighbors(pos)
-		nav_touched[Vector2i(pos.x / NavManager.chunk_size, pos.y / NavManager.chunk_size)] = true
-		df_touched[Vector2i(pos.x / DF_CHUNK_SIZE, pos.y / DF_CHUNK_SIZE)]                  = true
-	for chunk in nav_touched:
-		NavManager._dirty_chunks[chunk] = NavManager.REBAKE_DELAY
+		# NavManager chunk dirty — disabled
+		df_touched[Vector2i(pos.x / DF_CHUNK_SIZE, pos.y / DF_CHUNK_SIZE)] = true
 	for chunk in df_touched:
 		if not _df_dirty_chunks.has(chunk):
 			_df_dirty_chunks.append(chunk)

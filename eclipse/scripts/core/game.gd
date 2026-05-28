@@ -24,10 +24,13 @@ func _ready() -> void:
 		"normal_font_size",
 		DisplayServer.window_get_size().y / 50
 	)
-	NavManager.build(%TilemapManager)
+	#NavManager.build(%TilemapManager)
+	FlowField.initialize(%TilemapManager)
 	$Forge.init(%Player)
 
 func _process(delta: float) -> void:
+	FlowField.set_target(%Player.global_position)
+
 	_process_debug_messages(delta)
 	var player: CharacterBody2D = %Player
 	if player == null:
@@ -49,11 +52,10 @@ func _report_drop(fps: int) -> void:
 			shockwaves_active += 1
 		if s._mining:
 			shockwaves_mining += 1
-	push_debug("DROP %d fps | shockwaves active=%d mining=%d | nav_pending=%s | enemies=%d" % [
+	push_debug("DROP %d fps | shockwaves active=%d mining=%d | enemies=%d" % [
 		fps,
 		shockwaves_active,
 		shockwaves_mining,
-		str(NavManager._pending_threads.size()),
 		EnemyManager.living_enemies.size(),
 	], true)
 

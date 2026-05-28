@@ -121,9 +121,7 @@ func _tick_behavior(_delta: float) -> void:
 ## Override to change how this enemy moves.
 ## Status effects are handled by the base class — never replicate them here.
 func _compute_nav_velocity(delta: float) -> Vector2:
-	if NavManager._built:
-		return _navigator.navigate_toward(player.global_position, delta) + _separation_velocity()
-	return (player.global_position - global_position).normalized() * data.speed + _separation_velocity()
+	return _navigator.navigate_toward(player.global_position, delta, true) + _separation_velocity()
 
 # ── attacking ─────────────────────────────────────────────────────────────────
 

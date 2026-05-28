@@ -63,29 +63,6 @@ func _remove_buff(enemy: Enemy) -> void:
 	enemy.data.slow_resistance  = maxf(enemy.data.slow_resistance - data.buff_slow_resistance, 0.0)
 	enemy._navigator.move_speed = enemy.data.speed
 
-# ── movement ──────────────────────────────────────────────────────────────────
-
-func _compute_nav_velocity(delta: float) -> Vector2:
-	var best_pos:   Vector2 = Vector2.ZERO
-	var best_count: int     = 0
-	for candidate: Enemy in EnemyManager.living_enemies:
-		if not is_instance_valid(candidate) or candidate == self or candidate is E_Thunderer:
-			continue
-		var count: int = 0
-		for other: Enemy in EnemyManager.living_enemies:
-			if not is_instance_valid(other) or other == self or other is E_Thunderer:
-				continue
-			if candidate.global_position.distance_to(other.global_position) < data.buff_radius:
-				count += 1
-		if count > best_count:
-			best_count = count
-			best_pos   = candidate.global_position
-	var raw_target: Vector2 = best_pos if best_count > 0 else player.global_position
-	var target:     Vector2 = _range_offset_target(raw_target, data.preferred_range)
-	if NavManager._built:
-		return _navigator.navigate_toward(target, delta) + _separation_velocity()
-	return (target - global_position).normalized() * data.speed + _separation_velocity()
-
 # ── combat ────────────────────────────────────────────────────────────────────
 
 func die() -> void:

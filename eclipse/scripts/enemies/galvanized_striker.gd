@@ -42,14 +42,6 @@ func _set_phase(p: Phase) -> void:
 	_phase_t = 0.0
 	# TODO: trigger visual change here (modulate color, emit particles, etc.)
 
-func _compute_nav_velocity(delta: float) -> Vector2:
-	# Only move toward player while CHARGED
-	if _phase == Phase.CHARGED:
-		if NavManager._built:
-			return _navigator.navigate_toward(player.global_position, delta) + _separation_velocity()
-		return (player.global_position - global_position).normalized() * data.speed + _separation_velocity()
-	return _separation_velocity()   # hold position otherwise
-
 func _do_slam() -> void:
 	# Damage + stun player if in radius
 	var dist: float = global_position.distance_to(player.global_position)
