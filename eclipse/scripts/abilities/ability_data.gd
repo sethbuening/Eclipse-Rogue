@@ -20,3 +20,28 @@ func get_stat(stat_name: String) -> float:
 ## Write context["activated"] = true to trigger the orb shatter / light cost.
 func tick(context: Dictionary) -> void:
 	_orb_potency = context.get("potency", 1.0)
+
+## Applies all stat-driven on-hit effects (knockback, stun, slow, DoT, light)
+## to [target] on behalf of [player]. Call this from any ability after damage.
+## [hit_origin] is the world position the hit came from for knockback direction;
+## leave as default to use the player's position.
+func apply_hit_effects(
+		target:     Enemy,
+		player:     CharacterBody2D,
+		is_crit:    bool    = false,
+		hit_origin: Vector2 = Vector2.INF
+) -> void:
+	var origin: Vector2 = player.global_position if hit_origin == Vector2.INF else hit_origin
+	if get_stat("knockback") > 0.0:
+		var dir: Vector2 = (target.global_position - origin).normalized()
+		target.apply_knockback(dir * get_stat("knockback"))
+	if get_stat("stun_duration") > 0.0:
+		target.apply_stun(get_stat("stun_duration"))
+	if get_stat("slow_amount") > 0.0 and get_stat("slow_duration") > 0.0:
+		target.apply_slow(get_stat("slow_amount"), get_stat("slow_duration"))
+	if get_stat("dot_damage") > 0.0 and get_stat("dot_duration") > 0.0:
+		target.apply_dot(get_stat("dot_damage"), get_stat("dot_duration"))
+	if is_crit and get_stat("light_on_crit") > 0.0:
+		player.light += get_stat("light_on_crit")
+	elif get_stat("light_on_hit") > 0.0:
+		player.light += get_stat("light_on_hit")

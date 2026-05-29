@@ -10,7 +10,7 @@ var _frame_times: Array[float] = []
 
 func _ready() -> void:
 	ParticleManager.tilemap_manager = %TilemapManager
-	EnemyManager.tilemap_manager    = %TilemapManager
+	EnemyManager.tilemap    = %TilemapManager
 	EnemyManager.player             = %Player
 	ItemManager.player              = %Player
 	ItemManager.game                = self

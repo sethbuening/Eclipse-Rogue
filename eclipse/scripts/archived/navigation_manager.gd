@@ -24,7 +24,7 @@ var _chunk_threads:   Dictionary = {}
 var _pending_threads: Dictionary = {}
 
 # ── debug ─────────────────────────────────────────────────────────────────────
-var _debug_draw: bool   = false
+var _debug_draw: bool   = true
 var _debug_node: Node2D = null
 
 # ── public API ────────────────────────────────────────────────────────────────
@@ -154,8 +154,7 @@ func _apply_all_outlines() -> void:
 	_apply_pending = true
 
 	var nav_poly := NavigationPolygon.new()
-	nav_poly.agent_radius         = agent_radius
-	nav_poly.source_geometry_mode = NavigationPolygon.SOURCE_GEOMETRY_GROUPS_WITH_CHILDREN
+	nav_poly.agent_radius = agent_radius
 	for outlines: Array in _chunk_outlines.values():
 		for outline: PackedVector2Array in outlines:
 			nav_poly.add_outline(outline)
@@ -168,12 +167,8 @@ func _apply_all_outlines() -> void:
 		outline.reverse()
 		nav_poly.add_outline(outline)
 
-	var source_geo := NavigationMeshSourceGeometryData2D.new()
-	NavigationServer2D.bake_from_source_geometry_data_async(
-		nav_poly,
-		source_geo,
-		_on_nav_bake_complete.bind(nav_poly)
-	)
+	nav_poly.make_polygons_from_outlines()
+	_on_nav_bake_complete(nav_poly)
 
 func _on_nav_bake_complete(nav_poly: NavigationPolygon) -> void:
 	if _region == null or not is_instance_valid(_region):
@@ -267,14 +262,23 @@ class NavDebugDraw extends Node2D:
 				)
 
 func _draw_navmesh() -> void:
-	if _debug_node != null:
-		_debug_node.queue_free()
+	if is_instance_valid(_debug_node):
+		_debug_node.free()
 		_debug_node = null
+
+	print("_draw_navmesh: debug=%s built=%s region=%s poly=%s" % [
+		_debug_draw,
+		_built,
+		is_instance_valid(_region),
+		_region != null and _region.navigation_polygon != null
+	])
 
 	if not _debug_draw or not _built or _region == null or _region.navigation_polygon == null:
 		return
-
+	
+	# also print after creating the drawer
 	var nav_poly: NavigationPolygon = _region.navigation_polygon
+	print("polygon count: %d  vertex count: %d" % [nav_poly.get_polygon_count(), nav_poly.get_vertices().size()])
 	var drawer := NavDebugDraw.new()
 	drawer.name          = "NavMeshDebug"
 	drawer.z_index       = 4096
@@ -285,4 +289,4 @@ func _draw_navmesh() -> void:
 		drawer.polygons.append(nav_poly.get_polygon(p))
 
 	_debug_node = drawer
-	get_tree().root.add_child(_debug_node)
+	get_tree().current_scene.add_child(_debug_node)

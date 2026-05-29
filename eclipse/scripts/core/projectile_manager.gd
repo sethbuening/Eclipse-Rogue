@@ -5,11 +5,16 @@ extends Node
 
 const DRAW_RADIUS:  float = 3.0
 const FLASH_LIFE:   float = 0.06
-const COLOR_NORMAL: Color = Color(1.0, 0.9, 0.4, 1.0)
-const COLOR_CRIT:   Color = Color(1.0, 0.4, 0.2, 1.0)
+const COLOR_NORMAL: Color = Color(0.898, 0.895, 0.902, 1.0)
+const COLOR_CRIT:   Color = Color(0.999, 0.408, 0.0, 1.0)
+
+# Bullet explosion constants
+const EXPLOSION_LIFE:       float = 0.12
+const EXPLOSION_RADIUS_MAX: float = 10.0
 
 var _projectiles: Array = []
 var _flashes:     Array = []
+var _explosions:  Array = []
 var _canvas:      Node2D
 
 # ── setup ─────────────────────────────────────────────────────────────────────
@@ -86,6 +91,7 @@ func _add(
 func _process(delta: float) -> void:
 	_tick_projectiles(delta)
 	_tick_flashes(delta)
+	_tick_explosions(delta)
 	if _canvas:
 		_canvas.queue_redraw()
 
@@ -138,20 +144,54 @@ func _tick_flashes(delta: float) -> void:
 			alive.append(f)
 	_flashes = alive
 
+func _tick_explosions(delta: float) -> void:
+	var alive: Array = []
+	for e in _explosions:
+		e["life"] -= delta
+		if e["life"] > 0.0:
+			alive.append(e)
+	_explosions = alive
+
 func _spawn_flash(pos: Vector2, color: Color) -> void:
 	_flashes.append({ "pos": pos, "life": FLASH_LIFE, "max_life": FLASH_LIFE, "color": color })
+
+# Called by AbilityBasicAttack when a bullet hits its final target (pierce exhausted)
+func _spawn_bullet_explosion(pos: Vector2, color: Color) -> void:
+	_explosions.append({
+		"pos":      pos,
+		"life":     EXPLOSION_LIFE,
+		"max_life": EXPLOSION_LIFE,
+		"color":    color,
+	})
 
 # ── drawing ───────────────────────────────────────────────────────────────────
 
 func _on_canvas_draw() -> void:
 	var xform: Transform2D = _canvas.get_global_transform().affine_inverse()
+
+	# Generic (non-basic-attack) projectiles — still drawn as circles
 	for p in _projectiles:
 		_canvas.draw_circle(xform * p["pos"], p["radius"], p["color"])
+
+	# Impact flashes
 	for f in _flashes:
 		var t:     float = f["life"] / f["max_life"]
 		var color: Color = Color(f["color"].r, f["color"].g, f["color"].b, t)
 		_canvas.draw_circle(xform * f["pos"], DRAW_RADIUS * (1.0 + (1.0 - t) * 2.0), color)
-	# draw homing projectiles from basic attack abilities
+
+	# Bullet final-hit explosions — bright expanding ring
+	for e in _explosions:
+		var t:      float = e["life"] / e["max_life"]
+		var radius: float = EXPLOSION_RADIUS_MAX * (1.0 - t)
+		var alpha:  float = t
+		# Outer ring
+		var ring_col: Color = Color(e["color"].r, e["color"].g, e["color"].b, alpha * 0.7)
+		_canvas.draw_arc(xform * e["pos"], radius, 0.0, TAU, 12, ring_col, 1.5, true)
+		# Bright core flash
+		var core_col: Color = Color(1.0, 1.0, 1.0, alpha)
+		_canvas.draw_circle(xform * e["pos"], maxf(0.5, radius * 0.3), core_col)
+
+	# Draw bullet streaks from basic attack abilities
 	for node in get_tree().get_nodes_in_group("player"):
 		for attack in node.basic_attacks:
 			attack.draw_projectiles(_canvas)

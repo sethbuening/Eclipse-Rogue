@@ -172,9 +172,9 @@ static func nearest_chain_target(
 		origin:  Vector2,
 		radius:  float,
 		exclude: Array[Node2D]
-) -> Node2D:
+) -> Node:
 	var best_d: float  = radius * radius
-	var best:   Node2D = null
+	var best:   Node = null
 
 	for post: ConductorPost in ConductorPost.all_posts:
 		if not is_instance_valid(post) or post in exclude:
@@ -203,7 +203,7 @@ static func nearest_chain_target(
 
 static func _nearest_enemy_to(origin: Vector2, range: float) -> Node2D:
 	var best_d: float  = range * range
-	var best:   Node2D = null
+	var best:   Node = null
 	for enemy: Enemy in EnemyManager.living_enemies:
 		if not is_instance_valid(enemy):
 			continue

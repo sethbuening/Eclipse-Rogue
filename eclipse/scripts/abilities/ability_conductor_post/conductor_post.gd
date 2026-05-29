@@ -116,14 +116,17 @@ func _pulse_field() -> void:
 	var slow_dur: float = _stats.get_stat("slow_duration", _orb_potency, _main_stats)
 	var dot:      float = _stats.get_stat("dot_damage",    _orb_potency, _main_stats) * effect_scale
 	var dot_dur:  float = _stats.dot_duration
+	var radius:   float = (_field_shape.shape as CircleShape2D).radius
+	var radius_sq: float = radius * radius
 
-	for body in _field_area.get_overlapping_bodies():
-		if not body is Enemy:
+	for enemy in EnemyManager.living_enemies:
+		if not is_instance_valid(enemy):
 			continue
-		var enemy := body as Enemy
-		if slow > 0.0 and enemy.has_method("apply_slow"):
+		if global_position.distance_squared_to(enemy.global_position) > radius_sq:
+			continue
+		if slow > 0.0:
 			enemy.apply_slow(slow, slow_dur)
-		if dot > 0.0 and enemy.has_method("apply_dot"):
+		if dot > 0.0:
 			enemy.apply_dot(dot, dot_dur)
 		ParticleManager.spawn_lightning_spark(enemy.global_position)
 

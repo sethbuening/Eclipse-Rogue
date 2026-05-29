@@ -14,6 +14,7 @@ config/name="Eclipse"
 config/version="0.0.1"
 run/main_scene="uid://byg3fydbr4lwp"
 config/features=PackedStringArray("4.6", "Mobile")
+run/max_fps=60
 config/icon="res://icon.svg"
 
 [autoload]

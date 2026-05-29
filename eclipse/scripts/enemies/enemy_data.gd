@@ -6,6 +6,7 @@ extends Resource
 @export var display_name: String      = "Grunt"
 @export var scene:        PackedScene
 
+
 @export_group("Wave Spawning")
 @export var cost:             int  = 1
 @export var min_wave:         int  = 1
@@ -14,11 +15,10 @@ extends Resource
 @export var is_forge_exclusive: bool = false
 
 @export_group("Core Stats")
-@export var max_health: int   = 3
-@export var speed:      float = 60.0
-## Flat damage reduction from incoming hits (0 = no armour).
-## Effective damage = max(1, raw_damage - armor + attacker_armor_penetration)
-@export var armor:      int   = 0
+@export var max_health:  int   = 3
+@export var speed:       float = 60.0
+@export var turn_speed:  float = 8.0
+@export var armor:       int   = 0
 
 @export_group("Attack")
 @export var damage:              int   = 1
@@ -32,9 +32,10 @@ extends Resource
 @export var armor_penetration:   int   = 0
 
 @export_group("Separation")
-@export var sep_radius:      float = 64.0
-@export var sep_force:       float = 1.0
-@export var preferred_range: float = 32.0
+@export var sep_radius:       float = 64.0
+@export var sep_force:        float = 1.0
+@export var preferred_range:  float = 32.0
+@export var min_separation:   float = 16.0
 
 @export_group("Resistances")
 @export var damage_reduction:     float = 0.0

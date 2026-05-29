@@ -92,6 +92,7 @@ var direction: Vector2i = Vector2i.DOWN:
 # ==================================================================== light ==
 
 @onready var light_bar = $"../HUD/power bar"
+@onready var xp_bar    = $"../HUD/xp"
 
 var light: float = 100.0:
 	set(value):
@@ -99,6 +100,11 @@ var light: float = 100.0:
 		if light_bar:
 			light_bar.set_light(light)
 
+var xp: int = 0:
+	set(value):
+		xp = value
+		if xp_bar:
+			xp_bar.set_xp(xp)
 var guaranteed_crits: int = 0
 
 func heal(amount: int) -> void:

@@ -7,6 +7,7 @@
 [ext_resource type="Texture2D" uid="uid://bklt0ds8qdplu" path="res://art/swirl.png" id="5_mphia"]
 [ext_resource type="Texture2D" uid="uid://ci6spge5ieckt" path="res://art/glass_container.png" id="6_0m4u7"]
 [ext_resource type="Script" uid="uid://drrrbvsol7dc4" path="res://scripts/player/health_bar.gd" id="7_5pdws"]
+[ext_resource type="Script" uid="uid://cdgvnocvn2ycu" path="res://scripts/ui/xp_bar.gd" id="8_hd3ao"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_dinhu"]
 shader = ExtResource("2_5pdws")
@@ -88,3 +89,19 @@ offset_top = 8.0
 offset_right = 40.0
 offset_bottom = 358.0
 texture = ExtResource("6_0m4u7")
+
+[node name="xp" type="ProgressBar" parent="." unique_id=448526275]
+z_index = 4096
+z_as_relative = false
+custom_minimum_size = Vector2(750, 25)
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -375.0
+offset_top = -27.0
+offset_right = 375.0
+grow_horizontal = 2
+grow_vertical = 0
+script = ExtResource("8_hd3ao")

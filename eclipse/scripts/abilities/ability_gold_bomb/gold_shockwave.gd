@@ -79,7 +79,7 @@ func _apply_hits(origin: Vector2) -> void:
 	var space        := get_world_2d().direct_space_state
 
 	for hit in space.intersect_shape(_query, 32):
-		var body := hit["collider"] as Node2D
+		var body := hit["collider"] as Node
 		if not body is Enemy:
 			continue
 		var is_crit:      bool  = _stats.roll_crit(_player)

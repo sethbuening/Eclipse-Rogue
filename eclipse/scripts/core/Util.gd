@@ -109,7 +109,7 @@ static func resolve_target(
 
 static func _nearest_enemy(origin: Vector2, aim: Vector2, range: float) -> Node2D:
 	var best_d: float  = INF
-	var best:   Node2D = null
+	var best:   Node = null
 	for enemy in EnemyManager.living_enemies:
 		if not is_instance_valid(enemy):
 			continue

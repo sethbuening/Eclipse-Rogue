@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="AbilityBasicAttack" format=3 uid="uid://cfo6b6dcl0ekm"]
+
+[ext_resource type="Script" uid="uid://b5xe63qyvkknf" path="res://scripts/abilities/ability_basic_attack/ability_basic_attack.gd" id="1_f4dh7"]
+[ext_resource type="Script" uid="uid://djuyt3y2iehml" path="res://scripts/abilities/ability_stats.gd" id="2_tn6qw"]
+
+[sub_resource type="Resource" id="Resource_r8scv"]
+script = ExtResource("2_tn6qw")
+power = 10.0
+cooldown = 0.1
+duration = 10.0
+range = 150.0
+projectile_speed = 750.0
+crit_chance = 0.03
+crit_damage = 2.0
+metadata/_custom_type_script = "uid://djuyt3y2iehml"
+
+[resource]
+script = ExtResource("1_f4dh7")
+stats = SubResource("Resource_r8scv")
+metadata/_custom_type_script = "uid://b5xe63qyvkknf"

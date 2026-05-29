@@ -7,14 +7,10 @@ var game:          Node2D
 var tilemap_manager: Node
 
 var magnet_radius: float = 64.0
-const PICKUP_RADIUS: float = 8.0
-const MAGNET_SPEED:  float = 315.0
 
 @export var dropped_item_scene: PackedScene = preload("res://scenes/DroppedItem.tscn")
 
-# ── relic/metal pool ────────────────────────────────────────────────────────────────
-# All RelicData resources loaded from res://relics/. TilemapManager draws
-# from this to assign relics to clusters at generation time.
+# ── relic/metal pool ──────────────────────────────────────────────────────────
 var _relic_pool: Array[RelicData] = []
 
 func _ready() -> void:
@@ -28,7 +24,7 @@ func _load_relic_pool() -> void:
 			_relic_pool.append(res as RelicData)
 	_relic_pool.shuffle()
 	print("[ItemManager] Loaded %d relics into pool" % _relic_pool.size())
-	
+
 var _metal_map: Dictionary = {}  # Util.tile → MetalData
 
 func _load_metal_pool() -> void:
@@ -39,10 +35,10 @@ func _load_metal_pool() -> void:
 
 # ── spawning ──────────────────────────────────────────────────────────────────
 
-func spawn_light_orb(world_pos: Vector2) -> void:
+func spawn_xp(world_pos: Vector2) -> void:
 	var count: int = randi_range(3, 5)
 	for i in count:
-		_spawn_item(world_pos, DroppedItem.DropType.LIGHT_ORB, null)
+		_spawn_item(world_pos, DroppedItem.DropType.XP, null)
 
 func spawn_metal_drop(world_pos: Vector2, metal: MetalData) -> void:
 	_spawn_item(world_pos, DroppedItem.DropType.METAL, metal)
@@ -86,12 +82,19 @@ func _physics_process(delta: float) -> void:
 		if not is_instance_valid(item):
 			dropped_items.erase(item)
 			continue
-		var dist: float = item.pos.distance_to(player.global_position)
-		if dist < PICKUP_RADIUS:
-			_collect(item)
+
+		if item.collecting == DroppedItem.CollectPhase.ARC:
+			item.tick_arc(player.global_position, delta)
+			item.z_index = tilemap_manager.get_z_for(item.pos)
+			if item.collect_timer >= item.COLLECT_DURATION:
+				_finish_collect(item)
 			continue
+
+		var dist: float = item.pos.distance_to(player.global_position)
 		if dist < magnet_radius:
-			item.vel = (player.global_position - item.pos).normalized() * MAGNET_SPEED
+			item.begin_collect(player.global_position)
+			continue
+
 		if tilemap_manager != null:
 			var move_dir:  Vector2  = item.vel.normalized() if item.vel.length() > 0.01 else Vector2.ZERO
 			var check_pos: Vector2  = item.pos + move_dir * item.RADIUS + item.vel * delta
@@ -123,11 +126,11 @@ func _physics_process(delta: float) -> void:
 
 # ── collection ────────────────────────────────────────────────────────────────
 
-func _collect(item: Node) -> void:
+func _finish_collect(item: Node) -> void:
 	var inventory: Node = player.get_node("Inventory")
 	match item.drop_type:
-		DroppedItem.DropType.LIGHT_ORB:
-			player.heal(1)
+		DroppedItem.DropType.XP:
+			player.xp += 1
 		DroppedItem.DropType.METAL:
 			if item.metal != null:
 				inventory.add_metal(item.metal, 1)

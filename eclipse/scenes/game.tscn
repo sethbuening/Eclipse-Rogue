@@ -14,7 +14,7 @@
 [ext_resource type="PackedScene" uid="uid://bip2hrfg3w2fv" path="res://scenes/hud.tscn" id="10_kvpfn"]
 [ext_resource type="Script" uid="uid://b5xe63qyvkknf" path="res://scripts/abilities/ability_basic_attack/ability_basic_attack.gd" id="11_rysoc"]
 [ext_resource type="PackedScene" uid="uid://dnytw6xewr0j0" path="res://scenes/forge.tscn" id="12_dinhu"]
-[ext_resource type="Resource" uid="uid://5bwbo1rke82w" path="res://data/abilities/basic_attack.tres" id="12_ssvqc"]
+[ext_resource type="Resource" uid="uid://cfo6b6dcl0ekm" path="res://data/abilities/ability_basic_attack.tres" id="12_ssvqc"]
 [ext_resource type="PackedScene" uid="uid://3u75bkav35jp" path="res://scenes/relic_popup.tscn" id="13_kvuet"]
 [ext_resource type="Script" uid="uid://4dxt4mgyo7pu" path="res://scripts/forging/forge_ui.gd" id="15_ir15t"]
 [ext_resource type="Script" uid="uid://cyy2cy40xuqyu" path="res://scripts/nodegraph/graph_manager.gd" id="17_ssvqc"]

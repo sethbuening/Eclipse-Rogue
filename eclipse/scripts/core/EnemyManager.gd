@@ -1,41 +1,103 @@
 # enemy_manager.gd
 extends Node
 
-var living_enemies:  Array[Enemy]   = []
-var player:          CharacterBody2D
-var tilemap_manager: Node = null
+# ── constants ─────────────────────────────────────────────────────────────────
+
+const SEP_CELL:     float = 64.0
+const AI_TICK_RATE: float = 1.0 / 20.0
+
+# ── public state ──────────────────────────────────────────────────────────────
+
+var living_enemies: Array[Enemy] = []
+var player:         CharacterBody2D
+var tilemap:        Node = null
 
 signal enemy_died
 
+# ── private state ─────────────────────────────────────────────────────────────
+
+var _sep_grid: Dictionary = {}
+var _ai_accum: float      = 0.0
+
+# ── process ───────────────────────────────────────────────────────────────────
+
+func _process(delta: float) -> void:
+	for enemy in living_enemies:
+		if is_instance_valid(enemy):
+			enemy.tick_move(delta)
+
+	_ai_accum += delta
+	if _ai_accum < AI_TICK_RATE:
+		return
+
+	var ai_delta: float = _ai_accum
+	_ai_accum = 0.0
+	_build_sep_grid()
+	for enemy in living_enemies:
+		if is_instance_valid(enemy):
+			enemy.tick_ai(ai_delta)
+
+# ── separation grid ───────────────────────────────────────────────────────────
+
+func _build_sep_grid() -> void:
+	_sep_grid.clear()
+	for enemy in living_enemies:
+		if not is_instance_valid(enemy):
+			continue
+		var cell := Vector2i(
+			int(floor(enemy.global_position.x / SEP_CELL)),
+			int(floor(enemy.global_position.y / SEP_CELL))
+		)
+		if not _sep_grid.has(cell):
+			_sep_grid[cell] = []
+		_sep_grid[cell].append(enemy)
+
+func get_nearby_enemies(pos: Vector2, radius: float) -> Array:
+	var result:      Array = []
+	var cell_radius: int   = int(ceil(radius / SEP_CELL)) + 1
+	var origin := Vector2i(
+		int(floor(pos.x / SEP_CELL)),
+		int(floor(pos.y / SEP_CELL))
+	)
+	for dx in range(-cell_radius, cell_radius + 1):
+		for dy in range(-cell_radius, cell_radius + 1):
+			var bucket = _sep_grid.get(origin + Vector2i(dx, dy), null)
+			if bucket == null:
+				continue
+			for e in bucket:
+				if is_instance_valid(e):
+					result.append(e)
+	return result
+
+# ── spawning ──────────────────────────────────────────────────────────────────
+
 func spawn_squad(squad: Array[EnemyData], modifier: Util.Modifier) -> void:
-	for data: EnemyData in squad:
-		spawn_enemy(data, modifier)
+	for d: EnemyData in squad:
+		spawn_enemy(d, modifier)
 
 func spawn_enemy(data: EnemyData, modifier: Util.Modifier = Util.Modifier.NONE) -> void:
 	if data.scene == null:
-		push_error("[EnemyManager] EnemyData '" + data.id + "' has no scene assigned.")
+		push_error("[EnemyManager] '%s' has no scene assigned." % data.id)
 		return
-	var enemy: Enemy = data.scene.instantiate()
-	enemy.data            = data
-	enemy.tilemap_manager = tilemap_manager
+	var enemy: Enemy  = data.scene.instantiate()
+	enemy.data        = data
+	enemy.tilemap     = tilemap
 	enemy.died.connect(_on_enemy_died)
 	add_child(enemy)
+	enemy.setup(AI_TICK_RATE)
 	enemy.initialize(player, modifier)
 	living_enemies.append(enemy)
 
-## Register an enemy that was spawned outside the normal spawn_enemy path
-## (e.g. pylons parented to another enemy).  Connects the died signal so the
-## entry is cleaned up automatically.
 func register_enemy(enemy: Enemy) -> void:
 	if living_enemies.has(enemy):
 		return
 	enemy.died.connect(_on_enemy_died)
 	living_enemies.append(enemy)
 
-## Remove an enemy from the living list without freeing it.
-## Use when you need manual control over the node lifetime.
 func unregister_enemy(enemy: Enemy) -> void:
 	living_enemies.erase(enemy)
+
+# ── lifecycle ─────────────────────────────────────────────────────────────────
 
 func clear_all() -> void:
 	for enemy: Enemy in living_enemies:
@@ -49,6 +111,3 @@ func on_level_changed() -> void:
 func _on_enemy_died(enemy: Enemy) -> void:
 	living_enemies.erase(enemy)
 	emit_signal("enemy_died")
-
-func Log(msg: Variant) -> void:
-	print("[EnemyManager.gd] " + str(msg))
