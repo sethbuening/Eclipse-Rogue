@@ -8,7 +8,6 @@
 [ext_resource type="Texture2D" uid="uid://ci6spge5ieckt" path="res://art/glass_container.png" id="6_0m4u7"]
 [ext_resource type="Script" uid="uid://drrrbvsol7dc4" path="res://scripts/player/health_bar.gd" id="7_5pdws"]
 [ext_resource type="Script" uid="uid://cdgvnocvn2ycu" path="res://scripts/ui/xp_bar.gd" id="8_hd3ao"]
-[ext_resource type="Script" uid="uid://d0voxhovtph0n" path="res://scripts/ui/health_progress.gd" id="9_0i1j5"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_dinhu"]
 shader = ExtResource("2_5pdws")
@@ -58,7 +57,6 @@ offset_bottom = 358.0
 texture = ExtResource("6_0m4u7")
 
 [node name="health bar" type="Control" parent="." unique_id=1119091265]
-visible = false
 layout_mode = 3
 anchors_preset = 0
 offset_left = 86.0
@@ -98,8 +96,3 @@ z_as_relative = false
 offset_right = 4.0
 offset_bottom = 27.0
 script = ExtResource("8_hd3ao")
-
-[node name="health progress" type="ProgressBar" parent="." unique_id=1158893705]
-offset_right = 4.0
-offset_bottom = 27.0
-script = ExtResource("9_0i1j5")

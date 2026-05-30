@@ -38,6 +38,7 @@ var _z_offset:       float = 0.0   # stagger offset so enemies don't all update 
 # ── setup ─────────────────────────────────────────────────────────────────────
 
 func setup(ai_tick_rate: float) -> void:
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	health          = data.max_health
 	_z_update_every = ai_tick_rate * 10.0   # update z once per 10 AI ticks
 	_z_offset       = randf() * _z_update_every
@@ -213,7 +214,7 @@ func take_damage(amount: int, armor_pen: int = 0, is_crit: bool = false) -> void
 		die()
 
 func die() -> void:
-	ItemManager.spawn_xp(global_position)
+	ItemManager.spawn_xp(global_position, data.xp_value + randi_range(0, 2))
 	emit_signal("died", self)
 	queue_free()
 

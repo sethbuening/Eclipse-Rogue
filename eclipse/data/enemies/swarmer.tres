@@ -10,6 +10,6 @@ display_name = "Swarmer"
 scene = ExtResource("1_21dud")
 max_health = 30
 speed = 30.0
-armor = 5
 damage = 3
+min_separation = 24.0
 metadata/_custom_type_script = "uid://ccvg8ff4amw77"

@@ -68,15 +68,6 @@ var movement_enabled: bool  = true
 
 @onready var speed: float = 100.0 * get_parent().scale.x
 
-var health: int:
-	set(value):
-		health = clampi(value, 0, max_health)
-		var health_bar = $"../HUD/health bar"
-		if health_bar:
-			health_bar.set_health(float(health), float(max_health))
-		if health <= 0:
-			_on_died()
-
 var direction: Vector2i = Vector2i.DOWN:
 	set(value):
 		if direction == value:
@@ -93,6 +84,15 @@ var direction: Vector2i = Vector2i.DOWN:
 
 @onready var light_bar = $"../HUD/power bar"
 @onready var xp_bar    = $"../HUD/xp"
+@onready var health_bar = $"../HUD/health progress"
+
+var health: int:
+	set(value):
+		health = clampi(value, 0, max_health)
+		if health_bar:
+			health_bar.set_health(float(health), float(max_health))
+		if health <= 0:
+			_on_died()
 
 var light: float = 100.0:
 	set(value):

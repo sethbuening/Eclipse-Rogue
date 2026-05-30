@@ -6,7 +6,7 @@
 [sub_resource type="Resource" id="Resource_r8scv"]
 script = ExtResource("2_tn6qw")
 power = 10.0
-cooldown = 0.1
+cooldown = 0.25
 duration = 10.0
 range = 150.0
 projectile_speed = 750.0

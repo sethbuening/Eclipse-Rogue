@@ -35,8 +35,7 @@ func _load_metal_pool() -> void:
 
 # ── spawning ──────────────────────────────────────────────────────────────────
 
-func spawn_xp(world_pos: Vector2) -> void:
-	var count: int = randi_range(3, 5)
+func spawn_xp(world_pos: Vector2, count: int = 1) -> void:
 	for i in count:
 		_spawn_item(world_pos, DroppedItem.DropType.XP, null)
 
