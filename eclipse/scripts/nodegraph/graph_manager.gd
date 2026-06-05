@@ -17,8 +17,6 @@ const STAT_POOL: Array[String] = [
 	"aoe_radius", "pierce",
 	# critical hits
 	"crit_chance", "crit_damage", "crit_aoe",
-	# light / resource
-	"light_cost", "light_on_hit", "light_on_crit",
 	# mining
 	"mining_power", "mining_radius", "ore_yield",
 	# enemy interaction
@@ -31,7 +29,6 @@ const STAT_POOL: Array[String] = [
 # still represents a buff even though the raw value decreases.
 const INVERSE_STATS: Array[String] = [
 	"cooldown",
-	"light_cost",
 ]
 
 func is_inverse(stat_name: String) -> bool:

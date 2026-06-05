@@ -1,4 +1,3 @@
-# ability_stats.gd
 class_name AbilityStats
 extends Resource
 
@@ -26,12 +25,6 @@ extends Resource
 @export var crit_damage:      float = -1
 @export var crit_aoe:         float = -1
 
-# ── light / resource ──────────────────────────────────────────────────────────
-@export_group("Light")
-@export var light_cost:       float = -1
-@export var light_on_hit:     float = -1
-@export var light_on_crit:    float = -1
-
 # ── mining ────────────────────────────────────────────────────────────────────
 @export_group("Mining")
 @export var mining_power:     int   = -1
@@ -52,8 +45,8 @@ extends Resource
 @export var damage_absorb:    float = -1
 @export var reflect_chance:   float = -1
 @export var shield_amount:    float = -1
-@export var armor_bonus:      int   = -1   # flat armor added to the player
-@export var armor_pen:        int   = -1   # flat armor ignored on enemy hits
+@export var armor_bonus:      int   = -1
+@export var armor_pen:        int   = -1
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 func get_stat(stat_name: String, orb_potency: float = 1.0, main_stats: Array[String] = []) -> float:
@@ -80,8 +73,6 @@ func get_armor_pen() -> int:
 	return maxi(0, armor_pen)
 
 func apply_to_player(player: CharacterBody2D) -> void:
-	if light_on_hit != 0.0:
-		player.light += light_on_hit
 	if move_speed_bonus != 0.0:
 		player.speed += move_speed_bonus
 	if armor_bonus > 0:

@@ -20,14 +20,10 @@ const starting_orb_3: Orb = preload("res://data/orbs/orb_lightning_chain.tres")
 const starting_orb_4: Orb = preload("res://data/orbs/orb_conductor_post.tres")
 
 @export_group("Basic Attacks")
-## Abilities in this array fire automatically whenever their cooldown expires.
-## They cost no light and are independent of the orb system.
 @export var basic_attacks: Array[AbilityBasicAttack] = []
 
 @export_group("Health")
 @export var max_health: int = 100
-## Flat damage absorbed per hit before percentage reduction.
-## Effective damage = max(1, raw - max(0, armor - attacker_pen)) * (1 - damage_reduction)
 @export var armor:      int = 0
 
 
@@ -43,7 +39,7 @@ const MINE_PRESS_DELAY:     float = 0.05
 const MINE_TICK_INTERVAL:   float = 0.33
 const MINE_BOUNCE_AMOUNT:   float = 6.0
 const MINE_BOUNCE_FALLOFF:  float = 0.85
-const MINE_AOE_RADIUS:      int   = 1
+const MINE_AOE_RADIUS:      int   = 2
 var MINE_BOUNCE_DURATION: float:
 	get: return MINE_TICK_INTERVAL * 0.75
 
@@ -66,6 +62,8 @@ var time:             float = 0.0
 var env_t:            float = 0.0
 var movement_enabled: bool  = true
 
+var _last_move_dir:    Vector2 = Vector2.RIGHT
+
 @onready var speed: float = 100.0 * get_parent().scale.x
 
 var direction: Vector2i = Vector2i.DOWN:
@@ -80,11 +78,11 @@ var direction: Vector2i = Vector2i.DOWN:
 			Vector2i.LEFT:  $head.texture = head_left;  $body.texture = body_left
 
 
-# ==================================================================== light ==
+# ================================================================== health ==
 
-@onready var light_bar = $"../HUD/power bar"
-@onready var xp_bar    = $"../HUD/xp"
-@onready var health_bar = $"../HUD/health progress"
+@onready var xp_bar           = $"../HUD/xp"
+@onready var health_bar       = $"../HUD/health progress"
+@onready var _level_up_screen = $"../LevelUpScreen"
 
 var health: int:
 	set(value):
@@ -94,21 +92,26 @@ var health: int:
 		if health <= 0:
 			_on_died()
 
-var light: float = 100.0:
-	set(value):
-		light = clampf(value, 0.0, 100.0)
-		if light_bar:
-			light_bar.set_light(light)
-
 var xp: int = 0:
 	set(value):
 		xp = value
 		if xp_bar:
 			xp_bar.set_xp(xp)
+
 var guaranteed_crits: int = 0
 
+# ── mining speed ──────────────────────────────────────────────────────────────
+var mine_speed_mult: float = 1.0  # upgraded by UpgradeMineSpeed
+
+# ── flare stats ───────────────────────────────────────────────────────────────
+var flare_light_level:    float = 1.0   # energy/brightness of thrown flare
+var flare_radius:         float = 80.0  # light radius of the flare
+var flare_throw_velocity: float = 320.0 # pixels per second
+
+const FLARE_SCENE: PackedScene = preload("res://scenes/flare.tscn")
+
 func heal(amount: int) -> void:
-	light += float(amount)
+	health += amount
 	DamageNumbers.spawn_heal(global_position + Vector2(0, -28), amount)
 
 
@@ -129,10 +132,10 @@ class OrbVisual:
 	var reforming:     bool  = false
 	var ready_delay:   float = 0.0
 
-var orb_visuals:     Array[OrbVisual] = []
-var _orb_visual_map: Dictionary       = {}
-var orbit_time:      float            = 0.0
-var orbit_speed_mult: float           = 1.0
+var orb_visuals:      Array[OrbVisual] = []
+var _orb_visual_map:  Dictionary       = {}
+var orbit_time:       float            = 0.0
+var orbit_speed_mult: float            = 1.0
 
 
 # ============================================================ pending activations ==
@@ -166,10 +169,20 @@ var _mining_enabled:      bool     = true
 var _nearby_forge: Forge = null
 
 
+# ================================================================ level ups ==
+
+static var _upgrade_pool:    Array                = []
+var        acquired_upgrades: Array[LevelUpUpgrade] = []
+
+func _get_upgrade_pool() -> Array:
+	if _upgrade_pool.is_empty():
+		_upgrade_pool = Util.load_resources("res://data/upgrades/")
+	return _upgrade_pool
+
 # ==================================================================== ready ==
 
 func _ready() -> void:
-	health = max_health   # triggers the setter so the bar initialises correctly
+	health = max_health
 	add_to_group("player")
 	$Inventory.orb_added.connect(_on_orb_added)
 	$Inventory.orb_removed.connect(_on_orb_removed)
@@ -177,6 +190,8 @@ func _ready() -> void:
 	$Inventory.add_orb(starting_orb_2.clone())
 	$Inventory.add_orb(starting_orb_3.clone())
 	$Inventory.add_orb(starting_orb_4.clone())
+	xp_bar.leveled_up.connect(_on_leveled_up)
+	xp_bar.pressed.connect(_on_level_up_button_pressed)
 
 
 # ================================================================== process ==
@@ -193,8 +208,10 @@ func _process(delta: float) -> void:
 	_tick_abilities(delta)
 	_tick_basic_attacks(delta)
 	_tick_relics(delta)
+	_tick_upgrades(delta)
 	_tick_env(delta)
 	_tick_mining(delta)
+	_tick_flares()
 	_tick_dev_input()
 
 
@@ -205,6 +222,7 @@ func _physics_process(delta: float) -> void:
 	if movement_enabled:
 		if input_vector != Vector2.ZERO:
 			direction = Util.nearest_direction(input_vector)
+		_last_move_dir = input_vector
 		velocity = input_vector * speed
 	else:
 		velocity = Vector2.ZERO
@@ -232,14 +250,6 @@ func _physics_process(delta: float) -> void:
 
 # ================================================================== combat ==
 
-## Called by enemies when they deal damage to the player.
-##
-## armor_penetration — flat armor the attacker ignores (from EnemyData).
-## is_crit           — whether the hit was a crit (shown on damage number).
-##
-## Pipeline (mirrors enemy take_damage):
-##   1. Subtract armor offset by penetration. Minimum 1 so armor can't negate.
-##   2. Result shown as a damage number; health reduced.
 func take_damage(amount: int, armor_penetration: int = 0, is_crit: bool = false) -> void:
 	var after_armor: int = amount - maxi(0, armor - armor_penetration)
 	after_armor = maxi(1, after_armor)
@@ -248,13 +258,10 @@ func take_damage(amount: int, armor_penetration: int = 0, is_crit: bool = false)
 
 func _on_died() -> void:
 	Log("Player died.")
-	# TODO: trigger death screen / respawn
 
 
 # ============================================================ basic attacks ==
 
-## Ticks every AbilityBasicAttack in basic_attacks[].
-## Each ability manages its own cooldown and fires when ready — no light cost.
 func _tick_basic_attacks(delta: float) -> void:
 	if basic_attacks.is_empty():
 		return
@@ -275,7 +282,6 @@ func _tick_abilities(delta: float) -> void:
 		return
 
 	for i in range(orbs.size()):
-		# reset glow target each frame — abilities write upward from here
 		orb_visuals[i].glow_target = 0.0
 
 		var orb: Orb = orbs[i]
@@ -285,8 +291,6 @@ func _tick_abilities(delta: float) -> void:
 			continue
 		if orb_visuals[i].ready_delay > 0.0:
 			continue
-		if not _can_afford_orb(i):
-			continue
 
 		var ctx := _make_context(delta, i)
 
@@ -294,7 +298,6 @@ func _tick_abilities(delta: float) -> void:
 			ability.tick(ctx)
 
 		if ctx["activated"] and not orb_visuals[i].shattered:
-			light -= _orb_cost(i)
 			shatter_orb(i)
 			_trigger_connections(i, delta)
 
@@ -321,21 +324,11 @@ func _make_context(delta: float, orb_index: int) -> Dictionary:
 		"potency":       $Inventory.orbs[orb_index].orb_potency,
 	}
 
-
-func _orb_cost(orb_index: int) -> float:
-	return _compute_orb_light_cost($Inventory.orbs[orb_index])
-
-
-func _can_afford_orb(orb_index: int) -> bool:
-	return light >= _orb_cost(orb_index)
-
-
 func _update_body_glow_from_visuals() -> void:
 	var max_t: float = 0.0
 	for ov: OrbVisual in orb_visuals:
 		max_t = maxf(max_t, ov.glow)
 	_update_body_glow(max_t)
-
 
 func _update_body_glow(t: float) -> void:
 	var glow: Color = Color(lerpf(1.0, 2.0, t), lerpf(1.0, 2.0, t), lerpf(1.0, 2.0, t))
@@ -362,7 +355,7 @@ func _update_orb_visuals(delta: float) -> void:
 		ov.reforming      = true
 		ov.reform_flash   = orb_reform_flash
 		ov.cooldown_age   = 0.0
-		ov.ready_delay = ORB_READY_DELAY if ov.ready_delay <= 0.0 else ov.ready_delay
+		ov.ready_delay    = ORB_READY_DELAY if ov.ready_delay <= 0.0 else ov.ready_delay
 		ov.glow           = 0.0
 		ov.glow_target    = 0.0
 		ov.sprite.visible = false
@@ -399,7 +392,6 @@ func _update_orb_visuals(delta: float) -> void:
 
 		ov.sprite.self_modulate = Color.WHITE * _orb_brightness(ov, delta)
 
-
 func _orb_brightness(ov: OrbVisual, delta: float) -> float:
 	if ov.reform_flash > 0.0:
 		ov.reform_flash -= delta
@@ -408,10 +400,8 @@ func _orb_brightness(ov: OrbVisual, delta: float) -> float:
 		return lerpf(1.0, 3.0, ov.glow)
 	return 1.0
 
-
 func _angle_to_orbit_pos(angle: float) -> Vector2:
 	return Vector2(cos(angle), sin(angle)) * orb_orbit_radius + orb_orbit_center
-
 
 func _recalculate_orb_offsets() -> void:
 	var active: Array[int] = []
@@ -436,7 +426,6 @@ func _on_orb_added(orb: Orb) -> void:
 	orb_visuals.append(ov)
 	_orb_visual_map[orb] = ov
 
-
 func _on_orb_removed(orb: Orb) -> void:
 	if not _orb_visual_map.has(orb):
 		return
@@ -445,15 +434,12 @@ func _on_orb_removed(orb: Orb) -> void:
 	orb_visuals.erase(ov)
 	_orb_visual_map.erase(orb)
 
-
 func _on_relic_added(relic: RelicData, _qty: int) -> void:
 	relic.on_equip(self)
-
 
 func _tick_relics(delta: float) -> void:
 	for relic: RelicData in $Inventory.relics:
 		relic.tick(delta, self)
-
 
 func shatter_orb(orb_index: int) -> void:
 	if orb_index >= orb_visuals.size():
@@ -468,21 +454,7 @@ func shatter_orb(orb_index: int) -> void:
 	ov.cooldown       = _compute_orb_cooldown(orb)
 	ov.sprite.visible = false
 	ov.current_angle  = orbit_time + (float(orb_index) / float(orb_visuals.size())) * TAU
-	ParticleManager.spawn_focus_spark(global_position + ov.sprite.position)
-
-
-func _compute_orb_light_cost(orb: Orb) -> float:
-	if orb.light_cost != 0.0:
-		return orb.light_cost
-	var total: float = 0.0
-	var count: int   = 0
-	for ability: AbilityData in orb.abilities:
-		if ability.stats != null and "light_cost" in ability.stats:
-			total += ability.stats.light_cost
-			count += 1
-	orb.light_cost = total / count if count > 0 else 0.0
-	return orb.light_cost
-
+	ParticleManager.spawn_orb_shatter(global_position + ov.sprite.position)
 
 func _compute_orb_cooldown(orb: Orb) -> float:
 	if orb.cooldown != 0.0:
@@ -494,14 +466,6 @@ func _compute_orb_cooldown(orb: Orb) -> float:
 			total += ability.stats.cooldown
 			count += 1
 	return total / count if count > 0 else 1.0
-
-
-func store_light_in_orb(orb_index: int, amount: float) -> void:
-	if orb_index >= $Inventory.orbs.size():
-		return
-	$Inventory.orbs[orb_index].store_light(amount)
-	ParticleManager.spawn_focus_particles(global_position, 1.0)
-
 
 # ================================================================== mining ==
 
@@ -555,6 +519,7 @@ func _tick_mining(delta: float) -> void:
 	var world_pos: Vector2   = tilemap.map_to_world(_mine_target)
 	var base_type: Util.tile = tilemap.tile_types.get(_mine_target, Util.tile.STONE)
 	ParticleManager.spawn_mining_chunks(world_pos, base_type, dig_dir, 1.0)
+	AudioManagerScene.create_2d_audio_at_location(world_pos, SoundEffect.SOUND_EFFECT_TYPE.TILE_MINE)
 
 	var bounce_dur: float = MINE_BOUNCE_DURATION
 	tilemap.bounce_tile(_mine_target, bounce_px, 0.0, bounce_dur)
@@ -579,9 +544,8 @@ func _tick_mining(delta: float) -> void:
 
 	%Camera2D.shake(0.2)
 
-	_mine_cooldown_timer = MINE_TICK_INTERVAL
+	_mine_cooldown_timer = MINE_TICK_INTERVAL / mine_speed_mult
 	_mining_enabled      = false
-
 
 func _schedule_mine_damage(pos: Vector2i, damage: int, delay: float) -> void:
 	var pd    := PendingMineDamage.new()
@@ -596,11 +560,9 @@ func _schedule_mine_damage(pos: Vector2i, damage: int, delay: float) -> void:
 func _on_forge_in_range(forge: Forge) -> void:
 	_nearby_forge = forge
 
-
 func _on_forge_out_of_range(forge: Forge) -> void:
 	if _nearby_forge == forge:
 		_nearby_forge = null
-
 
 func _try_open_forge() -> void:
 	if _nearby_forge == null:
@@ -621,11 +583,72 @@ func _tick_env(delta: float) -> void:
 		env_t = maxf(0.0, env_t - delta * FOCUS_DECAY)
 		_set_env(env_t)
 
-
 func _set_env(t: float) -> void:
 	var env: Environment = %Environment.environment
 	env.glow_bloom       = lerpf(FOCUS_BLOOM_MIN, FOCUS_BLOOM_MAX, t)
 	env.glow_intensity   = lerpf(FOCUS_GLOW_MIN,  FOCUS_GLOW_MAX,  t)
+
+
+# ================================================================ level ups ==
+
+var _pending_level_ups: int = 0
+
+func _on_leveled_up() -> void:
+	_pending_level_ups += 1
+	xp_bar.notify_level_up(_pending_level_ups)
+
+func _on_level_up_button_pressed() -> void:
+	if _pending_level_ups <= 0:
+		return
+	_show_next_upgrade_screen()
+
+func _show_next_upgrade_screen() -> void:
+	_pending_level_ups -= 1
+	xp_bar.notify_level_up(_pending_level_ups)
+	var choices: Array = _get_upgrade_pool().duplicate()
+	choices.shuffle()
+	choices = choices.slice(0, 3)
+	_level_up_screen.show_upgrades(self, choices)
+	if not _level_up_screen.upgrade_chosen.is_connected(_on_upgrade_chosen):
+		_level_up_screen.upgrade_chosen.connect(_on_upgrade_chosen)
+
+func _on_upgrade_chosen(upgrade: LevelUpUpgrade) -> void:
+	acquired_upgrades.append(upgrade)
+	upgrade.apply(self)
+	if _pending_level_ups > 0:
+		_show_next_upgrade_screen()
+	else:
+		_level_up_screen.upgrade_chosen.disconnect(_on_upgrade_chosen)
+
+func _tick_upgrades(delta: float) -> void:
+	for upgrade: LevelUpUpgrade in acquired_upgrades:
+		upgrade.tick(delta, self)
+
+
+# ================================================================== flares ==
+
+func _tick_flares() -> void:
+	if not Input.is_action_just_pressed("flare"):
+		return
+
+	# Determine throw direction — controller uses right joystick, else mouse
+	var throw_dir: Vector2
+	var joy_vec: Vector2 = Input.get_vector(
+		"aim_left", "aim_right", "aim_up", "aim_down"
+	)
+	if joy_vec.length_squared() > 0.25:
+		throw_dir = joy_vec.normalized()
+	else:
+		var mouse_world: Vector2 = get_global_mouse_position()
+		throw_dir = (mouse_world - global_position).normalized()
+
+	if throw_dir == Vector2.ZERO:
+		throw_dir = Vector2(_last_move_dir) if _last_move_dir != Vector2.ZERO else Vector2.RIGHT
+
+	var flare: Node2D = FLARE_SCENE.instantiate()
+	get_parent().add_child(flare)
+	flare.global_position = global_position
+	flare.launch(throw_dir, flare_throw_velocity, flare_light_level, flare_radius)
 
 
 # ================================================================= dev tools ==
@@ -651,7 +674,6 @@ func _tick_dev_input() -> void:
 	if Input.is_action_just_pressed("zoom_out"):
 		%Camera2D.zoom /= 2
 
-
 func _dev_reset_cooldowns() -> void:
 	for ov: OrbVisual in orb_visuals:
 		ov.shattered    = false
@@ -670,7 +692,6 @@ func _trigger_connections(orb_index: int, delta: float) -> void:
 	if node_index == -1:
 		return
 	%GraphManager.on_orb_fired(node_index, {}, $Inventory.orbs[orb_index])
-
 
 func Log(msg: Variant) -> void:
 	print("[player.gd] " + str(msg))

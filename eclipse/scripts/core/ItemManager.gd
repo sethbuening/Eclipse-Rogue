@@ -6,7 +6,7 @@ var player:        CharacterBody2D = null
 var game:          Node2D
 var tilemap_manager: Node
 
-var magnet_radius: float = 64.0
+var magnet_radius: float = 48.0
 
 @export var dropped_item_scene: PackedScene = preload("res://scenes/DroppedItem.tscn")
 

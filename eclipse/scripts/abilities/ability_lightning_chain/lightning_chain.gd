@@ -110,10 +110,4 @@ func _apply_hit(target: Enemy, damage: float, is_crit: bool, from_pos: Vector2) 
 		target.apply_slow(_stats.slow_amount, _stats.slow_duration)
 	if _stats.dot_damage > 0.0 and target.has_method("apply_dot"):
 		target.apply_dot(_stats.dot_damage, _stats.dot_duration)
-	var player: Node = get_tree().get_first_node_in_group("player")
-	if player:
-		if is_crit and _stats.light_on_crit != 0.0:
-			player.light += _stats.light_on_crit
-		elif _stats.light_on_hit != 0.0:
-			player.light += _stats.light_on_hit
 	ParticleManager.spawn_lightning_spark(target.global_position)

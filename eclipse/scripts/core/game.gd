@@ -15,8 +15,10 @@ func _ready() -> void:
 	ItemManager.player              = %Player
 	ItemManager.game                = self
 	ItemManager.tilemap_manager     = %TilemapManager
-	WaveManager.swell_started.connect(_on_wave_started)
-	WaveManager.swell_ended.connect(_on_wave_cleared)
+	WaveManager.encounter_started.connect(_on_encounter_started)
+	WaveManager.horde_started.connect(_on_horde_started)
+	WaveManager.forging_wave_started.connect(_on_forging_wave_started)
+	WaveManager.forging_wave_ended.connect(_on_forging_wave_ended)
 	%TilemapManager.camera = %Camera2D
 	%GraphManager.generate()
 	%OrbGraphMenu.player            = %Player
@@ -72,7 +74,6 @@ func _build_debug_text(fps: int, env: Environment, player: CharacterBody2D) -> S
 		"fps: "     + str(fps),
 		"bloom: "   + str(snappedf(env.glow_bloom, 0.01)),
 		"glow: "    + str(snappedf(env.glow_intensity, 0.01)),
-		"wave: "    + str(WaveManager._wave_number),
 		"enemies: " + str(WaveManager._enemies_alive) + " / " + str(EnemyManager.living_enemies.size()),
 	]
 
@@ -98,8 +99,14 @@ func _build_debug_text(fps: int, env: Environment, player: CharacterBody2D) -> S
 
 	return "\n".join(lines)
 
-func _on_wave_started(wave: int) -> void:
-	push_debug("WAVE " + str(wave) + " — ", true)
+func _on_encounter_started(type: WaveManager.Encounter) -> void:
+	push_debug("ENCOUNTER — " + WaveManager.Encounter.keys()[type], true)
 
-func _on_wave_cleared(wave: int) -> void:
-	push_debug("wave " + str(wave) + " cleared", false)
+func _on_horde_started() -> void:
+	push_debug("HORDE incoming!", true)
+
+func _on_forging_wave_started() -> void:
+	push_debug("Forging wave — enemies alerted", false)
+
+func _on_forging_wave_ended() -> void:
+	push_debug("Forging wave ended", false)

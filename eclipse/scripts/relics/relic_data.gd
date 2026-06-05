@@ -2,10 +2,11 @@
 class_name RelicData
 extends Resource
 
-@export var id:          String    = ""
-@export var display_name: String   = ""
-@export var description:  String   = ""
-@export var icon:         Texture2D
+@export var id:           String    = ""
+@export var display_name: String    = ""
+@export var description:  String    = ""
+@export var icon:         Texture2D = null
+@export var rarity:       int       = 0  # Util.Rarity value; default COMMON
 
 # Override these in subclasses or via composition
 func on_equip(player: CharacterBody2D) -> void:

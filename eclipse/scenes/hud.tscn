@@ -6,9 +6,10 @@
 [ext_resource type="Shader" uid="uid://ct3iy23q2ae7x" path="res://scripts/world/liquid_swirl.gdshader" id="4_0i1j5"]
 [ext_resource type="Texture2D" uid="uid://bklt0ds8qdplu" path="res://art/swirl.png" id="5_mphia"]
 [ext_resource type="Texture2D" uid="uid://ci6spge5ieckt" path="res://art/glass_container.png" id="6_0m4u7"]
-[ext_resource type="Script" uid="uid://drrrbvsol7dc4" path="res://scripts/player/health_bar.gd" id="7_5pdws"]
 [ext_resource type="Script" uid="uid://cdgvnocvn2ycu" path="res://scripts/ui/xp_bar.gd" id="8_hd3ao"]
 [ext_resource type="Script" uid="uid://d0voxhovtph0n" path="res://scripts/ui/health_progress.gd" id="9_0i1j5"]
+[ext_resource type="Script" uid="uid://crattentumeae" path="res://scripts/ui/hud_item_tray.gd" id="10_0m4u7"]
+[ext_resource type="Script" uid="uid://d4bguncj8ntp8" path="res://scripts/ui/level_up_button.gd" id="10_mphia"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_dinhu"]
 shader = ExtResource("2_5pdws")
@@ -24,6 +25,7 @@ shader_parameter/fps = 12.0
 [node name="HUD" type="CanvasLayer" unique_id=1722242211]
 
 [node name="power bar" type="Control" parent="." unique_id=909787700]
+visible = false
 layout_mode = 3
 anchors_preset = 0
 offset_left = -6.0
@@ -57,41 +59,6 @@ offset_right = 40.0
 offset_bottom = 358.0
 texture = ExtResource("6_0m4u7")
 
-[node name="health bar" type="Control" parent="." unique_id=1119091265]
-visible = false
-layout_mode = 3
-anchors_preset = 0
-offset_left = 86.0
-offset_top = -1.0
-offset_right = 86.0
-offset_bottom = -1.0
-scale = Vector2(4, 4)
-script = ExtResource("7_5pdws")
-
-[node name="liquid_parent" type="Node2D" parent="health bar" unique_id=431274752]
-position = Vector2(10, 15)
-
-[node name="body" type="TextureRect" parent="health bar/liquid_parent" unique_id=1848087896]
-material = SubResource("ShaderMaterial_dinhu")
-offset_right = 11.0
-offset_bottom = 315.0
-texture = ExtResource("3_hd3ao")
-
-[node name="swirl" type="TextureRect" parent="health bar/liquid_parent" unique_id=180327057]
-material = SubResource("ShaderMaterial_rysoc")
-offset_top = -4.0
-offset_right = 11.0
-offset_bottom = 4.0
-texture = ExtResource("5_mphia")
-
-[node name="glass_frame" type="TextureRect" parent="health bar" unique_id=1170123230]
-layout_mode = 0
-offset_left = 8.0
-offset_top = 8.0
-offset_right = 40.0
-offset_bottom = 358.0
-texture = ExtResource("6_0m4u7")
-
 [node name="xp" type="ProgressBar" parent="." unique_id=448526275]
 z_index = 4096
 z_as_relative = false
@@ -99,7 +66,24 @@ offset_right = 4.0
 offset_bottom = 27.0
 script = ExtResource("8_hd3ao")
 
-[node name="health progress" type="ProgressBar" parent="." unique_id=1158893705]
+[node name="health progress" type="Control" parent="." unique_id=504881874]
+layout_mode = 3
+anchors_preset = 0
 offset_right = 4.0
 offset_bottom = 27.0
 script = ExtResource("9_0i1j5")
+
+[node name="level_up_button" type="Control" parent="." unique_id=1212616692]
+visible = false
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+script = ExtResource("10_mphia")
+
+[node name="HUDItemTray" type="Control" parent="." unique_id=886443255]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+script = ExtResource("10_0m4u7")

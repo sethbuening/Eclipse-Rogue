@@ -1,0 +1,7 @@
+[gd_resource type="Resource" script_class="UpgradeFlareVelocity" format=3 uid="uid://b3wp0ild0hi5t"]
+
+[ext_resource type="Script" uid="uid://dm15mt8ui8baf" path="res://scripts/upgrades/upgrade_flare_velocity.gd" id="1_3k22n"]
+
+[resource]
+script = ExtResource("1_3k22n")
+metadata/_custom_type_script = "uid://dm15mt8ui8baf"

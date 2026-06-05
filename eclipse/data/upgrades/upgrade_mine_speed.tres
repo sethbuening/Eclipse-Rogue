@@ -1,0 +1,7 @@
+[gd_resource type="Resource" script_class="UpgradeMineSpeed" format=3 uid="uid://d10m1ktfid7ln"]
+
+[ext_resource type="Script" uid="uid://d02ivixva0fue" path="res://scripts/upgrades/upgrade_mine_speed.gd" id="1_qbjyp"]
+
+[resource]
+script = ExtResource("1_qbjyp")
+metadata/_custom_type_script = "uid://d02ivixva0fue"

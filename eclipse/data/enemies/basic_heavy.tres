@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="EnemyData" format=3 uid="uid://dx2t1ivdjjukr"]
+
+[ext_resource type="Script" uid="uid://ccvg8ff4amw77" path="res://scripts/enemies/enemy_data.gd" id="1_chfuk"]
+[ext_resource type="PackedScene" uid="uid://x7gf2u2h3ckx" path="res://scenes/enemies/basic_heavy.tscn" id="1_ladwd"]
+
+[resource]
+script = ExtResource("1_chfuk")
+id = "heavy"
+display_name = "Heavy"
+scene = ExtResource("1_ladwd")
+cost = 5
+min_wave = 0
+max_health = 100
+speed = 45.0
+armor = 5
+damage = 20
+attack_range = 32.0
+attack_cooldown = 2.0
+crit_chance = 0.1
+armor_penetration = 5
+sep_radius = 128.0
+sep_force = 1.5
+preferred_range = 96.0
+min_separation = 64.0
+knockback_resistance = 0.75
+stun_resistance = 0.5
+metadata/_custom_type_script = "uid://ccvg8ff4amw77"

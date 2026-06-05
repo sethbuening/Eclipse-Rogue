@@ -5,6 +5,7 @@ extends Node
 
 const SEP_CELL:     float = 64.0
 const AI_TICK_RATE: float = 1.0 / 20.0
+const CULL_MARGIN:  float = 64.0   # pixels beyond screen edge before culling
 
 # ── public state ──────────────────────────────────────────────────────────────
 
@@ -12,19 +13,25 @@ var living_enemies: Array[Enemy] = []
 var player:         CharacterBody2D
 var tilemap:        Node = null
 
+# set of enemies currently offscreen — read by enemy.gd in tick_ai
+var offscreen_enemies: Dictionary = {}
+
 signal enemy_died
 
 # ── private state ─────────────────────────────────────────────────────────────
 
 var _sep_grid: Dictionary = {}
 var _ai_accum: float      = 0.0
+var _camera:   Camera2D   = null
 
 # ── process ───────────────────────────────────────────────────────────────────
 
 func _process(delta: float) -> void:
+	_update_visibility()
+
 	for enemy in living_enemies:
 		if is_instance_valid(enemy):
-			enemy.tick_move(delta)
+			enemy.tick_move(delta, offscreen_enemies.has(enemy))
 
 	_ai_accum += delta
 	if _ai_accum < AI_TICK_RATE:
@@ -36,6 +43,27 @@ func _process(delta: float) -> void:
 	for enemy in living_enemies:
 		if is_instance_valid(enemy):
 			enemy.tick_ai(ai_delta)
+
+# ── visibility culling ────────────────────────────────────────────────────────
+
+func _update_visibility() -> void:
+	offscreen_enemies.clear()
+	var vp_size: Vector2     = get_viewport().get_visible_rect().size
+	var transform: Transform2D = get_viewport().get_canvas_transform()
+
+	for enemy in living_enemies:
+		if not is_instance_valid(enemy):
+			continue
+		var screen_pos: Vector2 = transform * enemy.global_position
+		var on_screen: bool = screen_pos.x > -CULL_MARGIN \
+						  and screen_pos.x < vp_size.x + CULL_MARGIN \
+						  and screen_pos.y > -CULL_MARGIN \
+						  and screen_pos.y < vp_size.y + CULL_MARGIN
+		if not on_screen:
+			offscreen_enemies[enemy] = true
+		for child in enemy.get_children():
+			if child is Node2D:
+				child.visible = on_screen
 
 # ── separation grid ───────────────────────────────────────────────────────────
 

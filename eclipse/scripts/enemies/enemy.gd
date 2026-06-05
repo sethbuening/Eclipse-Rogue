@@ -10,7 +10,9 @@ extends Node
 
 const ENEMY_RADIUS:    float = 8.0
 const KNOCKBACK_DECAY: float = 8.0
-const MIN_SEPARATION:  float = ENEMY_RADIUS * 2.0   # hard floor: enemies can never be closer than this
+const MIN_SEPARATION:  float = ENEMY_RADIUS * 2.0
+var _damage_flash:          float = 0.0
+var DAMAGE_FLASH_DURATION:  float = 0.08
 
 const NavigatorScript = preload("res://scripts/pathfinding/enemy_navigator.gd")
 
@@ -30,17 +32,16 @@ var _velocity:        Vector2    = Vector2.ZERO
 var _status:          Dictionary = {}
 var _attack_cooldown: float      = 0.0
 
-# z-index is visual — updated in tick_move on a timer, not every frame
 var _z_timer:        float = 0.0
-var _z_update_every: float = 0.5   # seconds between z-index updates
-var _z_offset:       float = 0.0   # stagger offset so enemies don't all update at once
+var _z_update_every: float = 0.5
+var _z_offset:       float = 0.0
 
 # ── setup ─────────────────────────────────────────────────────────────────────
 
 func setup(ai_tick_rate: float) -> void:
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	health          = data.max_health
-	_z_update_every = ai_tick_rate * 10.0   # update z once per 10 AI ticks
+	_z_update_every = ai_tick_rate * 10.0
 	_z_offset       = randf() * _z_update_every
 	_navigator      = NavigatorScript.new()
 	_navigator.name = "Navigator"
@@ -53,27 +54,38 @@ func initialize(p: CharacterBody2D, modifier: Util.Modifier = Util.Modifier.NONE
 	_apply_modifier(modifier)
 	_navigator.move_speed = data.speed
 	global_position       = _find_spawn_position()
+	_apply_flash_shader()
 
 # ── tick API (called by EnemyManager) ────────────────────────────────────────
 
-## Runs every frame. Moves the enemy and syncs visuals.
-func tick_move(delta: float) -> void:
+func tick_move(delta: float, offscreen: bool = false) -> void:
 	if player == null:
 		return
 	var motion: Vector2 = _velocity
 	if _status.has("knockback"):
 		motion += _status["knockback"]["velocity"]
-	_move(motion, delta)
+	_move(motion, delta, offscreen)
+
+	if offscreen:
+		return
+
+	# visuals only matter onscreen
+	if _damage_flash > 0.0:
+		_damage_flash -= delta
+		var t: float = clampf(_damage_flash / DAMAGE_FLASH_DURATION, 0.0, 1.0)
+		_set_flash(t)
+	elif _damage_flash == 0.0:
+		_damage_flash = -1.0
+		_set_flash(0.0)
+
 	_sync_children()
 
-	# z-index is purely visual — update infrequently and staggered across enemies
 	_z_timer += delta
 	if _z_timer >= _z_update_every + _z_offset:
 		_z_timer  = 0.0
-		_z_offset = 0.0   # only apply offset on first tick, then lock to interval
+		_z_offset = 0.0
 		_update_z_index()
 
-## Runs at fixed AI rate (set by EnemyManager). Handles decisions and status.
 func tick_ai(delta: float) -> void:
 	_tick_status(delta)
 	if _status.has("stun"):
@@ -82,17 +94,18 @@ func tick_ai(delta: float) -> void:
 	_tick_behavior(delta)
 	_tick_attack(delta)
 
-	var desired: Vector2 = _navigator.navigate_toward(player.global_position, delta, true) \
-						 + _separation_velocity()
+	var offscreen: bool     = EnemyManager.offscreen_enemies.has(self)
+	var desired:   Vector2  = _navigator.navigate_toward(player.global_position, delta, true)
+	if not offscreen:
+		desired += _separation_velocity()
 	_velocity = _velocity.lerp(desired, data.turn_speed * delta)
 
-## Override in subclasses for custom AI-tick behavior (healing, charging, etc).
 func _tick_behavior(_delta: float) -> void:
 	pass
 
 # ── movement ──────────────────────────────────────────────────────────────────
 
-func _move(velocity: Vector2, delta: float) -> void:
+func _move(velocity: Vector2, delta: float, offscreen: bool = false) -> void:
 	var motion: Vector2 = velocity * delta
 	if motion.length_squared() < 0.01:
 		return
@@ -100,7 +113,8 @@ func _move(velocity: Vector2, delta: float) -> void:
 	_resolve_tiles(true)
 	global_position.y += motion.y
 	_resolve_tiles(false)
-	_resolve_enemies()
+	if not offscreen:
+		_resolve_enemies()
 
 func _resolve_tiles(x_axis: bool) -> void:
 	if tilemap == null:
@@ -159,7 +173,6 @@ func _resolve_enemies() -> void:
 			global_position += Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)).normalized()
 			continue
 		var dist: float = sqrt(d_sq)
-		# push this enemy out by half the overlap; the other enemy handles its own half
 		global_position += (away / dist) * (MIN_SEPARATION - dist) * 0.5
 
 # ── separation ────────────────────────────────────────────────────────────────
@@ -209,12 +222,13 @@ func take_damage(amount: int, armor_pen: int = 0, is_crit: bool = false) -> void
 	var after_armor: int = maxi(1, amount - maxi(0, data.armor - armor_pen))
 	var reduced:     int = maxi(1, int(after_armor * (1.0 - data.damage_reduction)))
 	health -= reduced
+	_damage_flash = DAMAGE_FLASH_DURATION
 	DamageNumbers.spawn(global_position + Vector2(0, -16), reduced, is_crit)
 	if health <= 0:
 		die()
 
 func die() -> void:
-	ItemManager.spawn_xp(global_position, data.xp_value + randi_range(0, 2))
+	ItemManager.spawn_xp(global_position, data.xp_value)
 	emit_signal("died", self)
 	queue_free()
 
@@ -344,3 +358,19 @@ func _in_bounds(c: Vector2i) -> bool:
 	var dx: float = float(c.x) - cx
 	var dy: float = float(c.y) - cy
 	return sqrt(dx * dx + dy * dy) < play_radius
+
+const FlashShader = preload("res://scripts/enemies/damage_flash.gdshader")
+
+func _apply_flash_shader() -> void:
+	for child in get_children():
+		if child is Sprite2D or child is AnimatedSprite2D:
+			var mat := ShaderMaterial.new()
+			mat.shader = FlashShader
+			child.material = mat
+
+func _set_flash(amount: float) -> void:
+	for child in get_children():
+		if child is Sprite2D or child is AnimatedSprite2D:
+			var mat := child.material as ShaderMaterial
+			if mat:
+				mat.set_shader_parameter("flash_amount", amount)

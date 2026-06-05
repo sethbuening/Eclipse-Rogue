@@ -11,7 +11,6 @@ range = 200.0
 aoe_radius = 40.0
 crit_chance = 0.05
 crit_damage = 2.0
-light_cost = 25.0
 mining_power = 3
 metadata/_custom_type_script = "uid://djuyt3y2iehml"
 

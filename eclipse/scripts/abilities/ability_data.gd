@@ -17,11 +17,11 @@ func get_stat(stat_name: String) -> float:
 
 ## Called every frame by the player for every ability, regardless of type.
 ## Subclasses fire whenever they find a valid target — no input gating.
-## Write context["activated"] = true to trigger the orb shatter / light cost.
+## Write context["activated"] = true to trigger the orb shatter.
 func tick(context: Dictionary) -> void:
 	_orb_potency = context.get("potency", 1.0)
 
-## Applies all stat-driven on-hit effects (knockback, stun, slow, DoT, light)
+## Applies all stat-driven on-hit effects (knockback, stun, slow, DoT)
 ## to [target] on behalf of [player]. Call this from any ability after damage.
 ## [hit_origin] is the world position the hit came from for knockback direction;
 ## leave as default to use the player's position.
@@ -41,7 +41,3 @@ func apply_hit_effects(
 		target.apply_slow(get_stat("slow_amount"), get_stat("slow_duration"))
 	if get_stat("dot_damage") > 0.0 and get_stat("dot_duration") > 0.0:
 		target.apply_dot(get_stat("dot_damage"), get_stat("dot_duration"))
-	if is_crit and get_stat("light_on_crit") > 0.0:
-		player.light += get_stat("light_on_crit")
-	elif get_stat("light_on_hit") > 0.0:
-		player.light += get_stat("light_on_hit")

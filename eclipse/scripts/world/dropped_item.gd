@@ -31,10 +31,9 @@ var _arc_start:    Vector2      = Vector2.ZERO
 var _arc_control:  Vector2      = Vector2.ZERO
 var _arc_end:      Vector2      = Vector2.ZERO
 
-const COLLECT_DURATION: float = 0.6    # slow, readable arc
+const COLLECT_DURATION: float = 0.8    # slow, readable arc
 const CONTROL_AWAY:     float = 64.0   # outward fling distance
 const CONTROL_UP:       float = 32.0   # upward loft height
-const SHRINK_START:     float = 1   # begins shrinking past the apex
 const Z_DELAY:          float = 0.2    # fraction of arc to travel flat before rising
 
 func _ready() -> void:
@@ -75,9 +74,5 @@ func tick_arc(player_pos: Vector2, delta: float) -> void:
 	# sine hump over the remainder so the orb goes out before going up.
 	var z_t: float = clampf((raw_t - Z_DELAY) / (1.0 - Z_DELAY), 0.0, 1.0)
 	z = CONTROL_UP * sin(z_t * PI)
-
-	# Shrink to nothing over the tail of the arc.
-	var shrink_t: float = clampf((raw_t - SHRINK_START) / (1.0 - SHRINK_START), 0.0, 1.0)
-	scale = Vector2.ONE * (3.0 * (1.0 - shrink_t))
 
 	global_position = pos + Vector2(0, -z)

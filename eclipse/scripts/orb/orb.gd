@@ -9,11 +9,9 @@ enum OrbType { SIMPLE, ALLOY }
 @export var abilities:      Array[AbilityData] = []
 @export var orb_potency:    float              = 1.0
 var node_power_base:        float              = -1.0
-@export var light_stored:   float              = 0.0
 @export var sprite_texture: Texture2D
 @export var input_action:   String             = ""
 var cooldown:               float              = 0.0
-var light_cost:             float              = 0.0
 
 var node_index: int = -1:
 	set(value):
@@ -44,10 +42,6 @@ func primary_ability() -> AbilityData:
 	if abilities.is_empty():
 		return null
 	return abilities[0]
-
-func store_light(amount: float) -> void:
-	light_stored += amount
-	orb_potency   = 1.0 + light_stored * 0.01
 
 func add_charge(stacks: int) -> void:
 	var base: float = node_power_base if node_power_base >= 0.0 else orb_potency

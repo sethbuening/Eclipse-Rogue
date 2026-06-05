@@ -18,6 +18,7 @@
 [ext_resource type="PackedScene" uid="uid://3u75bkav35jp" path="res://scenes/relic_popup.tscn" id="13_kvuet"]
 [ext_resource type="Script" uid="uid://4dxt4mgyo7pu" path="res://scripts/forging/forge_ui.gd" id="15_ir15t"]
 [ext_resource type="Script" uid="uid://cyy2cy40xuqyu" path="res://scripts/nodegraph/graph_manager.gd" id="17_ssvqc"]
+[ext_resource type="Script" uid="uid://cv64a6pq2ej0c" path="res://scripts/ui/level_up_screen.gd" id="19_264po"]
 
 [sub_resource type="Environment" id="Environment_iywne"]
 background_mode = 3
@@ -41,7 +42,7 @@ color = Color(0.003921569, 0.003921569, 0.003921569, 1)
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=1754347079]
 unique_name_in_owner = true
-zoom = Vector2(4, 4)
+zoom = Vector2(2, 2)
 script = ExtResource("3_lnu2h")
 
 [node name="BasaltAltar" parent="." unique_id=1391256680 instance=ExtResource("5_p57ef")]
@@ -116,3 +117,7 @@ script = ExtResource("15_ir15t")
 [node name="GraphManager" type="Node" parent="." unique_id=365863157]
 unique_name_in_owner = true
 script = ExtResource("17_ssvqc")
+
+[node name="LevelUpScreen" type="CanvasLayer" parent="." unique_id=460670615]
+process_mode = 2
+script = ExtResource("19_264po")

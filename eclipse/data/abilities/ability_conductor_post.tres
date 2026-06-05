@@ -10,7 +10,6 @@ duration = 15.0
 range = 75.0
 aoe_radius = 150.0
 crit_chance = 0.0
-light_cost = 20.0
 mining_power = 3
 mining_radius = 3
 ore_yield = 1.0

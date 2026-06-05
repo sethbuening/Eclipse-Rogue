@@ -72,6 +72,52 @@ func spawn_focus_spark(pos: Vector2) -> void:
 			true
 		)
 
+func spawn_orb_shatter(pos: Vector2) -> void:
+	# Bright core burst — white-hot shards flying outward
+	var core_gradient := Gradient.new()
+	core_gradient.set_color(0, Color(3.0, 2.8, 1.6, 1.0))   # blinding warm white
+	core_gradient.add_point(0.35, Color(2.0, 1.4, 0.3, 0.9)) # golden mid
+	core_gradient.set_color(1, Color(0.6, 0.2, 0.0, 0.0))    # ember fade
+
+	var count: int = randi_range(6, 10)
+	for i in range(count):
+		var dir: Vector2 = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)).normalized()
+		var p: Particle = spawn(
+			pos + dir * randf_range(0.0, 4.0),
+			dir * randf_range(40.0, 130.0),
+			randf_range(60.0, 180.0),
+			core_gradient,
+			randf_range(0.5, 0.9),
+			randf_range(1.5, 2.5),
+			0.3,    # bounce
+			false,  # no shadow
+			true    # gravity
+		)
+		p.use_smart_floor = true
+		p.floor_z         = _resolve_floor(p)
+
+	# Trailing ember streaks — slower, linger longer
+	var ember_gradient := Gradient.new()
+	ember_gradient.set_color(0, Color(1.8, 0.8, 0.1, 0.8))
+	ember_gradient.add_point(0.5, Color(1.0, 0.4, 0.05, 0.5))
+	ember_gradient.set_color(1, Color(0.3, 0.1, 0.0, 0.0))
+
+	for i in range(randi_range(4, 6)):
+		var dir: Vector2 = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)).normalized()
+		var p: Particle = spawn(
+			pos + Vector2(randf_range(-3.0, 3.0), randf_range(-3.0, 3.0)),
+			dir * randf_range(15.0, 60.0),
+			randf_range(30.0, 90.0),
+			ember_gradient,
+			randf_range(0.7, 1.3),
+			randf_range(1.0, 2.0),
+			0.2,
+			false,
+			true
+		)
+		p.use_smart_floor = true
+		p.floor_z         = _resolve_floor(p)
+
 func _tile_chunk_color(tile_type: Util.tile) -> Color:
 	match tile_type:
 		# More saturated and distinct than the old dust colors —

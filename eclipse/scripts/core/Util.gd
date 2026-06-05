@@ -18,6 +18,36 @@ enum dir {
 	DOWN
 }
 
+# ── rarity ───────────────────────────────────────────────────────────────────
+enum Rarity {
+	COMMON,      # Dull stone — plain, no glow
+	UNCOMMON,    # Ore-veined — iron/copper tones
+	RARE,        # Crystal-cut — bright mineral hue
+	EPIC,        # Deep-void — pulsing void energy
+	LEGENDARY    # Molten core — cracked open, light spilling out
+}
+
+## Returns the display name for a rarity value.
+static func rarity_name(r: int) -> String:
+	match r:
+		Rarity.COMMON:    return "Common"
+		Rarity.UNCOMMON:  return "Uncommon"
+		Rarity.RARE:      return "Rare"
+		Rarity.EPIC:      return "Epic"
+		Rarity.LEGENDARY: return "Legendary"
+	return "Unknown"
+
+## Returns the accent color associated with a rarity.
+## Use for icon borders, glow tints, and card highlights.
+static func rarity_color(r: int) -> Color:
+	match r:
+		Rarity.COMMON:    return Color(0.60, 0.58, 0.55, 1.0)  # dull stone grey
+		Rarity.UNCOMMON:  return Color(0.35, 0.75, 0.40, 1.0)  # ore green
+		Rarity.RARE:      return Color(0.30, 0.55, 1.00, 1.0)  # mineral blue
+		Rarity.EPIC:      return Color(0.65, 0.25, 0.90, 1.0)  # void purple
+		Rarity.LEGENDARY: return Color(1.00, 0.65, 0.10, 1.0)  # molten amber
+	return Color.WHITE
+
 # ── wave modifiers ────────────────────────────────────────────────────────────
 enum Modifier {
 	NONE,

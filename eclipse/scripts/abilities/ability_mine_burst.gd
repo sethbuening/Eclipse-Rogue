@@ -11,7 +11,3 @@ func tick(context: Dictionary) -> void:
 	var radius:  int  = stats.mining_radius + (1 if is_crit else 0)
 	player.mine_around(player.global_position, radius)
 	ParticleManager.spawn_focus_spark(player.global_position)
-	if stats.light_on_hit > 0.0:
-		context["light_gained"] = context.get("light_gained", 0.0) + stats.light_on_hit
-	if is_crit and stats.light_on_crit > 0.0:
-		context["light_gained"] = context.get("light_gained", 0.0) + stats.light_on_crit

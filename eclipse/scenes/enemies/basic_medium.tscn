@@ -1,0 +1,10 @@
+[gd_scene format=3 uid="uid://bvc1vjirye8mr"]
+
+[ext_resource type="Script" uid="uid://bn84mg1pbyv3w" path="res://scripts/enemies/enemy.gd" id="1_qq7lx"]
+[ext_resource type="Texture2D" uid="uid://bh374xrvf1an2" path="res://art/enemies/swarmer/swarmer.png" id="2_w62yf"]
+
+[node name="Swarmer" type="Node2D" unique_id=198064485]
+script = ExtResource("1_qq7lx")
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=1492097370]
+texture = ExtResource("2_w62yf")
