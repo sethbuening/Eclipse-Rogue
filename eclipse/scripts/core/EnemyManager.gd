@@ -16,7 +16,7 @@ var tilemap:        Node = null
 # set of enemies currently offscreen — read by enemy.gd in tick_ai
 var offscreen_enemies: Dictionary = {}
 
-signal enemy_died
+signal enemy_died(enemy: Enemy)
 
 # ── private state ─────────────────────────────────────────────────────────────
 
@@ -138,4 +138,4 @@ func on_level_changed() -> void:
 
 func _on_enemy_died(enemy: Enemy) -> void:
 	living_enemies.erase(enemy)
-	emit_signal("enemy_died")
+	emit_signal("enemy_died", enemy)

@@ -10,6 +10,8 @@
 [ext_resource type="Script" uid="uid://d0voxhovtph0n" path="res://scripts/ui/health_progress.gd" id="9_0i1j5"]
 [ext_resource type="Script" uid="uid://crattentumeae" path="res://scripts/ui/hud_item_tray.gd" id="10_0m4u7"]
 [ext_resource type="Script" uid="uid://d4bguncj8ntp8" path="res://scripts/ui/level_up_button.gd" id="10_mphia"]
+[ext_resource type="Script" uid="uid://7rilkjntq7jl" path="res://scripts/ui/hud_control_hints.gd" id="11_0m4u7"]
+[ext_resource type="Script" uid="uid://c8w16yih441ia" path="res://scripts/ui/hud_node_graph.gd" id="12_apjy4"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_dinhu"]
 shader = ExtResource("2_5pdws")
@@ -87,3 +89,19 @@ anchors_preset = 0
 offset_right = 40.0
 offset_bottom = 40.0
 script = ExtResource("10_0m4u7")
+
+[node name="control hints" type="Control" parent="." unique_id=1228190657]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("11_0m4u7")
+
+[node name="hud_node_graph" type="Control" parent="." unique_id=1508350377]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+script = ExtResource("12_apjy4")

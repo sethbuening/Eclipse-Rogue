@@ -12,27 +12,46 @@ const C_TEXT:    Color = Color(0.90, 0.90, 0.90)
 const C_SUBTEXT: Color = Color(0.60, 0.65, 0.72)
 const C_VALUE:   Color = Color(0.45, 0.85, 0.65)
 
+# since all current stats have a default of -1 this dictionary is empty for now
 const STAT_DEFAULTS: Dictionary = {
-	"power": -1, "cooldown": -1, "duration": -1, "range": -1,
-	"cast_speed": -1, "projectile_speed": -1, "move_speed_bonus": -1,
-	"aoe_radius": -1, "pierce": -1, "crit_chance": -1, "crit_damage": -1,
-	"crit_aoe": -1,
-	"mining_power": -1, "mining_radius": -1, "ore_yield": -1, "knockback": -1,
-	"stun_duration": -1, "slow_amount": -1, "slow_duration": -1,
-	"dot_damage": -1, "dot_duration": -1, "damage_absorb": -1,
-	"reflect_chance": -1, "shield_amount": -1,
 }
 
 const STAT_UNITS: Dictionary = {
-	"power": "", "cooldown": " sec", "duration": " sec", "range": "",
-	"cast_speed": "", "projectile_speed": "", "move_speed_bonus": "",
-	"aoe_radius": "", "pierce": "", "crit_chance": "%", "crit_damage": "x",
-	"crit_aoe": "",
+	"power": "", "cooldown": " sec", "duration": " sec", "range": " tiles",
+	"cast_speed": "", "projectile_speed": " px/s", "move_speed_bonus": " px/s",
+	"aoe_radius": " tiles", "pierce": "", "crit_chance": " %", "crit_damage": "x",
+	"crit_aoe": " tiles",
 	"mining_power": "", "mining_radius": " tiles", "ore_yield": "x",
-	"knockback": "", "stun_duration": " sec", "slow_amount": "%",
+	"knockback": "", "stun_duration": " sec", "slow_amount": " %",
 	"slow_duration": " sec", "dot_damage": "", "dot_duration": " sec",
-	"damage_absorb": "", "reflect_chance": "%", "shield_amount": "",
+	"damage_absorb": "", "reflect_chance": " %", "shield_amount": "",
 }
+
+# Stats that are stored in px and should be displayed divided by 32 (tile size).
+const STAT_DIVIDE_BY_TILE: Array = ["range", "aoe_radius", "crit_aoe"]
+
+# Shared formatter used by ability_tooltip, orb_tooltip, and forge_ui.
+# Returns a display string with trailing zeros stripped and unit appended.
+static func fmt_stat_value(val: Variant, unit: String, key: String = "") -> String:
+	var display: String
+	var v = val
+	if key in STAT_DIVIDE_BY_TILE and v is float:
+		v = v / 32.0
+	elif key in STAT_DIVIDE_BY_TILE and v is int:
+		v = float(v) / 32.0
+	if v is float:
+		if unit == " %":
+			display = "%.0f%%" % (v * 100.0)
+			return display
+		else:
+			display = "%.2f" % v
+			if "." in display:
+				display = display.rstrip("0").rstrip(".")
+	elif v is int:
+		display = str(v)
+	else:
+		return ""
+	return display + unit
 
 func _make_style() -> StyleBoxFlat:
 	var style              := StyleBoxFlat.new()
@@ -81,24 +100,14 @@ func _collect_stat_rows(stats: AbilityStats) -> Array:
 			continue
 		var key: String = prop["name"]
 		var val         = stats.get(key)
-		var default     = STAT_DEFAULTS.get(key, null)
-		if default != null and val == default:
+		var default     = STAT_DEFAULTS.get(key, -1)
+		if val == default:
 			continue
-		var unit: String = STAT_UNITS.get(key, "")
-		var display: String
-		if val is float:
-			if unit == "%":
-				display = "%.0f%%" % (val * 100.0)
-				unit = ""
-			else:
-				display = "%.2f" % val
-				if "." in display:
-					display = display.rstrip("0").rstrip(".")
-		elif val is int:
-			display = str(val)
-		else:
+		var unit:    String = STAT_UNITS.get(key, "")
+		var display: String = fmt_stat_value(val, unit, key)
+		if display == "":
 			continue
-		rows.append(_make_stat_row(key.replace("_", " ").capitalize(), display + unit))
+		rows.append(_make_stat_row(key.replace("_", " ").capitalize(), display))
 	return rows
 
 func _make_stat_row(label_text: String, value_text: String) -> HBoxContainer:

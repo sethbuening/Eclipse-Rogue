@@ -2,7 +2,7 @@ class_name LevelUpUpgrade
 extends Resource
 
 @export var display_name: String    = ""
-@export var description:  String    = ""
+@export_multiline var description: String = ""
 @export var icon:         Texture2D = null
 @export var rarity:       int       = 0  # Util.Rarity value; default COMMON
 

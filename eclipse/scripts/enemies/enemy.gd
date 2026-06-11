@@ -14,7 +14,16 @@ const MIN_SEPARATION:  float = ENEMY_RADIUS * 2.0
 var _damage_flash:          float = 0.0
 var DAMAGE_FLASH_DURATION:  float = 0.08
 
-const NavigatorScript = preload("res://scripts/pathfinding/enemy_navigator.gd")
+const NavigatorScript         = preload("res://scripts/pathfinding/enemy_navigator.gd")
+const EnemyHealthBarScript    = preload("res://scripts/enemies/enemy_health_bar.gd")
+const EffectIconDisplayScript = preload("res://scripts/effects/effect_icon_display.gd")
+
+## Folder scanned by Util.load_scripts() on first use.
+## Every .gd file in this folder that has an [id] property is registered.
+const EFFECT_PATH: String = "res://scripts/effects/"
+
+## Registry: String id → GDScript.  Populated once by _effect_scripts().
+static var _effect_registry: Dictionary = {}
 
 # ── public state ──────────────────────────────────────────────────────────────
 
@@ -29,8 +38,13 @@ signal died(enemy: Enemy)
 
 var _navigator:       EnemyNavigator
 var _velocity:        Vector2    = Vector2.ZERO
-var _status:          Dictionary = {}
-var _attack_cooldown: float      = 0.0
+
+## Active effects: String id → EffectData instance.
+var _effects:          Dictionary = {}
+
+var _attack_cooldown: float            = 0.0
+var _health_bar:      EnemyHealthBar   = null
+var _icon_display:    EffectIconDisplay = null
 
 var _z_timer:        float = 0.0
 var _z_update_every: float = 0.5
@@ -55,6 +69,8 @@ func initialize(p: CharacterBody2D, modifier: Util.Modifier = Util.Modifier.NONE
 	_navigator.move_speed = data.speed
 	global_position       = _find_spawn_position()
 	_apply_flash_shader()
+	_spawn_health_bar()
+	_spawn_icon_display()
 
 # ── tick API (called by EnemyManager) ────────────────────────────────────────
 
@@ -62,8 +78,10 @@ func tick_move(delta: float, offscreen: bool = false) -> void:
 	if player == null:
 		return
 	var motion: Vector2 = _velocity
-	if _status.has("knockback"):
-		motion += _status["knockback"]["velocity"]
+	# Knockback contributes extra velocity via its own EffectData.
+	var kb: EffectKnockback = _effects.get("knockback") as EffectKnockback
+	if kb != null:
+		motion += kb.velocity
 	_move(motion, delta, offscreen)
 
 	if offscreen:
@@ -79,6 +97,10 @@ func tick_move(delta: float, offscreen: bool = false) -> void:
 		_set_flash(0.0)
 
 	_sync_children()
+	if _health_bar:
+		_health_bar.global_position = global_position
+	if _icon_display:
+		_icon_display.global_position = global_position
 
 	_z_timer += delta
 	if _z_timer >= _z_update_every + _z_offset:
@@ -87,8 +109,8 @@ func tick_move(delta: float, offscreen: bool = false) -> void:
 		_update_z_index()
 
 func tick_ai(delta: float) -> void:
-	_tick_status(delta)
-	if _status.has("stun"):
+	_tick_effects(delta)
+	if _effects.has("stun"):
 		return
 
 	_tick_behavior(delta)
@@ -218,82 +240,150 @@ func deal_damage_to_player(raw_damage: int, is_crit: bool = false) -> void:
 
 # ── incoming damage ───────────────────────────────────────────────────────────
 
-func take_damage(amount: int, armor_pen: int = 0, is_crit: bool = false) -> void:
+func take_damage(amount: int, armor_pen: int = 0, is_crit: bool = false, damage_type: Util.DamageType = Util.DamageType.PHYSICAL) -> void:
 	var after_armor: int = maxi(1, amount - maxi(0, data.armor - armor_pen))
-	var reduced:     int = maxi(1, int(after_armor * (1.0 - data.damage_reduction)))
+	var resistance:  float = _get_elemental_resistance(damage_type)
+	var reduced:     int = maxi(1, int(float(after_armor) * (1.0 - data.damage_reduction) * (1.0 - resistance)))
 	health -= reduced
 	_damage_flash = DAMAGE_FLASH_DURATION
+	if _health_bar:
+		_health_bar.on_damage(health)
 	DamageNumbers.spawn(global_position + Vector2(0, -16), reduced, is_crit)
 	if health <= 0:
 		die()
+
+func _get_elemental_resistance(damage_type: Util.DamageType) -> float:
+	match damage_type:
+		Util.DamageType.LIGHTNING: return data.lightning_resistance
+		Util.DamageType.FIRE:      return data.fire_resistance
+		Util.DamageType.ICE:       return data.ice_resistance
+		Util.DamageType.POISON:    return data.poison_resistance
+		_:                         return 0.0
 
 func die() -> void:
 	ItemManager.spawn_xp(global_position, data.xp_value)
 	emit_signal("died", self)
 	queue_free()
 
-# ── status effects ────────────────────────────────────────────────────────────
+# ── effects — public API ───────────────────────────────────────────────
+#
+# Each apply_*() function is kept as a named convenience wrapper so that
+# abilities and other callers don't need to construct EffectData
+# instances manually.  All resistance scaling happens here before the
+# data object is handed the final values.
+#
+# To add a new effect:
+#   1. Create scripts/enemies/effects/effect_<name>.gd
+#      extending EffectData.
+#   2. Preload it at the top of this file.
+#   3. Add an apply_<name>() method below.
+#   That's it — _tick_effects() and the icon system handle the rest
+#   automatically.
 
 func apply_stun(duration: float) -> void:
 	var d: float = duration * (1.0 - data.stun_resistance)
-	if d > 0.0 and d > _status.get("stun", {}).get("duration", 0.0):
-		_status["stun"] = { "duration": d }
+	if d <= 0.0:
+		return
+	var effect: EffectData = _get_or_create_effect("stun")
+	if effect == null:
+		return
+	effect.apply(self, d)
+	_sync_effect_icons()
 
 func apply_slow(amount: float, duration: float) -> void:
 	var a: float = clampf(amount, 0.0, 1.0) * (1.0 - data.slow_resistance)
 	if a <= 0.0:
 		return
-	if not _status.has("slow") or a >= _status["slow"]["amount"]:
-		_status["slow"]       = { "duration": duration, "amount": a }
-		_navigator.move_speed = data.speed * (1.0 - a)
+	var effect := _get_or_create_effect("slow") as EffectSlow
+	if effect == null:
+		return
+	effect.amount = a
+	effect.apply(self, duration)
+	_sync_effect_icons()
 
 func apply_dot(dps: float, duration: float) -> void:
 	var d: float = dps * (1.0 - data.dot_resistance)
 	if d <= 0.0:
 		return
-	if not _status.has("dot") or d * duration > _status["dot"]["dps"] * _status["dot"]["duration"]:
-		_status["dot"] = { "duration": duration, "dps": d, "_accum": 0.0 }
+	var effect := _get_or_create_effect("dot") as EffectDot
+	if effect == null:
+		return
+	effect.dps = d
+	effect.apply(self, duration)
+	_sync_effect_icons()
 
 func apply_knockback(impulse: Vector2) -> void:
 	var v: Vector2 = impulse * (1.0 - data.knockback_resistance)
 	if v.length_squared() <= 0.0:
 		return
-	if _status.has("knockback"):
-		_status["knockback"]["velocity"] += v
-	else:
-		_status["knockback"] = { "velocity": v }
+	var effect := _get_or_create_effect("knockback") as EffectKnockback
+	if effect == null:
+		return
+	effect.velocity += v
+	effect.apply(self, 0.0)
+	# Knockback has no visible icon by default; no icon sync needed.
 
-func _tick_status(delta: float) -> void:
-	if _status.has("stun"):
-		_status["stun"]["duration"] -= delta
-		if _status["stun"]["duration"] <= 0.0:
-			_status.erase("stun")
+## Generic entry point for custom effects defined outside enemy.gd.
+## [effect] must be an EffectData subclass instance with a valid id.
+## The caller is responsible for resistance scaling and setting any
+## subclass properties before calling this.
+func apply_effect(effect: EffectData, duration: float) -> void:
+	if not _effects.has(effect.id):
+		_effects[effect.id] = effect
+	(_effects[effect.id] as EffectData).apply(self, duration)
+	_sync_effect_icons()
 
-	if _status.has("slow"):
-		_status["slow"]["duration"] -= delta
-		if _status["slow"]["duration"] <= 0.0:
-			_status.erase("slow")
-			_navigator.move_speed = data.speed
+## Forcibly remove an effect by id, calling on_remove() first.
+func remove_effect(effect_id: String) -> void:
+	if not _effects.has(effect_id):
+		return
+	(_effects[effect_id] as EffectData).on_remove(self)
+	_effects.erase(effect_id)
+	_sync_effect_icons()
 
-	if _status.has("dot"):
-		var dot: Dictionary = _status["dot"]
-		dot["duration"] -= delta
-		dot["_accum"]   += dot["dps"] * delta
-		var whole: int   = int(dot["_accum"])
-		if whole > 0:
-			dot["_accum"] -= whole
-			take_damage(whole)
+# ── effects — internal tick ────────────────────────────────────────────
+
+func _tick_effects(delta: float) -> void:
+	var expired: Array[String] = []
+
+	for id in _effects:
+		var effect: EffectData = _effects[id] as EffectData
+		effect.tick(delta, self)
 		if not is_inside_tree():
 			return
-		if dot["duration"] <= 0.0:
-			_status.erase("dot")
+		if effect.is_expired():
+			expired.append(id)
 
-	if _status.has("knockback"):
-		_status["knockback"]["velocity"] -= _status["knockback"]["velocity"] * KNOCKBACK_DECAY * delta
-		if _status["knockback"]["velocity"].length_squared() < 1.0:
-			_status.erase("knockback")
+	for id in expired:
+		(_effects[id] as EffectData).on_remove(self)
+		_effects.erase(id)
+
+	if not expired.is_empty():
+		_sync_effect_icons()
 
 # ── helpers ───────────────────────────────────────────────────────────────────
+
+## Returns the existing effect for [key], or instantiates a fresh one
+## from the registry.  Returns null and warns if the id is not registered.
+func _get_or_create_effect(key: String) -> EffectData:
+	if not _effects.has(key):
+		var registry: Dictionary = _effect_scripts()
+		if not registry.has(key):
+			push_warning("Enemy: no effect registered for id '%s'" % key)
+			return null
+		_effects[key] = (registry[key] as GDScript).new()
+	return _effects[key] as EffectData
+
+## Returns the shared registry, populating it on first call.
+static func _effect_scripts() -> Dictionary:
+	if _effect_registry.is_empty():
+		_effect_registry = Util.load_scripts(EFFECT_PATH)
+	return _effect_registry
+
+## Notifies the icon display to refresh its effect icon row.
+func _sync_effect_icons() -> void:
+	if _icon_display:
+		_icon_display.set_effects(_effects)
 
 func _apply_modifier(modifier: Util.Modifier) -> void:
 	if modifier == Util.Modifier.FAST:
@@ -308,6 +398,8 @@ func _range_offset_target(target: Vector2, preferred_range: float) -> Vector2:
 
 func _sync_children() -> void:
 	for child in get_children():
+		if child is EnemyHealthBar:
+			continue
 		if child is Node2D:
 			child.global_position = global_position
 
@@ -360,6 +452,18 @@ func _in_bounds(c: Vector2i) -> bool:
 	return sqrt(dx * dx + dy * dy) < play_radius
 
 const FlashShader = preload("res://scripts/enemies/damage_flash.gdshader")
+
+func _spawn_health_bar() -> void:
+	var bar := EnemyHealthBarScript.new()
+	add_child(bar)
+	if not bar.init(data.max_health):
+		return   # bar freed itself — not needed for this enemy
+	_health_bar = bar
+
+func _spawn_icon_display() -> void:
+	_icon_display = EffectIconDisplayScript.new()
+	_icon_display.name = "EffectIconDisplay"
+	add_child(_icon_display)
 
 func _apply_flash_shader() -> void:
 	for child in get_children():

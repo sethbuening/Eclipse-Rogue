@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://cwrcxx15igko6"]
+
+[ext_resource type="Script" uid="uid://biqdd0vipt6wj" path="res://scripts/abilities/malachite/static_field.gd" id="1_qdvqh"]
+
+[node name="StaticField" type="Node2D" unique_id=602459797]
+script = ExtResource("1_qdvqh")

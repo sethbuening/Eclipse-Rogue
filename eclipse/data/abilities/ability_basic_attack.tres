@@ -5,11 +5,11 @@
 
 [sub_resource type="Resource" id="Resource_r8scv"]
 script = ExtResource("2_tn6qw")
-power = 10.0
+power = 5.0
 cooldown = 0.25
 duration = 10.0
 range = 150.0
-projectile_speed = 750.0
+projectile_speed = 350.0
 crit_chance = 0.03
 crit_damage = 2.0
 metadata/_custom_type_script = "uid://djuyt3y2iehml"

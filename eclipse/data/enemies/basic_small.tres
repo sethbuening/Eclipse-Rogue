@@ -10,7 +10,6 @@ display_name = "Swarmer"
 scene = ExtResource("1_5bko8")
 min_wave = 0
 max_health = 1
-attack_range = 100.0
 crit_chance = 0.1
 knockback_resistance = 1.0
 metadata/_custom_type_script = "uid://ccvg8ff4amw77"

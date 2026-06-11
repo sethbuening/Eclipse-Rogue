@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://d04nvbhwgxln2"]
 
 [ext_resource type="Texture2D" uid="uid://ctgmav7iwwfxr" path="res://art/abilities/conductor_post/conductor_post.png" id="1_7s4ed"]
-[ext_resource type="Script" uid="uid://71hqs2k1r51q" path="res://scripts/abilities/ability_conductor_post/conductor_post.gd" id="1_xh2rr"]
+[ext_resource type="Script" uid="uid://71hqs2k1r51q" path="res://scripts/abilities/malachite/conductor_post/conductor_post.gd" id="1_xh2rr"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_xh2rr"]
 atlas = ExtResource("1_7s4ed")

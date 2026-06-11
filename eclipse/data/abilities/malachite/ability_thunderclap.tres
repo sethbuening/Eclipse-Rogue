@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="AbilityThunderclap" format=3 uid="uid://dd5oy8pr3gu43"]
+
+[ext_resource type="Script" uid="uid://cp64f17k17t0d" path="res://scripts/abilities/malachite/thunderclap/ability_thunderclap.gd" id="1_b5n4h"]
+[ext_resource type="Script" uid="uid://djuyt3y2iehml" path="res://scripts/abilities/ability_stats.gd" id="2_baiti"]
+
+[sub_resource type="Resource" id="Resource_bhbth"]
+script = ExtResource("2_baiti")
+power = 5.0
+cooldown = 10.0
+duration = 10.0
+range = 100.0
+projectile_speed = 50.0
+crit_chance = 0.01
+crit_damage = 2.0
+stun_duration = 1.0
+metadata/_custom_type_script = "uid://djuyt3y2iehml"
+
+[resource]
+script = ExtResource("1_b5n4h")
+id = "thunderclap"
+display_name = "Thunderclap"
+description = "Send out a shockwave in all directions of lightning energy."
+stats = SubResource("Resource_bhbth")
+metadata/_custom_type_script = "uid://cp64f17k17t0d"

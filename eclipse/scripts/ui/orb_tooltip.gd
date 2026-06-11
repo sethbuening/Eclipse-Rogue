@@ -48,8 +48,8 @@ func _build_content(data: Object) -> void:
 	title.custom_minimum_size = Vector2(MAX_WIDTH - PAD * 2, 0)
 	_vbox.add_child(title)
 
-	_vbox.add_child(_make_stat_row("Potency",  str(orb.orb_potency) if "orb_potency" in orb else "—"))
-	_vbox.add_child(_make_stat_row("Cooldown", "%.2fs" % orb.cooldown  if orb.cooldown  > 0.0 else "—"))
+	_vbox.add_child(_make_stat_row("Potency",  AbilityTooltip.fmt_stat_value(orb.orb_potency, "") if "orb_potency" in orb else "—"))
+	_vbox.add_child(_make_stat_row("Cooldown", AbilityTooltip.fmt_stat_value(orb.cooldown, " sec") if orb.cooldown > 0.0 else "—"))
 
 	if not orb.abilities.is_empty():
 		_vbox.add_child(_make_sep(C_BORDER))

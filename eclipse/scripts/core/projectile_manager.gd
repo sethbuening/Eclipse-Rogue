@@ -192,6 +192,6 @@ func _on_canvas_draw() -> void:
 		_canvas.draw_circle(xform * e["pos"], maxf(0.5, radius * 0.3), core_col)
 
 	# Draw bullet streaks from basic attack abilities
-	for node in get_tree().get_nodes_in_group("player"):
+	'''for node in get_tree().get_nodes_in_group("player"):
 		for attack in node.basic_attacks:
-			attack.draw_projectiles(_canvas)
+			attack.draw_projectiles(_canvas)'''

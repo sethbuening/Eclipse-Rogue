@@ -130,6 +130,7 @@ func _finish_collect(item: Node) -> void:
 	match item.drop_type:
 		DroppedItem.DropType.XP:
 			player.xp += 1
+			AudioManagerScene.play_xp_collect()
 		DroppedItem.DropType.METAL:
 			if item.metal != null:
 				inventory.add_metal(item.metal, 1)

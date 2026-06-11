@@ -14,17 +14,11 @@ extends CharacterBody2D
 @export var orb_reform_flash: float   = 0.2
 
 @export_group("Starting Orbs")
-const starting_orb:   Orb = preload("res://data/orbs/orb_focus_mine.tres")
-const starting_orb_2: Orb = preload("res://data/orbs/orb_gold_bomb.tres")
 const starting_orb_3: Orb = preload("res://data/orbs/orb_lightning_chain.tres")
 const starting_orb_4: Orb = preload("res://data/orbs/orb_conductor_post.tres")
 
-@export_group("Basic Attacks")
-@export var basic_attacks: Array[AbilityBasicAttack] = []
-
-@export_group("Health")
-@export var max_health: int = 100
-@export var armor:      int = 0
+@export_group("Stats")
+@export var stats: PlayerStats = PlayerStats.new()
 
 
 # ================================================================ constants ==
@@ -64,7 +58,44 @@ var movement_enabled: bool  = true
 
 var _last_move_dir:    Vector2 = Vector2.RIGHT
 
-@onready var speed: float = 100.0 * get_parent().scale.x
+@onready var _speed_scale: float = get_parent().scale.x
+
+# ── passthrough properties (keep external scripts working unchanged) ───────────
+var speed: float:
+	get: return stats.speed
+	set(v): stats.speed = v
+
+var max_health: int:
+	get: return stats.max_health
+	set(v): stats.max_health = v
+
+var armor: int:
+	get: return stats.armor
+	set(v): stats.armor = v
+
+var dodge_chance: float:
+	get: return stats.dodge_chance
+	set(v): stats.dodge_chance = v
+
+var guaranteed_crits: int:
+	get: return stats.guaranteed_crits
+	set(v): stats.guaranteed_crits = v
+
+var mine_speed_mult: float:
+	get: return stats.mine_speed_mult
+	set(v): stats.mine_speed_mult = v
+
+var flare_light_level: float:
+	get: return stats.flare_light_level
+	set(v): stats.flare_light_level = v
+
+var flare_radius: float:
+	get: return stats.flare_radius
+	set(v): stats.flare_radius = v
+
+var flare_throw_velocity: float:
+	get: return stats.flare_throw_velocity
+	set(v): stats.flare_throw_velocity = v
 
 var direction: Vector2i = Vector2i.DOWN:
 	set(value):
@@ -97,16 +128,6 @@ var xp: int = 0:
 		xp = value
 		if xp_bar:
 			xp_bar.set_xp(xp)
-
-var guaranteed_crits: int = 0
-
-# ── mining speed ──────────────────────────────────────────────────────────────
-var mine_speed_mult: float = 1.0  # upgraded by UpgradeMineSpeed
-
-# ── flare stats ───────────────────────────────────────────────────────────────
-var flare_light_level:    float = 1.0   # energy/brightness of thrown flare
-var flare_radius:         float = 80.0  # light radius of the flare
-var flare_throw_velocity: float = 320.0 # pixels per second
 
 const FLARE_SCENE: PackedScene = preload("res://scenes/flare.tscn")
 
@@ -182,12 +203,12 @@ func _get_upgrade_pool() -> Array:
 # ==================================================================== ready ==
 
 func _ready() -> void:
+	stats.speed *= _speed_scale
 	health = max_health
 	add_to_group("player")
 	$Inventory.orb_added.connect(_on_orb_added)
 	$Inventory.orb_removed.connect(_on_orb_removed)
 	$Inventory.relic_added.connect(_on_relic_added)
-	$Inventory.add_orb(starting_orb_2.clone())
 	$Inventory.add_orb(starting_orb_3.clone())
 	$Inventory.add_orb(starting_orb_4.clone())
 	xp_bar.leveled_up.connect(_on_leveled_up)
@@ -206,7 +227,7 @@ func _process(delta: float) -> void:
 
 	_update_orb_visuals(delta)
 	_tick_abilities(delta)
-	_tick_basic_attacks(delta)
+	#_tick_basic_attacks(delta)
 	_tick_relics(delta)
 	_tick_upgrades(delta)
 	_tick_env(delta)
@@ -250,9 +271,13 @@ func _physics_process(delta: float) -> void:
 
 # ================================================================== combat ==
 
-func take_damage(amount: int, armor_penetration: int = 0, is_crit: bool = false) -> void:
+func take_damage(amount: int, armor_penetration: int = 0, is_crit: bool = false, damage_type: Util.DamageType = Util.DamageType.PHYSICAL) -> void:
+	if stats.dodge_chance > 0.0 and randf() < stats.dodge_chance:
+		DamageNumbers.spawn_dodge(global_position + Vector2(0, -28))
+		return
 	var after_armor: int = amount - maxi(0, armor - armor_penetration)
 	after_armor = maxi(1, after_armor)
+	# damage_type is accepted and stored for future elemental resistance logic.
 	DamageNumbers.spawn(global_position + Vector2(0, -28), after_armor, is_crit)
 	health -= after_armor
 
@@ -262,7 +287,7 @@ func _on_died() -> void:
 
 # ============================================================ basic attacks ==
 
-func _tick_basic_attacks(delta: float) -> void:
+'''func _tick_basic_attacks(delta: float) -> void:
 	if basic_attacks.is_empty():
 		return
 	var ctx: Dictionary = {
@@ -270,7 +295,7 @@ func _tick_basic_attacks(delta: float) -> void:
 		"delta":  delta,
 	}
 	for attack: AbilityBasicAttack in basic_attacks:
-		attack.tick(ctx)
+		attack.tick(ctx)'''
 
 
 # ================================================================ abilities ==
@@ -359,9 +384,6 @@ func _update_orb_visuals(delta: float) -> void:
 		ov.glow           = 0.0
 		ov.glow_target    = 0.0
 		ov.sprite.visible = false
-		for ability: AbilityData in $Inventory.orbs[i].abilities:
-			if ability is AbilityFocusMine:
-				(ability as AbilityFocusMine).reset_exploded()
 
 	for i in range(orb_visuals.size()):
 		var ov:  OrbVisual = orb_visuals[i]
@@ -451,21 +473,11 @@ func shatter_orb(orb_index: int) -> void:
 	ov.shattered      = true
 	ov.glow           = 0.0
 	ov.cooldown_age   = 0.0
-	ov.cooldown       = _compute_orb_cooldown(orb)
+	ov.cooldown       = orb.cooldown if orb.cooldown != 0.0 else 1.0
 	ov.sprite.visible = false
 	ov.current_angle  = orbit_time + (float(orb_index) / float(orb_visuals.size())) * TAU
 	ParticleManager.spawn_orb_shatter(global_position + ov.sprite.position)
 
-func _compute_orb_cooldown(orb: Orb) -> float:
-	if orb.cooldown != 0.0:
-		return orb.cooldown
-	var total: float = 0.0
-	var count: int   = 0
-	for ability: AbilityData in orb.abilities:
-		if ability.stats != null:
-			total += ability.stats.cooldown
-			count += 1
-	return total / count if count > 0 else 1.0
 
 # ================================================================== mining ==
 
@@ -605,6 +617,7 @@ func _on_level_up_button_pressed() -> void:
 func _show_next_upgrade_screen() -> void:
 	_pending_level_ups -= 1
 	xp_bar.notify_level_up(_pending_level_ups)
+	xp_bar.claim_one_level_up()
 	var choices: Array = _get_upgrade_pool().duplicate()
 	choices.shuffle()
 	choices = choices.slice(0, 3)
@@ -654,6 +667,8 @@ func _tick_flares() -> void:
 # ================================================================= dev tools ==
 
 func _tick_dev_input() -> void:
+	if Input.is_action_just_pressed("pause"):
+		%PauseMenu.open()
 	if Input.is_action_just_pressed("dev_mode"):
 		if $CollisionShape2D.disabled:
 			speed /= 10.0

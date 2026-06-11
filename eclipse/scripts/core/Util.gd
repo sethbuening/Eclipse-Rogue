@@ -18,6 +18,15 @@ enum dir {
 	DOWN
 }
 
+# ── damage types ─────────────────────────────────────────────────────────────
+enum DamageType {
+	PHYSICAL,
+	LIGHTNING,
+	FIRE,
+	ICE,
+	POISON
+}
+
 # ── rarity ───────────────────────────────────────────────────────────────────
 enum Rarity {
 	COMMON,      # Dull stone — plain, no glow
@@ -229,6 +238,49 @@ func nearest_direction(v: Vector2) -> Vector2i:
 		return Vector2i.RIGHT if v.x >= 0 else Vector2i.LEFT
 	else:
 		return Vector2i.DOWN if v.y >= 0 else Vector2i.UP
+
+## Scans [path] for .gd files, loads each as a GDScript, instantiates it once
+## to read its [id] property, then stores the script in a Dictionary keyed by
+## that id.  The temporary instance is freed immediately — only the GDScript
+## object is kept, so callers can do  my_dict["stun"].new()  at any time.
+##
+## Any .gd file that lacks an [id] property, or whose id is empty, is skipped
+## with a warning so it never silently pollutes the registry.
+##
+## Example:
+##   var effect_scripts: Dictionary = Util.load_scripts("res://scripts/effects/")
+##   var stun: EffectData = effect_scripts["stun"].new()
+func load_scripts(path: String) -> Dictionary:
+	var results: Dictionary = {}
+	var dir: DirAccess = DirAccess.open(path)
+	if dir == null:
+		push_error("Util.load_scripts: could not open path: " + path)
+		return results
+	dir.list_dir_begin()
+	var filename: String = dir.get_next()
+	while filename != "":
+		if not dir.current_is_dir() and filename.ends_with(".gd"):
+			var full_path: String = path + filename
+			var script: GDScript = load(full_path) as GDScript
+			if script == null:
+				push_warning("Util.load_scripts: failed to load: " + filename)
+				filename = dir.get_next()
+				continue
+			var instance: Object = script.new()
+			var id: String = instance.get("id") if instance.get("id") != null else ""
+			# RefCounted instances free themselves when the var goes out of scope.
+			if id == "":
+				push_warning("Util.load_scripts: skipping %s — no id property" % filename)
+				filename = dir.get_next()
+				continue
+			if results.has(id):
+				push_warning("Util.load_scripts: duplicate id '%s' in %s — skipping" % [id, filename])
+				filename = dir.get_next()
+				continue
+			results[id] = script
+		filename = dir.get_next()
+	dir.list_dir_end()
+	return results
 
 func load_resources(path: String) -> Array[Resource]:
 	var results: Array[Resource] = []

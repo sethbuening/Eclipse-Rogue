@@ -26,6 +26,18 @@ func _init() -> void:
 	for a: AbilityData in abilities:
 		duped.append(a.duplicate(true))
 	abilities = duped
+	_compute_cooldown()
+
+func _compute_cooldown() -> void:
+	if cooldown != 0.0:
+		return
+	var total: float = 0.0
+	var count: int   = 0
+	for ability: AbilityData in abilities:
+		if ability.stats != null and ability.stats.cooldown != -1:
+			total += ability.stats.cooldown
+			count += 1
+	cooldown = total / count if count > 0 else 1.0
 
 func clone() -> Orb:
 	var duped: Orb = duplicate(true)
@@ -33,6 +45,8 @@ func clone() -> Orb:
 	for a: AbilityData in duped.abilities:
 		duped_abilities.append(a.duplicate(true))
 	duped.abilities = duped_abilities
+	duped.cooldown = 0.0
+	duped._compute_cooldown()
 	return duped
 
 func is_alloy() -> bool:

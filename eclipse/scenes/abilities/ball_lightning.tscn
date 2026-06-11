@@ -1,0 +1,38 @@
+[gd_scene format=3 uid="uid://uhmjd3hbpnfk"]
+
+[ext_resource type="Script" uid="uid://db1rwpcc7wtkd" path="res://scripts/abilities/malachite/ball_lightning/ball_lightning.gd" id="1_4fcrc"]
+[ext_resource type="Texture2D" uid="uid://dkq4ym307u40q" path="res://art/abilities/lightning_ball.png" id="2_jvp7w"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_j4ki6"]
+atlas = ExtResource("2_jvp7w")
+region = Rect2(0, 0, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_xfm13"]
+atlas = ExtResource("2_jvp7w")
+region = Rect2(0, 0, 32, 32)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_83llk"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_j4ki6")
+}],
+"loop": true,
+"name": &"dissipate",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_xfm13")
+}],
+"loop": true,
+"name": &"idle",
+"speed": 5.0
+}]
+
+[node name="BallLightning" type="Node2D" unique_id=275468534]
+script = ExtResource("1_4fcrc")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=2132150753]
+sprite_frames = SubResource("SpriteFrames_83llk")
+animation = &"idle"

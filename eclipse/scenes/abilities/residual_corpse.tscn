@@ -1,0 +1,10 @@
+[gd_scene format=3 uid="uid://skgsmj652fxm"]
+
+[ext_resource type="Script" uid="uid://wuc5y3fwji80" path="res://scripts/abilities/malachite/residual_current/residual_corpse.gd" id="1_xyx3a"]
+[ext_resource type="Texture2D" uid="uid://bfqu82kw2uc1j" path="res://art/abilities/residual_corpse.png" id="2_d4jt2"]
+
+[node name="ResidualCorpse" type="Node2D" unique_id=386961919]
+script = ExtResource("1_xyx3a")
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=386520176]
+texture = ExtResource("2_d4jt2")

@@ -48,6 +48,16 @@ func spawn_heal(world_pos: Vector2, amount: int) -> void:
 	label.add_theme_constant_override("outline_size", 3)
 	_launch(label, world_pos)
 
+func spawn_dodge(world_pos: Vector2) -> void:
+	var label := _make_label()
+	label.custom_minimum_size = Vector2(80, 24)
+	label.text = "DODGED"
+	label.add_theme_font_size_override("font_size", FONT_SIZE_C)
+	label.add_theme_color_override("font_color",         Color("88ccff"))
+	label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.65))
+	label.add_theme_constant_override("outline_size", 3)
+	_launch(label, world_pos)
+
 # ── internals ─────────────────────────────────────────────────────────────────
 
 func _make_label() -> Label:

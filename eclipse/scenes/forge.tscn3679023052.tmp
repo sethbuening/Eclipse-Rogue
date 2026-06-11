@@ -1,0 +1,76 @@
+[gd_scene format=3 uid="uid://dnytw6xewr0j0"]
+
+[ext_resource type="Script" uid="uid://djpnnk51toyae" path="res://scripts/forging/forge.gd" id="1_huql2"]
+[ext_resource type="Texture2D" uid="uid://cff7kji88i6qv" path="res://art/forge.png" id="2_7gn74"]
+[ext_resource type="Script" uid="uid://bvpht4epwp2nb" path="res://scripts/pathfinding/nav_obstacle.gd" id="3_cc85a"]
+[ext_resource type="Environment" uid="uid://boy3e0tstlb4q" path="res://new_environment.tres" id="4_uunk1"]
+[ext_resource type="Texture2D" uid="uid://bbbnehjskb610" path="res://art/lava.png" id="5_7gn74"]
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_uunk1"]
+radius = 97.0
+height = 366.0
+
+[sub_resource type="Gradient" id="Gradient_4037l"]
+colors = PackedColorArray(1, 1, 1, 1, 0, 0, 0, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_cc85a"]
+gradient = SubResource("Gradient_4037l")
+width = 2048
+height = 2048
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(0.833, 0.167)
+
+[node name="Forge" type="Node2D" unique_id=1243731680]
+script = ExtResource("1_huql2")
+base_forge_duration = null
+heat_duration_scale = null
+base_wave_interval = null
+min_wave_interval = null
+max_wave_interval = null
+interaction_radius = null
+HEAT_MULTIPLIER = null
+forge_proximity_radius = null
+forge_stall_cancel_time = null
+
+[node name="StaticBody2D" type="StaticBody2D" parent="." unique_id=441977134]
+visible = false
+position = Vector2(0, -14)
+collision_mask = 7
+
+[node name="CollisionPolygon2D" type="CollisionPolygon2D" parent="StaticBody2D" unique_id=84022542]
+polygon = PackedVector2Array(14, -11, 43, -3, 61, 0, 119, -2, 149, 12, 91, 27, 58, 16, 45, 26, 78, 41, 119, 57, 41, 58, 36, 52, 12, 34, -26, 35, -33, 54, -4, 61, -11, 83, -50, 85, -107, 46, -157, 14, -14, -13, 4, -22, -29, -39, -22, -43, -4, -37, 19, -41, 32, -38)
+
+[node name="InteractArea" type="Area2D" parent="." unique_id=1782538907]
+visible = false
+position = Vector2(0, -14)
+collision_layer = 2
+collision_mask = 4
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="InteractArea" unique_id=872655660]
+position = Vector2(1, 22)
+rotation = 1.5707964
+shape = SubResource("CapsuleShape2D_uunk1")
+
+[node name="ForgeSprite" type="Sprite2D" parent="." unique_id=2134381653]
+visible = false
+position = Vector2(-49, -128)
+texture = ExtResource("2_7gn74")
+
+[node name="NavObstacle" type="Node2D" parent="." unique_id=892351366]
+script = ExtResource("3_cc85a")
+
+[node name="PointLight2D" type="PointLight2D" parent="." unique_id=229252036]
+position = Vector2(0, 3)
+range_z_min = -4096
+range_z_max = 4096
+texture = SubResource("GradientTexture2D_cc85a")
+texture_scale = 0.25
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=2043463875]
+environment = ExtResource("4_uunk1")
+
+[node name="Lava" type="Sprite2D" parent="." unique_id=2080404722]
+modulate = Color(1.5720325, 1.5720325, 1.5720325, 1)
+position = Vector2(-1, 7)
+texture = ExtResource("5_7gn74")

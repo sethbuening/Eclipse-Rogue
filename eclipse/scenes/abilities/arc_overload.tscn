@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://cqwv2itsfkf18"]
+
+[ext_resource type="Script" uid="uid://l62vhjw46pm8" path="res://scripts/abilities/malachite/arc_overload/arc_overload.gd" id="1_5aoyl"]
+
+[node name="ArcOverload" type="Node2D" unique_id=999151861]
+script = ExtResource("1_5aoyl")

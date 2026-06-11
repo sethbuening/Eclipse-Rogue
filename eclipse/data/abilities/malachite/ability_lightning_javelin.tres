@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="AbilityLightningJavelin" format=3 uid="uid://b5yyc7sw7jge6"]
+
+[ext_resource type="Script" uid="uid://dbg80etqgpsi4" path="res://scripts/abilities/malachite/javelin/ability_lightning_javelin.gd" id="1_7v42e"]
+[ext_resource type="Script" uid="uid://djuyt3y2iehml" path="res://scripts/abilities/ability_stats.gd" id="2_su3bq"]
+
+[sub_resource type="Resource" id="Resource_vbfyw"]
+script = ExtResource("2_su3bq")
+power = 10.0
+cooldown = 5.0
+range = 250.0
+projectile_speed = 50.0
+pierce = 2
+crit_chance = 0.02
+crit_damage = 2.0
+metadata/_custom_type_script = "uid://djuyt3y2iehml"
+
+[resource]
+script = ExtResource("1_7v42e")
+id = "lightning_javelin"
+display_name = "Lightning Javelin"
+description = "Throw a javelin of pure lightning through your enemies, piercing them and shocking them with electricity."
+stats = SubResource("Resource_vbfyw")
+metadata/_custom_type_script = "uid://dbg80etqgpsi4"

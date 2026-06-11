@@ -1,6 +1,8 @@
 # game.gd
 extends Node2D
 
+const FORGE_SCENE: PackedScene = preload("res://scenes/forge.tscn")
+
 const DEBUG_MSG_DURATION: float = 3.0
 var debug_messages: Array[Dictionary] = []
 
@@ -28,7 +30,7 @@ func _ready() -> void:
 	)
 	#NavManager.build(%TilemapManager)
 	FlowField.initialize(%TilemapManager)
-	$Forge.init(%Player)
+	_spawn_world_forges(3)
 
 func _process(delta: float) -> void:
 	FlowField.set_target(%Player.global_position)
@@ -47,17 +49,8 @@ func _process(delta: float) -> void:
 	%DebugLabel.parse_bbcode(_build_debug_text(fps, env, player))
 
 func _report_drop(fps: int) -> void:
-	var shockwaves_active: int = 0
-	var shockwaves_mining: int = 0
-	for s in GoldShockwave._pool:
-		if s._active:
-			shockwaves_active += 1
-		if s._mining:
-			shockwaves_mining += 1
-	push_debug("DROP %d fps | shockwaves active=%d mining=%d | enemies=%d" % [
+	push_debug("DROP %d fps | enemies=%d" % [
 		fps,
-		shockwaves_active,
-		shockwaves_mining,
 		EnemyManager.living_enemies.size(),
 	], true)
 
@@ -110,3 +103,141 @@ func _on_forging_wave_started() -> void:
 
 func _on_forging_wave_ended() -> void:
 	push_debug("Forging wave ended", false)
+
+# ══════════════════════════════════════════════════════════ forge spawning ══
+
+# Tile offsets (relative to the anchor tile) that the forge's collision
+# polygon covers, pre-computed from forge.tscn.
+# StaticBody2D offset: (0, -14). TILE_SIZE = 32.
+# Recompute if the polygon or pivot changes.
+# Computed by testing all 4 tile corners + centre + polygon vertices against
+# the CollisionPolygon2D (StaticBody2D offset (0,-14), TILE_SIZE=32).
+const FORGE_POLYGON_TILE_OFFSETS: Array[Vector2i] = [
+	# y = -2
+	Vector2i(-1, -2), Vector2i( 0, -2), Vector2i( 1, -2),
+	# y = -1
+	Vector2i(-5, -1), Vector2i(-4, -1), Vector2i(-3, -1), Vector2i(-2, -1),
+	Vector2i(-1, -1), Vector2i( 0, -1), Vector2i( 1, -1), Vector2i( 2, -1),
+	Vector2i( 3, -1), Vector2i( 4, -1),
+	# y =  0
+	Vector2i(-5,  0), Vector2i(-4,  0), Vector2i(-3,  0), Vector2i(-2,  0),
+	Vector2i(-1,  0), Vector2i( 0,  0), Vector2i( 1,  0), Vector2i( 2,  0),
+	Vector2i( 3,  0), Vector2i( 4,  0),
+	# y =  1
+	Vector2i(-4,  1), Vector2i(-3,  1), Vector2i(-2,  1), Vector2i(-1,  1),
+	Vector2i( 0,  1), Vector2i( 1,  1), Vector2i( 2,  1), Vector2i( 3,  1),
+	# y =  2
+	Vector2i(-2,  2), Vector2i(-1,  2),
+]
+
+func _spawn_world_forges(count: int, candidates_per_forge: int = 200) -> void:
+	var tilemap: Node = %TilemapManager
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+
+	var cx: int            = tilemap.WIDTH  / 2
+	var cy: int            = tilemap.HEIGHT / 2
+	var play_radius: float = (tilemap.WIDTH - tilemap.BUFFER_TILES) / 2.0 - 4.0
+
+	var placed_positions: Array[Vector2] = []
+
+	for _forge_i in count:
+		var best_tile: Vector2i = Vector2i(-1, -1)
+		var best_score: float   = -1.0
+
+		for _i in candidates_per_forge:
+			var angle: float        = rng.randf() * TAU
+			var dist:  float        = rng.randf_range(2.0, play_radius)
+			var candidate: Vector2i = Vector2i(
+				cx + int(cos(angle) * dist),
+				cy + int(sin(angle) * dist)
+			)
+
+			# Every polygon tile must be inside the world and air
+			var clear := true
+			for offset: Vector2i in FORGE_POLYGON_TILE_OFFSETS:
+				var check: Vector2i = candidate + offset
+				if not tilemap.ground_types.has(check) or not tilemap.is_air(check):
+					clear = false
+					break
+			if not clear:
+				continue
+
+			var world_pos: Vector2 = tilemap.map_to_world(candidate)
+			var min_dist: float    = INF
+			for placed: Vector2 in placed_positions:
+				min_dist = minf(min_dist, world_pos.distance_to(placed))
+			if placed_positions.is_empty():
+				min_dist = 0.0
+
+			if min_dist > best_score:
+				best_score = min_dist
+				best_tile  = candidate
+
+		if best_tile == Vector2i(-1, -1):
+			push_warning("spawn_forge: could not find a clear air location for forge %d" % _forge_i)
+			continue
+
+		var forge: Forge = FORGE_SCENE.instantiate()
+		add_child(forge)
+		forge.global_position = tilemap.map_to_world(best_tile)
+		forge.init(%Player)
+		placed_positions.append(forge.global_position)
+
+# Spawns a single forge as far as possible from existing Forge nodes.
+# Returns the new Forge or null on failure.
+func spawn_forge(max_attempts: int = 200) -> Forge:
+	var tilemap: Node = %TilemapManager
+
+	var placed_positions: Array[Vector2] = []
+	for node in get_children():
+		if node is Forge:
+			placed_positions.append(node.global_position)
+
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+
+	var cx: int            = tilemap.WIDTH  / 2
+	var cy: int            = tilemap.HEIGHT / 2
+	var play_radius: float = (tilemap.WIDTH - tilemap.BUFFER_TILES) / 2.0 - 4.0
+
+	var best_tile: Vector2i = Vector2i(-1, -1)
+	var best_score: float   = -1.0
+
+	for _i in max_attempts:
+		var angle: float        = rng.randf() * TAU
+		var dist:  float        = rng.randf_range(2.0, play_radius)
+		var candidate: Vector2i = Vector2i(
+			cx + int(cos(angle) * dist),
+			cy + int(sin(angle) * dist)
+		)
+
+		var clear := true
+		for offset: Vector2i in FORGE_POLYGON_TILE_OFFSETS:
+			var check: Vector2i = candidate + offset
+			if not tilemap.ground_types.has(check) or not tilemap.is_air(check):
+				clear = false
+				break
+		if not clear:
+			continue
+
+		var world_pos: Vector2 = tilemap.map_to_world(candidate)
+		var min_dist: float    = INF
+		for placed: Vector2 in placed_positions:
+			min_dist = minf(min_dist, world_pos.distance_to(placed))
+		if placed_positions.is_empty():
+			min_dist = 0.0
+
+		if min_dist > best_score:
+			best_score = min_dist
+			best_tile  = candidate
+
+	if best_tile == Vector2i(-1, -1):
+		push_warning("spawn_forge: could not find a clear air location after %d attempts" % max_attempts)
+		return null
+
+	var forge: Forge = FORGE_SCENE.instantiate()
+	add_child(forge)
+	forge.global_position = tilemap.map_to_world(best_tile)
+	forge.init(%Player)
+	return forge

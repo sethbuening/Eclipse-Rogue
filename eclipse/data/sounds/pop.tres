@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="SoundEffect" format=3 uid="uid://7kh3emeexyh"]
+
+[ext_resource type="Script" uid="uid://oxrxkkk4gy2i" path="res://scripts/core/sound_effect.gd" id="1_fr42s"]
+[ext_resource type="AudioStream" uid="uid://v2qnv355dw0n" path="res://assets/sounds/pop.wav" id="2_wmtkf"]
+
+[resource]
+script = ExtResource("1_fr42s")
+type = 12
+sound_effect = ExtResource("2_wmtkf")
+metadata/_custom_type_script = "uid://oxrxkkk4gy2i"

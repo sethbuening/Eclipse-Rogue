@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="AbilityBallLightning" format=3 uid="uid://nl1xhakm7pkb"]
+
+[ext_resource type="Script" uid="uid://bt35rxx4qtgww" path="res://scripts/abilities/malachite/ball_lightning/ability_ball_lightning.gd" id="1_cq5q5"]
+[ext_resource type="Script" uid="uid://djuyt3y2iehml" path="res://scripts/abilities/ability_stats.gd" id="2_warw2"]
+
+[sub_resource type="Resource" id="Resource_r3rkw"]
+script = ExtResource("2_warw2")
+power = 10.0
+cooldown = 10.0
+duration = 5.0
+range = 50.0
+projectile_speed = 10.0
+aoe_radius = 100.0
+crit_chance = 0.005
+crit_damage = 2.0
+metadata/_custom_type_script = "uid://djuyt3y2iehml"
+
+[resource]
+script = ExtResource("1_cq5q5")
+id = "lightning_ball"
+display_name = "Lightning Ball"
+description = "Launch a ball of pure lightning at your foes."
+stats = SubResource("Resource_r3rkw")
+metadata/_custom_type_script = "uid://bt35rxx4qtgww"

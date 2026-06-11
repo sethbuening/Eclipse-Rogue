@@ -28,12 +28,25 @@ var _glint_active: bool           = false
 var _glint_t:      float          = 0.0
 var _glint_mat:    ShaderMaterial = null
 
+# ── hover lift ────────────────────────────────────────────────────────────────
+const HOVER_LIFT:       float = 8.0
+const HOVER_LIFT_SPEED: float = 10.0
+
+var _base_y:     float = 0.0
+var _hover_lift: float = 0.0
+var _is_hovered: bool  = false
+
 func _ready() -> void:
 	await get_tree().process_frame
 	var vp_size := get_viewport().get_visible_rect().size
 	_bar_width = vp_size.x * (1.0 / 2.0)
 	size     = Vector2(_bar_width, bar_height)
 	position = Vector2((vp_size.x - _bar_width) / 2.0, vp_size.y - xp_bar_height - bar_height)
+	_base_y  = position.y
+
+	mouse_filter = Control.MOUSE_FILTER_STOP
+	mouse_entered.connect(func() -> void: _is_hovered = true)
+	mouse_exited.connect( func() -> void: _is_hovered = false)
 
 	# Ghost bar — behind, flashing orange/white
 	_ghost_bar               = ProgressBar.new()
@@ -126,6 +139,12 @@ func _process(delta: float) -> void:
 			_health_bar.value / _health_bar.max_value)
 
 	_tick_glint(delta)
+
+	var lift_target: float = HOVER_LIFT if _is_hovered else 0.0
+	_hover_lift = lerpf(_hover_lift, lift_target, HOVER_LIFT_SPEED * delta)
+	if absf(_hover_lift - lift_target) < 0.3:
+		_hover_lift = lift_target
+	position.y = _base_y - _hover_lift
 
 func _tick_glint(delta: float) -> void:
 	if _glint_mat == null:

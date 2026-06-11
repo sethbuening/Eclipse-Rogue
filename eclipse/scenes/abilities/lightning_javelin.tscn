@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://c3xnx5iagn55h"]
+
+[ext_resource type="Script" uid="uid://c8214pf1jvdf1" path="res://scripts/abilities/malachite/javelin/lightning_javelin.gd" id="1_8knfi"]
+
+[node name="LightningJavelin" type="Node2D" unique_id=1974280947]
+script = ExtResource("1_8knfi")

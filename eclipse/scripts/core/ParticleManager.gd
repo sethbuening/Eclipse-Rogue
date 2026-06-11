@@ -21,6 +21,7 @@ class Particle:
 	# This lets dust grains settle on the tile surface OR fall into gaps.
 	var use_smart_floor: bool  = false
 	var floor_z:         float = 0.0   # updated by _resolve_floor(); ignored when use_smart_floor=false
+	var always_collide: bool = false  # if true, wall collision runs regardless of z
 
 const GRAVITY: float = 400.0
 var particles: Array[Particle] = []
@@ -389,6 +390,25 @@ func spawn_basic_attack_explode(pos: Vector2) -> void:
 			false
 		)
 
+func spawn_tile_debris(world_pos: Vector2, tile_color: Color) -> void:
+	var gradient := Gradient.new()
+	gradient.set_color(0, tile_color * 1.8)
+	gradient.add_point(0.4, tile_color)
+	gradient.set_color(1, tile_color * 0.5)
+	for i: int in range(randi_range(8, 14)):
+		var p: Particle = spawn(
+			world_pos + Vector2(randf_range(-16, 16), randf_range(-16, 16)),
+			Vector2(randf_range(-120, 120), randf_range(-120, 120)),
+			randf_range(80, 200),
+			gradient,
+			randf_range(2, 2.3),
+			randf_range(1.5, 2.0),
+			0.35,
+			false,
+			true
+		)
+		p.always_collide = true
+
 # -------------------------------------------------------------------- Sprite Particles ------------
 
 class SpriteParticle:
@@ -513,7 +533,7 @@ func _process(delta: float) -> void:
 
 		# Only do 2D wall collision when the particle is at or near ground level.
 		# Airborne particles (z > a small threshold) fly freely over tile geometry.
-		if p.z <= 2.0 and tilemap_manager != null:
+		if (p.z <= 16.0 or p.always_collide) and tilemap_manager != null:
 			var map_pos: Vector2i = tilemap_manager.world_to_map(next_pos)
 			if tilemap_manager.tile_exists(map_pos):
 				var tile_center: Vector2 = tilemap_manager.map_to_world(map_pos)

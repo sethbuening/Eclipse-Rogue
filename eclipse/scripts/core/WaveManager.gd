@@ -28,34 +28,34 @@ extends Node
 
 @export_group("Trickle")
 ## Spawn interval at t=0.
-@export var trickle_interval_start: float = 4.0
+@export var trickle_interval_start: float = 1.2
 ## Fastest trickle interval (floor).
-@export var trickle_interval_min:   float = 0.7
+@export var trickle_interval_min:   float = 0.18
 ## Minutes until trickle reaches its minimum.
-@export var trickle_ramp_minutes:   float = 18.0
-@export var trickle_variance:       float = 0.25
+@export var trickle_ramp_minutes:   float = 12.0
+@export var trickle_variance:       float = 0.08
 
 @export_group("Encounters")
 ## How often an encounter event is triggered (seconds).
-@export var encounter_period:          float = 28.0
-@export var encounter_period_variance: float = 7.0
+@export var encounter_period:          float = 18.0
+@export var encounter_period_variance: float = 4.0
 
 @export_group("Horde Events")
-@export var horde_every_minutes: float = 3.5
-@export var horde_size:          int   = 32
-@export var horde_spawn_step:    float = 0.05
+@export var horde_every_minutes: float = 2.0
+@export var horde_size:          int   = 80
+@export var horde_spawn_step:    float = 0.03
 
 @export_group("Budget / Scaling")
-@export var base_budget:         int   = 2
-@export var budget_per_minute:   float = 0.9
-@export var budget_cap:          int   = 35
+@export var base_budget:         int   = 5
+@export var budget_per_minute:   float = 2.2
+@export var budget_cap:          int   = 80
 
 @export_group("Forging")
-@export var forge_spawn_interval: float = 0.45
-@export var forge_budget_mult:    float = 2.2
+@export var forge_spawn_interval: float = 0.22
+@export var forge_budget_mult:    float = 2.5
 
 @export_group("Timing")
-@export var first_spawn_delay:    float = 5.0
+@export var first_spawn_delay:    float = 3.0
 
 # ── encounter types ───────────────────────────────────────────────────────────
 
@@ -215,7 +215,7 @@ func _encounter_swarm() -> void:
 	# Large wave from a single direction — high count, cheap enemies, FAST modifier
 	var pool   := _eligible_pool()
 	if pool.is_empty(): return
-	var budget := _current_budget() * 3
+	var budget := _current_budget() * 6
 	var squad  := _build_squad(budget, pool, "cheapest")
 	EnemyManager.spawn_squad(squad, Util.Modifier.FAST)
 	_enemies_alive += squad.size()
@@ -225,7 +225,7 @@ func _encounter_patrol() -> void:
 	# Mid-cost enemies in CLUSTERED formation — feels like a squad moving through
 	var pool   := _eligible_pool()
 	if pool.is_empty(): return
-	var budget := _current_budget() * 2
+	var budget := _current_budget() * 4
 	# Prefer mid-cost enemies (cost 2-4)
 	var mid_pool := pool.filter(func(e: EnemyData): return e.cost >= 2 and e.cost <= 4)
 	if mid_pool.is_empty(): mid_pool = pool
@@ -241,7 +241,7 @@ func _encounter_titan() -> void:
 
 	# Pick an elite (most expensive affordable)
 	pool.sort_custom(func(a: EnemyData, b: EnemyData): return a.cost > b.cost)
-	var budget := _current_budget() * 2
+	var budget := _current_budget() * 4
 	var elite: EnemyData = pool[0]
 	EnemyManager.spawn_enemy(elite, Util.Modifier.ALERTED)
 	_enemies_alive += 1
@@ -266,7 +266,7 @@ func _encounter_crossfire() -> void:
 	# by varying spawn side. We just spawn two affordable squads with ALERTED.
 	var pool   := _eligible_pool()
 	if pool.is_empty(): return
-	var half   := maxi(1, _current_budget())
+	var half   := maxi(1, _current_budget() * 2)
 	var squad_a := _build_squad(half, pool, "random")
 	var squad_b := _build_squad(half, pool, "cheapest")
 	EnemyManager.spawn_squad(squad_a, Util.Modifier.ALERTED)
@@ -358,9 +358,20 @@ func end_forging() -> void:
 	emit_signal("forging_wave_ended")
 	Log("Forging ended")
 
+## Permanently adds enemies from a forged metal's enemy_pool to the normal
+## roster for the rest of the run.  Duplicates (same resource) are ignored.
+func add_to_normal_roster(enemies: Array[EnemyData]) -> void:
+	for enemy: EnemyData in enemies:
+		if enemy.cost == 0:
+			continue
+		if _normal_roster.has(enemy):
+			continue
+		_normal_roster.append(enemy)
+		Log("Added to roster: %s" % enemy.display_name)
+
 # ── enemy tracking ────────────────────────────────────────────────────────────
 
-func _on_enemy_died() -> void:
+func _on_enemy_died(_enemy: Enemy) -> void:
 	_enemies_alive = maxi(0, _enemies_alive - 1)
 
 # ── level lifecycle ───────────────────────────────────────────────────────────

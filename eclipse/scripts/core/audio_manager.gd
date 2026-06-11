@@ -16,6 +16,20 @@ extends Node2D
 var _sound_effect_dict: Dictionary = {}  # SOUND_EFFECT_TYPE (int) → SoundEffect
 var _rng: RandomNumberGenerator    = RandomNumberGenerator.new()
 
+# ── xp collect pitch stack ────────────────────────────────────────────────────
+## Pitch of the very first collect in a chain.
+const XP_PITCH_BASE:    float = 0.9
+## How much pitch rises per consecutive collect.
+## 0.06 ≈ one semitone, so 12 collects ≈ one octave.
+const XP_PITCH_STEP:    float = 0.06
+## Hard ceiling — prevents the sound going ultrasonic on huge XP bursts.
+const XP_PITCH_MAX:     float = 2.0
+## Seconds without a collect before pitch resets to base.
+const XP_RESET_AFTER:   float = 0.35
+
+var _xp_pitch_current:  float = XP_PITCH_BASE
+var _xp_reset_timer:    float = 0.0
+
 # ── lifecycle ─────────────────────────────────────────────────────────────────
 func _ready() -> void:
 	_rng.randomize()
@@ -63,6 +77,40 @@ func create_audio(type: SoundEffect.SOUND_EFFECT_TYPE) -> void:
 	player.finished.connect(player.queue_free)
 	player.play()
 
+## Play the XP collect sound with pitch stacking.
+## Each call within XP_RESET_AFTER seconds raises the pitch by XP_PITCH_STEP.
+## After XP_RESET_AFTER seconds with no collect the pitch silently resets.
+## Set pitch_randomness to 0.0 on the XP_COLLECT SoundEffect resource —
+## pitch is driven entirely by the stack counter here.
+func play_xp_collect() -> void:
+	var sound_effect: SoundEffect = _get_sound_effect(SoundEffect.SOUND_EFFECT_TYPE.XP_COLLECT)
+	if sound_effect == null:
+		return
+	# Skip the has_open_limit check — XP sounds are short and dense collection
+	# moments are exactly when feedback matters most.  Cap via XP_PITCH_MAX instead.
+	sound_effect.change_audio_count(1)
+	var player := AudioStreamPlayer.new()
+	add_child(player)
+	player.stream    = sound_effect.sound_effect
+	player.volume_db = sound_effect.volume
+	player.bus       = &"SFX"
+	player.pitch_scale = _xp_pitch_current
+	player.finished.connect(sound_effect.on_audio_finished)
+	player.finished.connect(player.queue_free)
+	player.play()
+	# Advance pitch for next collect and restart the silence window.
+	_xp_pitch_current = minf(_xp_pitch_current + XP_PITCH_STEP, XP_PITCH_MAX)
+	_xp_reset_timer   = XP_RESET_AFTER
+
+# ── lifecycle ─────────────────────────────────────────────────────────────────
+func _process(delta: float) -> void:
+	if _xp_reset_timer <= 0.0:
+		return
+	_xp_reset_timer -= delta
+	if _xp_reset_timer <= 0.0:
+		_xp_reset_timer   = 0.0
+		_xp_pitch_current = XP_PITCH_BASE
+
 # ── private helpers ───────────────────────────────────────────────────────────
 func _get_sound_effect(type: SoundEffect.SOUND_EFFECT_TYPE) -> SoundEffect:
 	if not _sound_effect_dict.has(type):
@@ -77,7 +125,7 @@ func _get_sound_effect(type: SoundEffect.SOUND_EFFECT_TYPE) -> SoundEffect:
 func _configure_player(player: Node, sound_effect: SoundEffect) -> void:
 	player.set("stream",    sound_effect.sound_effect)
 	player.set("volume_db", sound_effect.volume)
-	player.set("bus",       &"SFX")
+	player.set("bus",       &"SFX-ui")
 	var pitch: float = sound_effect.pitch_scale
 	if sound_effect.pitch_randomness > 0.0:
 		pitch += _rng.randf_range(-sound_effect.pitch_randomness, sound_effect.pitch_randomness)

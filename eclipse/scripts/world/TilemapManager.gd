@@ -42,6 +42,10 @@ var camera: Camera2D = null
 @export var ROCK_VARIATION_THRESHOLD: float = 0.01
 @export var ROCK_VARIATION_FREQUENCY: float = 0.025
 
+@export_subgroup("Map Edge Shape")
+@export var EDGE_NOISE_AMPLITUDE: float = 8.0   # tiles; how jagged the border is
+@export var EDGE_NOISE_FREQUENCY: float = 0.015 # lower = smoother bulges
+
 @export var BUFFER_TILES: int = 32
 
 @export_group("Rendering")
@@ -91,6 +95,7 @@ var _relic_containers:   Dictionary = {}
 var chamber_noise:        FastNoiseLite   = FastNoiseLite.new()
 var path_noise:           FastNoiseLite   = FastNoiseLite.new()
 var rock_variation_noise: FastNoiseLite   = FastNoiseLite.new()
+var edge_noise:           FastNoiseLite   = FastNoiseLite.new()
 var rock_variation_tiles: Array[Vector2i] = []
 
 # ══════════════════════════════════════════════ bounce anim ══
@@ -160,6 +165,7 @@ func _ready() -> void:
 	_setup_noise(chamber_noise,        PERLIN_CHAMBER_FREQUENCY)
 	_setup_noise(path_noise,           PERLIN_PATH_FREQUENCY)
 	_setup_noise(rock_variation_noise, ROCK_VARIATION_FREQUENCY)
+	_setup_noise(edge_noise,           EDGE_NOISE_FREQUENCY)
 
 	var play_radius: float = (WIDTH - BUFFER_TILES) / 2.0
 	var cx: float = WIDTH  / 2.0
@@ -208,7 +214,7 @@ func _ready() -> void:
 	for x in range(WIDTH):
 		for y in range(HEIGHT):
 			var dist: float = sqrt((x - cx) ** 2 + (y - cy) ** 2)
-			if dist >= play_radius:
+			if dist >= _edge_radius(x, y, cx, cy, play_radius):
 				continue
 			var pos: Vector2i = Vector2i(x, y)
 			var tile_val: Util.tile = grid[x][y]
@@ -259,6 +265,17 @@ func _setup_noise(noise: FastNoiseLite, frequency: float) -> void:
 	noise.noise_type = FastNoiseLite.TYPE_PERLIN
 	noise.seed       = map_seed
 	noise.frequency  = frequency
+
+# Returns the effective play radius at tile (x, y), perturbed by edge_noise
+# so the boundary is an organic blob instead of a perfect circle.
+func _edge_radius(x: float, y: float, cx: float, cy: float, base_radius: float) -> float:
+	var angle: float = atan2(y - cy, x - cx)
+	# Sample noise along the unit circle at this angle for a consistent
+	# per-direction offset that doesn't depend on how far the tile is.
+	var nx: float = cos(angle)
+	var ny: float = sin(angle)
+	var n:  float = edge_noise.get_noise_2d(nx * 100.0, ny * 100.0)   # [-1, 1]
+	return base_radius + n * EDGE_NOISE_AMPLITUDE
 
 # ══════════════════════════════════════════════════════════ coordinate utils ══
 func world_to_map(world_pos: Vector2) -> Vector2i:
@@ -898,6 +915,7 @@ func damage_tile(pos: Vector2i, damage: int = 1, play_bounce: bool = true) -> bo
 			ParticleManager.spawn_ore_rubble(map_to_world(pos), tile_types[pos], ore_types[pos])
 			_drop_ore(pos)
 		remove_tile(pos)
+		_spawn_tile_debris(pos)
 		return true
 	return false
 
@@ -909,8 +927,14 @@ func damage_tile_silent(pos: Vector2i, damage: int = 1) -> bool:
 		if ore_types.has(pos):
 			_drop_ore(pos)
 		_remove_tile_silent(pos)
+		_spawn_tile_debris(pos)
 		return true
 	return false
+
+func _spawn_tile_debris(pos: Vector2i) -> void:
+	var tile: Util.tile = tile_types.get(pos, Util.tile.STONE)
+	var col: Color = ParticleManager._tile_chunk_color(tile)
+	ParticleManager.spawn_tile_debris(map_to_world(pos), col)
 
 func _erase_tile_data(pos: Vector2i) -> void:
 	tile_health.erase(pos)
@@ -1217,7 +1241,9 @@ func generate_faults(grid: Array) -> Array[Array]:
 				var x_old: int = int(x - fault_dir.x * magnitude)
 				var y_old: int = int(y - fault_dir.y * magnitude)
 				if x_old < 0 or x_old >= WIDTH or y_old < 0 or y_old >= HEIGHT:
-					new_grid[x].append(Util.tile.AIR)
+					# Out-of-bounds sample: keep the original tile so no artificial
+					# straight air-cut appears at the grid boundary.
+					new_grid[x].append(grid[x][y])
 				else:
 					new_grid[x].append(grid[x_old][y_old])
 			else:
