@@ -30,12 +30,14 @@ const FOCUS_GLOW_MAX:       float = 1.25
 const FOCUS_DECAY:          float = 4.0
 
 const MINE_PRESS_DELAY:     float = 0.05
-const MINE_TICK_INTERVAL:   float = 0.33
+const MINE_TICK_INTERVAL:   float = 1.0
 const MINE_BOUNCE_AMOUNT:   float = 6.0
 const MINE_BOUNCE_FALLOFF:  float = 0.85
 const MINE_AOE_RADIUS:      int   = 2
-var MINE_BOUNCE_DURATION: float:
-	get: return MINE_TICK_INTERVAL * 0.75
+# Bounce always runs for exactly this long; the cooldown is clamped to this
+# minimum so the animation always finishes before the next strike.
+const MINE_BOUNCE_DURATION: float = 0.3
+const MINE_MIN_INTERVAL:    float = MINE_BOUNCE_DURATION
 
 
 # ================================================================= textures ==
@@ -81,21 +83,9 @@ var guaranteed_crits: int:
 	get: return stats.guaranteed_crits
 	set(v): stats.guaranteed_crits = v
 
-var mine_speed_mult: float:
-	get: return stats.mine_speed_mult
-	set(v): stats.mine_speed_mult = v
-
-var flare_light_level: float:
-	get: return stats.flare_light_level
-	set(v): stats.flare_light_level = v
-
-var flare_radius: float:
-	get: return stats.flare_radius
-	set(v): stats.flare_radius = v
-
-var flare_throw_velocity: float:
-	get: return stats.flare_throw_velocity
-	set(v): stats.flare_throw_velocity = v
+var mine_speed: float:
+	get: return stats.mine_speed
+	set(v): stats.mine_speed = v
 
 var direction: Vector2i = Vector2i.DOWN:
 	set(value):
@@ -129,7 +119,6 @@ var xp: int = 0:
 		if xp_bar:
 			xp_bar.set_xp(xp)
 
-const FLARE_SCENE: PackedScene = preload("res://scenes/flare.tscn")
 
 func heal(amount: int) -> void:
 	health += amount
@@ -169,20 +158,11 @@ class PendingActivation:
 
 var _pending: Array[PendingActivation] = []
 
-class PendingMineDamage:
-	var pos:    Vector2i
-	var damage: int
-	var timer:  float
-
-var _pending_mine_damage: Array[PendingMineDamage] = []
-
-
 # ================================================================== mining ==
 
-var _mine_press_timer:    float    = 0.0
-var _mine_target:         Vector2i = Vector2i(-1, -1)
-var _mine_cooldown_timer: float    = 0.0
-var _mining_enabled:      bool     = true
+var _mine_press_timer: float    = 0.0
+var _mine_target:      Vector2i = Vector2i(-1, -1)
+var _mine_timer:       float    = 0.0
 
 
 # ================================================================== forging ==
@@ -206,13 +186,14 @@ func _ready() -> void:
 	stats.speed *= _speed_scale
 	health = max_health
 	add_to_group("player")
+	$Inventory._player_stats = stats
 	$Inventory.orb_added.connect(_on_orb_added)
 	$Inventory.orb_removed.connect(_on_orb_removed)
 	$Inventory.relic_added.connect(_on_relic_added)
 	$Inventory.add_orb(starting_orb_3.clone())
 	$Inventory.add_orb(starting_orb_4.clone())
+
 	xp_bar.leveled_up.connect(_on_leveled_up)
-	xp_bar.pressed.connect(_on_level_up_button_pressed)
 
 
 # ================================================================== process ==
@@ -232,7 +213,6 @@ func _process(delta: float) -> void:
 	_tick_upgrades(delta)
 	_tick_env(delta)
 	_tick_mining(delta)
-	_tick_flares()
 	_tick_dev_input()
 
 
@@ -484,30 +464,8 @@ func shatter_orb(orb_index: int) -> void:
 func _tick_mining(delta: float) -> void:
 	var tilemap: Node = %TilemapManager
 
-	if not _mining_enabled:
-		_mine_cooldown_timer -= delta
-		if _mine_cooldown_timer <= 0.0:
-			_mine_cooldown_timer = 0.0
-			_mining_enabled      = true
-		else:
-			var still_pending: Array[PendingMineDamage] = []
-			for pd: PendingMineDamage in _pending_mine_damage:
-				pd.timer -= delta
-				if pd.timer <= 0.0:
-					tilemap.damage_tile(pd.pos, pd.damage, false)
-				else:
-					still_pending.append(pd)
-			_pending_mine_damage = still_pending
-			return
-
-	var still_pending: Array[PendingMineDamage] = []
-	for pd: PendingMineDamage in _pending_mine_damage:
-		pd.timer -= delta
-		if pd.timer <= 0.0:
-			tilemap.damage_tile(pd.pos, pd.damage, false)
-		else:
-			still_pending.append(pd)
-	_pending_mine_damage = still_pending
+	# Tick the inter-strike cooldown.
+	_mine_timer -= delta
 
 	if _mine_target == Vector2i(-1, -1):
 		_mine_press_timer = 0.0
@@ -522,6 +480,10 @@ func _tick_mining(delta: float) -> void:
 	if _mine_press_timer < MINE_PRESS_DELAY:
 		return
 
+	if _mine_timer > 0.0:
+		return
+
+	# ── fire a mine strike ──────────────────────────────────────────────────
 	var max_hp: int      = tilemap.get_tile_max_health(tilemap.tile_types.get(_mine_target, Util.tile.STONE))
 	var cur_hp: int      = tilemap.tile_health.get(_mine_target, max_hp)
 	var dmg_ratio: float = 1.0 - clampf(float(cur_hp - 6) / float(max_hp), 0.0, 1.0)
@@ -533,9 +495,11 @@ func _tick_mining(delta: float) -> void:
 	ParticleManager.spawn_mining_chunks(world_pos, base_type, dig_dir, 1.0)
 	AudioManagerScene.create_2d_audio_at_location(world_pos, SoundEffect.SOUND_EFFECT_TYPE.TILE_MINE)
 
-	var bounce_dur: float = MINE_BOUNCE_DURATION
-	tilemap.bounce_tile(_mine_target, bounce_px, 0.0, bounce_dur)
-	_schedule_mine_damage(_mine_target, 4, bounce_dur)
+	# Bounce always runs for MINE_BOUNCE_DURATION; the cooldown is clamped to
+	# that minimum so the animation always completes before the next strike.
+	var interval: float = maxf(MINE_TICK_INTERVAL / mine_speed, MINE_MIN_INTERVAL)
+	tilemap.bounce_tile(_mine_target, bounce_px, 0.0, MINE_BOUNCE_DURATION)
+	tilemap.damage_tile(_mine_target, 4, false)
 
 	for dx: int in range(-MINE_AOE_RADIUS, MINE_AOE_RADIUS + 1):
 		for dy: int in range(-MINE_AOE_RADIUS, MINE_AOE_RADIUS + 1):
@@ -546,8 +510,8 @@ func _tick_mining(delta: float) -> void:
 				continue
 			var dist:  int   = absi(dx) + absi(dy)
 			var delay: float = float(dist) * 0.06
-			tilemap.bounce_tile(nb, bounce_px * MINE_BOUNCE_FALLOFF, delay, bounce_dur)
-			_schedule_mine_damage(nb, 2, delay + bounce_dur)
+			tilemap.bounce_tile(nb, bounce_px * MINE_BOUNCE_FALLOFF, delay, MINE_BOUNCE_DURATION)
+			tilemap.damage_tile(nb, 2, false)
 			if tilemap.tile_exists(nb):
 				var nb_world:     Vector2   = tilemap.map_to_world(nb)
 				var nb_type:      Util.tile = tilemap.tile_types.get(nb, Util.tile.STONE)
@@ -556,15 +520,7 @@ func _tick_mining(delta: float) -> void:
 
 	%Camera2D.shake(0.2)
 
-	_mine_cooldown_timer = MINE_TICK_INTERVAL / mine_speed_mult
-	_mining_enabled      = false
-
-func _schedule_mine_damage(pos: Vector2i, damage: int, delay: float) -> void:
-	var pd    := PendingMineDamage.new()
-	pd.pos     = pos
-	pd.damage  = damage
-	pd.timer   = delay
-	_pending_mine_damage.append(pd)
+	_mine_timer = interval
 
 
 # ================================================================== forging ==
@@ -603,65 +559,247 @@ func _set_env(t: float) -> void:
 
 # ================================================================ level ups ==
 
+# ================================================================ level ups ==
+# (replaces the existing level-up section in player.gd)
+#
+# How it works:
+#   1. On level-up, collect every (orb, ability) pair where the ability
+#      still has upgrade levels remaining (ability.can_upgrade()).
+#   2. Shuffle the pool and take up to 3 unique pairs.
+#   3. For each slot, roll a rarity using UpgradeRarityTable.roll(luck),
+#      then build an AbilityLevelUpUpgrade from the pair.
+#   4. Pass the three upgrades to LevelUpScreen as before.
+#
+# The old generic upgrade pool (_upgrade_pool / res://data/upgrades/) is
+# kept as a fallback for non-ability upgrades (speed, health, etc.) that
+# don't target a specific ability. Those still live in res://data/upgrades/.
+# ---------------------------------------------------------------------------
+
 var _pending_level_ups: int = 0
 
 func _on_leveled_up() -> void:
 	_pending_level_ups += 1
-	xp_bar.notify_level_up(_pending_level_ups)
-
-func _on_level_up_button_pressed() -> void:
-	if _pending_level_ups <= 0:
-		return
-	_show_next_upgrade_screen()
+	xp_bar._display_value = 0.0
+	xp_bar.value = 0.0
+	xp_bar._target_value = 0.0
+	if _pending_level_ups == 1:
+		_show_next_upgrade_screen()
 
 func _show_next_upgrade_screen() -> void:
 	_pending_level_ups -= 1
-	xp_bar.notify_level_up(_pending_level_ups)
-	xp_bar.claim_one_level_up()
-	var choices: Array = _get_upgrade_pool().duplicate()
-	choices.shuffle()
-	choices = choices.slice(0, 3)
+
+	var choices: Array = _build_upgrade_choices()
 	_level_up_screen.show_upgrades(self, choices)
 	if not _level_up_screen.upgrade_chosen.is_connected(_on_upgrade_chosen):
 		_level_up_screen.upgrade_chosen.connect(_on_upgrade_chosen)
 
+## Build exactly 3 upgrade choices for the level-up screen.
+##
+## ORDERING GUARANTEE
+##   Upgrades are strictly sequential: an ability at level N will only ever be
+##   offered its level-(N+1) upgrade.  There is no skipping or out-of-order
+##   offering.  The fallback that previously allowed unupgradeable abilities to
+##   appear has been removed.
+##
+## ADD-ABILITY CHANCE
+##   We count the total empty ability slots across all orbs and total capacity.
+##   The fraction (empty / capacity) is the probability that any given choice
+##   slot becomes an "add ability" upgrade instead of a "level up" upgrade.
+##   Each of the 3 slots is rolled independently.
+##
+## LABELS
+##   Both upgrade types include the orb display_name and 1-based slot index so
+##   players can distinguish two orbs sharing the same ability, or one orb that
+##   holds the same ability twice in different slots.
+func _build_upgrade_choices() -> Array:
+	const SLOT_COUNT: int = 3
+
+	# ── 1. Build the pool of (orb, ability, slot_index) upgrade candidates ──────
+	# Only abilities that can_upgrade() — no fallback to non-upgradeable.
+	var pairs: Array = []
+	for orb: Orb in $Inventory.orbs:
+		for i in range(orb.abilities.size()):
+			var ability: AbilityData = orb.abilities[i]
+			if ability.can_upgrade():
+				pairs.append({ "orb": orb, "ability": ability, "index": i })
+	pairs.shuffle()
+
+	# ── 2. Compute the "add ability" probability from empty slot ratio ───────────
+	var total_capacity: int = 0
+	var total_empty:    int = 0
+	var slot_candidates: Array[Orb] = []
+	for orb: Orb in $Inventory.orbs:
+		if orb.ability_max <= 0:
+			continue
+		total_capacity += orb.ability_max
+		var empty: int = orb.ability_max - orb.abilities.size()
+		if empty > 0:
+			total_empty += empty
+			slot_candidates.append(orb)
+
+	# ── 3. Fill the 3 choice slots ───────────────────────────────────────────────
+	var choices: Array = []
+	var used_abilities: Array = []  # AbilityData instances already represented
+	var pair_cursor: int = 0        # walk through the shuffled pairs list
+
+	# If any orb has an empty slot, guarantee exactly one "add ability" choice
+	# in a random slot position.
+	var add_upgrade: UpgradeAddAbilityToOrb = null
+	if not slot_candidates.is_empty():
+		# Build a fallback ability pool from all abilities across all orbs
+		var all_abilities: Array[AbilityData] = []
+		for orb: Orb in $Inventory.orbs:
+			for a: AbilityData in orb.abilities:
+				all_abilities.append(a)
+		slot_candidates.shuffle()
+		for candidate: Orb in slot_candidates:
+			var rarity: int = UpgradeRarityTable.roll(stats.luck)
+			add_upgrade = UpgradeAddAbilityToOrb.build(candidate, $Inventory.metals, all_abilities, rarity)
+			if add_upgrade != null:
+				break
+
+	var add_slot: int = randi() % SLOT_COUNT if add_upgrade != null else -1
+
+	for slot in range(SLOT_COUNT):
+		if slot == add_slot:
+			choices.append(add_upgrade)
+			continue
+
+		# Find the next unused ability pair for a level-up upgrade.
+		while pair_cursor < pairs.size():
+			var pair: Dictionary = pairs[pair_cursor]
+			pair_cursor += 1
+			var ability: AbilityData = pair["ability"]
+			if ability in used_abilities:
+				continue
+			var rarity: int = UpgradeRarityTable.roll(stats.luck)
+			var upgrade: AbilityLevelUpUpgrade = AbilityLevelUpUpgrade.build(
+				pair["orb"], ability, pair["index"], rarity
+			)
+			if upgrade != null:
+				choices.append(upgrade)
+				used_abilities.append(ability)
+				break
+		# If the pair pool ran dry, this slot stays empty (fewer than 3 is fine).
+
+	return choices
+
 func _on_upgrade_chosen(upgrade: LevelUpUpgrade) -> void:
 	acquired_upgrades.append(upgrade)
-	upgrade.apply(self)
 	if _pending_level_ups > 0:
 		_show_next_upgrade_screen()
 	else:
 		_level_up_screen.upgrade_chosen.disconnect(_on_upgrade_chosen)
 
-func _tick_upgrades(delta: float) -> void:
-	for upgrade: LevelUpUpgrade in acquired_upgrades:
-		upgrade.tick(delta, self)
 
+# =============================================================== relic screen ==
 
-# ================================================================== flares ==
-
-func _tick_flares() -> void:
-	if not Input.is_action_just_pressed("flare"):
+## Called by AncientContainer when the player interacts with it.
+## Shows 3 relic choice cards (new relic or upgrade existing), then frees the container.
+func show_relic_screen(container: Node) -> void:
+	var choices: Array = _build_relic_choices()
+	if choices.is_empty():
+		# No choices available (inventory full, no upgrades, no pool) — just free.
+		container.queue_free()
 		return
 
-	# Determine throw direction — controller uses right joystick, else mouse
-	var throw_dir: Vector2
-	var joy_vec: Vector2 = Input.get_vector(
-		"aim_left", "aim_right", "aim_up", "aim_down"
-	)
-	if joy_vec.length_squared() > 0.25:
-		throw_dir = joy_vec.normalized()
-	else:
-		var mouse_world: Vector2 = get_global_mouse_position()
-		throw_dir = (mouse_world - global_position).normalized()
+	_level_up_screen.show_upgrades(self, choices)
 
-	if throw_dir == Vector2.ZERO:
-		throw_dir = Vector2(_last_move_dir) if _last_move_dir != Vector2.ZERO else Vector2.RIGHT
+	# One-shot: disconnect after a choice is made, then free the container.
+	var handler: Callable
+	handler = func(upgrade: LevelUpUpgrade) -> void:
+		acquired_upgrades.append(upgrade)
+		if _level_up_screen.upgrade_chosen.is_connected(handler):
+			_level_up_screen.upgrade_chosen.disconnect(handler)
+		container.queue_free()
+	_level_up_screen.upgrade_chosen.connect(handler)
 
-	var flare: Node2D = FLARE_SCENE.instantiate()
-	get_parent().add_child(flare)
-	flare.global_position = global_position
-	flare.launch(throw_dir, flare_throw_velocity, flare_light_level, flare_radius)
+## Build 3 relic upgrade choices.
+##
+## SLOT LOGIC
+##   Each slot is either:
+##     • An upgrade to an already-owned relic that can_upgrade() — weighted
+##       by how many upgradeable relics are owned.
+##     • A new relic from the item pool — offered when the inventory isn't full.
+##
+## At least one "new relic" slot is always guaranteed if the inventory has room.
+## The remaining slots are upgrades (if any owned relics can be upgraded) or
+## additional new-relic offers if no upgrades are available.
+func _build_relic_choices() -> Array:
+	const SLOT_COUNT: int = 3
+
+	# ── 1. Collect upgradeable relics ───────────────────────────────────────
+	var upgradeable: Array[RelicData] = []
+	for r: RelicData in $Inventory.relics:
+		if r.upgrade_levels.is_empty():
+			DataLoader.apply_relic_data(r)
+		if r.can_upgrade():
+			upgradeable.append(r)
+	upgradeable.shuffle()
+
+	# ── 2. Determine how many "new relic" slots to include ──────────────────
+	# Always offer at least one new relic if inventory isn't full.
+	var inventory_full: bool = false
+	if stats.relic_max > 0:
+		var current_count: int = 0
+		for r: RelicData in $Inventory.relics:
+			current_count += $Inventory.relics[r]
+		inventory_full = current_count >= stats.relic_max
+
+	var new_relic_slots: int = 1 if not inventory_full else 0
+	# If no owned relics can upgrade, use all slots for new relics.
+	if upgradeable.is_empty():
+		new_relic_slots = SLOT_COUNT if not inventory_full else 0
+
+	# Distribute new-relic slots randomly across the 3 positions.
+	var slot_types: Array = []  # true = new relic, false = upgrade
+	for _i in range(SLOT_COUNT):
+		slot_types.append(false)
+	var new_relic_positions: Array = range(SLOT_COUNT)
+	new_relic_positions.shuffle()
+	for i in range(mini(new_relic_slots, SLOT_COUNT)):
+		slot_types[new_relic_positions[i]] = true
+
+	# ── 3. Fill slots ────────────────────────────────────────────────────────
+	var choices: Array         = []
+	var upgrade_cursor: int    = 0
+	var used_relics: Array     = []
+
+	for slot in range(SLOT_COUNT):
+		var rarity: int = UpgradeRarityTable.roll(stats.luck)
+		if slot_types[slot]:
+			var u: UpgradeAddRelic = UpgradeAddRelic.build(self, rarity)
+			if u != null:
+				choices.append(u)
+				continue
+			# Fall through to upgrade slot if pool is exhausted.
+
+		# Upgrade slot.
+		while upgrade_cursor < upgradeable.size():
+			var r: RelicData = upgradeable[upgrade_cursor]
+			upgrade_cursor += 1
+			if r in used_relics:
+				continue
+			var u: RelicLevelUpUpgrade = RelicLevelUpUpgrade.build(r, rarity)
+			if u != null:
+				choices.append(u)
+				used_relics.append(r)
+				break
+
+	return choices
+
+
+func _tick_upgrades(delta: float) -> void:
+	# Tick each unique upgrade object once — acquired_upgrades may hold multiple
+	# entries for the same relic/upgrade (one per level taken), but the object
+	# itself should only fire once per frame regardless of how many times it
+	# was upgraded. RelicData ticking is handled separately by _tick_relics.
+	var seen: Array = []
+	for upgrade: LevelUpUpgrade in acquired_upgrades:
+		if upgrade in seen:
+			continue
+		seen.append(upgrade)
+		upgrade.tick(delta, self)
 
 
 # ================================================================= dev tools ==
@@ -698,7 +836,6 @@ func _dev_reset_cooldowns() -> void:
 		ov.reform_flash = orb_reform_flash
 		ov.reforming    = true
 		ov.glow_target  = 0.0
-
 
 # =================================================================== helpers ==
 

@@ -11,6 +11,7 @@ const C_TITLE:   Color = Color(0.80, 0.60, 1.00)
 const C_TEXT:    Color = Color(0.90, 0.90, 0.90)
 const C_SUBTEXT: Color = Color(0.60, 0.65, 0.72)
 const C_VALUE:   Color = Color(0.45, 0.85, 0.65)
+const C_BOOSTED: Color = Color(0.35, 0.75, 1.00)   # blue-tint for node-boosted values
 
 # since all current stats have a default of -1 this dictionary is empty for now
 const STAT_DEFAULTS: Dictionary = {
@@ -29,6 +30,19 @@ const STAT_UNITS: Dictionary = {
 
 # Stats that are stored in px and should be displayed divided by 32 (tile size).
 const STAT_DIVIDE_BY_TILE: Array = ["range", "aoe_radius", "crit_aoe"]
+
+# Optional node context: if set, the tooltip will show stats with the node's
+# multiplicative boost applied (highlighted in a different colour).
+# Set via set_node_context() before request_show().
+var _node_context: GraphNodeData = null
+# Whether the node stat is inverse (lower = better), so boost divides.
+var _node_context_inverse: bool  = false
+
+## Call this before request_show() to make the tooltip reflect a node boost.
+## Pass null to clear any existing context.
+func set_node_context(node: GraphNodeData, is_inverse: bool = false) -> void:
+	_node_context         = node
+	_node_context_inverse = is_inverse
 
 # Shared formatter used by ability_tooltip, orb_tooltip, and forge_ui.
 # Returns a display string with trailing zeros stripped and unit appended.
@@ -76,6 +90,10 @@ func _build_content(data: Object) -> void:
 	var aname: String = ability.display_name if "display_name" in ability else ability.get_class()
 	_vbox.add_child(_make_label(aname, FONT_SIZE_TITLE, C_TITLE))
 
+	# Show upgrade level if the ability has been upgraded at all.
+	if "level" in ability and ability.level > 0:
+		_vbox.add_child(_make_label("Level %d" % ability.level, FONT_SIZE_SMALL, C_SUBTEXT))
+
 	if "trigger_type" in ability:
 		_vbox.add_child(_make_label(_trigger_label(ability.trigger_type), FONT_SIZE_SMALL, C_SUBTEXT))
 
@@ -93,8 +111,25 @@ func _build_content(data: Object) -> void:
 			for row in rows:
 				_vbox.add_child(row)
 
+	# If a node context is active, show a footer note about which stat is boosted.
+	if _node_context != null:
+		var sign_str: String = "-" if _node_context_inverse else "+"
+		var pct: float = (_node_context.stat_value - 1.0) * 100.0
+		var note := _make_label(
+			"Node boost: %s%.0f%% %s" % [sign_str, pct, _node_context.stat_name.replace("_", " ")],
+			FONT_SIZE_SMALL, C_BOOSTED
+		)
+		_vbox.add_child(note)
+
 func _collect_stat_rows(stats: AbilityStats) -> Array:
 	var rows: Array = []
+	# Determine node boost parameters if a node context is set.
+	var boost_stat:  String = ""
+	var boost_mult:  float  = 1.0
+	if _node_context != null:
+		boost_stat = _node_context.stat_name
+		boost_mult = (1.0 / _node_context.stat_value) if _node_context_inverse else _node_context.stat_value
+
 	for prop in stats.get_property_list():
 		if prop["usage"] & PROPERTY_USAGE_SCRIPT_VARIABLE == 0:
 			continue
@@ -104,19 +139,22 @@ func _collect_stat_rows(stats: AbilityStats) -> Array:
 		if val == default:
 			continue
 		var unit:    String = STAT_UNITS.get(key, "")
-		var display: String = fmt_stat_value(val, unit, key)
+		var is_boosted: bool = (boost_stat == key and boost_mult != 1.0)
+		var display_val      = (float(val) * boost_mult) if is_boosted else val
+		var display: String  = fmt_stat_value(display_val, unit, key)
 		if display == "":
 			continue
-		rows.append(_make_stat_row(key.replace("_", " ").capitalize(), display))
+		var color: Color = C_BOOSTED if is_boosted else C_VALUE
+		rows.append(_make_stat_row(key.replace("_", " ").capitalize(), display, color))
 	return rows
 
-func _make_stat_row(label_text: String, value_text: String) -> HBoxContainer:
+func _make_stat_row(label_text: String, value_text: String, value_color: Color = C_VALUE) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_theme_constant_override("separation", 8)
 	var lbl := _make_label(label_text, FONT_SIZE_NORMAL, C_SUBTEXT)
 	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var val := _make_label(value_text, FONT_SIZE_NORMAL, C_VALUE)
+	var val := _make_label(value_text, FONT_SIZE_NORMAL, value_color)
 	row.add_child(lbl)
 	row.add_child(val)
 	return row

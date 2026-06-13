@@ -45,7 +45,6 @@ const TEXT_COLOR: Color = Color(1.0, 1.0, 1.0, 0.80)
 # ── action names — must match your InputMap ───────────────────────────────────
 # Update these if you rename the actions.
 const ACTION_PAUSE:     String = "pause"
-const ACTION_FLARE:     String = "flare"
 const ACTION_INVENTORY: String = "open_graph"
 
 # ── menus that suppress the hint bar ─────────────────────────────────────────
@@ -95,7 +94,6 @@ func _draw() -> void:
 	# ── hints are left-anchored above the node graph ──────────────────────────
 	var all_hints: Array = [
 		[ACTION_INVENTORY, "Inventory"],
-		[ACTION_FLARE,     "Flare"],
 		[ACTION_PAUSE,     "Pause"],
 	]
 

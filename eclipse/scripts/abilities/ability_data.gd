@@ -1,3 +1,4 @@
+# ability_data.gd
 class_name AbilityData
 extends Resource
 
@@ -9,6 +10,46 @@ extends Resource
 
 ## Stats listed here are multiplied by orb_potency when accessed via get_stat().
 @export var main_stats: Array[String] = []
+
+# ── level-up upgrades ─────────────────────────────────────────────────────────
+## Current upgrade level of this ability. Starts at 0 (no upgrades taken yet).
+## Incremented by AbilityLevelUpUpgrade.apply().
+var level: int = 0
+
+## Ordered list of upgrade entries for this ability.
+##
+## Each element is an AbilityUpgradeEntry resource. Add entries here to make
+## the ability appear as a level-up option — one entry per upgrade level.
+## Eight entries → eight possible upgrades. An empty array means the ability
+## never appears as a level-up option.
+##
+## Editor:  Inspector → upgrade_levels → Add Element → AbilityUpgradeEntry
+##          → fill in display_name, description, stat_deltas_* per rarity.
+## Code:    var e := AbilityUpgradeEntry.new()
+##          e.stat_deltas_common = {"power": 4.0}; e.stat_deltas_rare = {"power": 9.0}
+##          upgrade_levels.append(e)
+@export var upgrade_levels: Array[AbilityUpgradeEntry] = []
+
+## Returns the next upgrade entry as a Dictionary for the given rarity.
+## Falls back to a generic stat-boost entry if upgrade_levels is empty or exhausted.
+func next_upgrade_entry(rarity: int = 0) -> Dictionary:
+	if level < upgrade_levels.size():
+		return upgrade_levels[level].to_dict(rarity)
+	# Generic fallback: scale power/damage boost by rarity
+	var boost: float = 2.0 + rarity * 2.0
+	return {
+		"display_name": display_name + " +" + str(level + 1),
+		"description":  "Increases power by " + str(int(boost)) + ".",
+		"icon":         null,
+		"stat_deltas":  { "power": boost },
+		"main_stats":   [],
+	}
+
+## True when at least one more upgrade is available (up to level 8).
+func can_upgrade() -> bool:
+	return level < 8
+
+# ── runtime ───────────────────────────────────────────────────────────────────
 
 var _orb_potency: float = 1.0
 

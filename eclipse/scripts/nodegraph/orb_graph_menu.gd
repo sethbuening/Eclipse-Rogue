@@ -142,6 +142,7 @@ func _ready() -> void:
 	add_child(_ability_tooltip)
 	_orb_tooltip = OrbTooltip.new()
 	_orb_tooltip.set_ability_tooltip(_ability_tooltip)
+	_orb_tooltip.set_graph_context(graph_manager)
 	add_child(_orb_tooltip)
 
 
@@ -210,6 +211,10 @@ func _input(event: InputEvent) -> void:
 		# Block graph while the forge input screen is open
 		var forge_ui = get_node_or_null("%ForgeUI")
 		if forge_ui != null and forge_ui.input_screen != null and forge_ui.input_screen.visible:
+			return
+		# Block graph while the level-up screen is open
+		var level_up_screen = get_node_or_null("%LevelUpScreen")
+		if level_up_screen != null and level_up_screen.visible:
 			return
 		if event is InputEventJoypadButton or event is InputEventJoypadMotion:
 			Util.last_input_device = Util.InputDevice.CONTROLLER

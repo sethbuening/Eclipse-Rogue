@@ -1,0 +1,496 @@
+{
+  "Deepvein Final Production Matrix": {
+	"0": {
+	  "Ability Name": "Lightning Chain",
+	  "Ability Level": "Base",
+	  "power": 30,
+	  "cooldown": 3,
+	  "duration": 0.25,
+	  "range": 500,
+	  "chain_length": 3,
+	  "crit_chance": 0.05,
+	  "crit_damage": 1.5
+	},
+	"1": {
+	  "Ability Name": "Lightning Chain",
+	  "Ability Level": "Level 1",
+	  "power": 5,
+	  "cooldown": -0.2
+	},
+	"2": {
+	  "Ability Name": "Lightning Chain",
+	  "Ability Level": "Level 2",
+	  "power": 5,
+	  "mining_power": 0.05,
+	  "mining_radius": 0.2
+	},
+	"3": {
+	  "Ability Name": "Lightning Chain",
+	  "Ability Level": "Level 3",
+	  "cooldown": -0.2,
+	  "crit_chance": 1
+	},
+	"4": {
+	  "Ability Name": "Lightning Chain",
+	  "Ability Level": "Level 4",
+	  "power": 10
+	},
+	"5": {
+	  "Ability Name": "Lightning Chain",
+	  "Ability Level": "Level 5",
+	  "cooldown": -0.2,
+	  "crit_chance": 1,
+	  "crit_aoe": 0.05,
+	  "mining_power": 0.3
+	},
+	"6": {
+	  "Ability Name": "Lightning Chain",
+	  "Ability Level": "Level 6",
+	  "power": 10
+	},
+	"7": {
+	  "Ability Name": "Lightning Chain",
+	  "Ability Level": "Level 7",
+	  "cooldown": -0.2
+	},
+	"8": {
+	  "Ability Name": "Lightning Chain",
+	  "Ability Level": "Level 8",
+	  "power": 20,
+	  "chain_length": 1,
+	  "crit_damage": 0.05,
+	  "crit_aoe": 0.5
+	},
+	"9": {
+	  "Ability Name": "Conductor Post",
+	  "Ability Level": "Base",
+	  "duration": 5,
+	  "range": 400,
+	  "aoe_radius": 32,
+	  "slow_amount": 0.2,
+	  "slow_duration": 5,
+	  "dot_damage": 10,
+	  "dot_duration": 5
+	},
+	"10": {
+	  "Ability Name": "Conductor Post",
+	  "Ability Level": "Level 1",
+	  "cooldown": -0.5
+	},
+	"11": {
+	  "Ability Name": "Conductor Post",
+	  "Ability Level": "Level 2",
+	  "duration": 1,
+	  "range": 50,
+	  "dot_damage": 0.05,
+	  "reflect_chance": 3
+	},
+	"12": {
+	  "Ability Name": "Conductor Post",
+	  "Ability Level": "Level 3",
+	  "cooldown": -0.5,
+	  "armor_pen": 3
+	},
+	"13": {
+	  "Ability Name": "Conductor Post",
+	  "Ability Level": "Level 4",
+	  "duration": 1,
+	  "range": 50,
+	  "dot_damage": 0.05,
+	  "reflect_chance": 3
+	},
+	"14": {
+	  "Ability Name": "Conductor Post",
+	  "Ability Level": "Level 5",
+	  "cooldown": -0.5,
+	  "armor_pen": 4
+	},
+	"15": {
+	  "Ability Name": "Conductor Post",
+	  "Ability Level": "Level 6",
+	  "duration": 1,
+	  "range": 50,
+	  "dot_damage": 0.1,
+	  "reflect_chance": 4
+	},
+	"16": {
+	  "Ability Name": "Conductor Post",
+	  "Ability Level": "Level 7",
+	  "cooldown": -0.5,
+	  "armor_pen": 4
+	},
+	"17": {
+	  "Ability Name": "Conductor Post",
+	  "Ability Level": "Level 8",
+	  "duration": 2,
+	  "range": 100,
+	  "dot_damage": 0.1,
+	  "dot_duration": 2,
+	  "reflect_chance": 6,
+	  "shield_amount": 2
+	},
+	"18": {
+	  "Ability Name": "Ball Lightning",
+	  "Ability Level": "Base",
+	  "power": 15,
+	  "cooldown": 4,
+	  "duration": 5,
+	  "move_speed_bonus": 60,
+	  "aoe_radius": 48,
+	  "chain_length": 1,
+	  "slow_duration": 0.1,
+	  "dot_damage": 2
+	},
+	"19": {
+	  "Ability Name": "Ball Lightning",
+	  "Ability Level": "Level 1",
+	  "power": 3
+	},
+	"20": {
+	  "Ability Name": "Ball Lightning",
+	  "Ability Level": "Level 2",
+	  "cooldown": -0.3,
+	  "projectile_count": 15
+	},
+	"21": {
+	  "Ability Name": "Ball Lightning",
+	  "Ability Level": "Level 3",
+	  "power": 4,
+	  "pierce": 20
+	},
+	"22": {
+	  "Ability Name": "Ball Lightning",
+	  "Ability Level": "Level 4",
+	  "cooldown": -0.3,
+	  "projectile_count": 20
+	},
+	"23": {
+	  "Ability Name": "Ball Lightning",
+	  "Ability Level": "Level 5",
+	  "power": 5,
+	  "pierce": 25
+	},
+	"24": {
+	  "Ability Name": "Ball Lightning",
+	  "Ability Level": "Level 6",
+	  "cooldown": -0.4,
+	  "projectile_count": 25
+	},
+	"25": {
+	  "Ability Name": "Ball Lightning",
+	  "Ability Level": "Level 7",
+	  "power": 5,
+	  "pierce": 25
+	},
+	"26": {
+	  "Ability Name": "Ball Lightning",
+	  "Ability Level": "Level 8",
+	  "power": 8,
+	  "cooldown": -0.5,
+	  "duration": 2,
+	  "pierce": 35,
+	  "crit_chance": 2
+	},
+	"27": {
+	  "Ability Name": "Thunderclap",
+	  "Ability Level": "Base",
+	  "power": 50,
+	  "cooldown": 8,
+	  "cast_speed": 200,
+	  "aoe_radius": 150,
+	  "dot_damage": 400,
+	  "dot_duration": 0.7
+	},
+	"28": {
+	  "Ability Name": "Thunderclap",
+	  "Ability Level": "Level 1",
+	  "cooldown": -0.5
+	},
+	"29": {
+	  "Ability Name": "Thunderclap",
+	  "Ability Level": "Level 2",
+	  "power": 10,
+	  "projectile_count": 20
+	},
+	"30": {
+	  "Ability Name": "Thunderclap",
+	  "Ability Level": "Level 3",
+	  "cooldown": -0.5,
+	  "damage_absorb": 50,
+	  "reflect_chance": 0.3
+	},
+	"31": {
+	  "Ability Name": "Thunderclap",
+	  "Ability Level": "Level 4",
+	  "power": 15,
+	  "projectile_count": 25
+	},
+	"32": {
+	  "Ability Name": "Thunderclap",
+	  "Ability Level": "Level 5",
+	  "cooldown": -0.5,
+	  "damage_absorb": 50,
+	  "reflect_chance": 0.3
+	},
+	"33": {
+	  "Ability Name": "Thunderclap",
+	  "Ability Level": "Level 6",
+	  "power": 15,
+	  "projectile_count": 25
+	},
+	"34": {
+	  "Ability Name": "Thunderclap",
+	  "Ability Level": "Level 7",
+	  "cooldown": -1,
+	  "damage_absorb": 50,
+	  "reflect_chance": 0.5
+	},
+	"35": {
+	  "Ability Name": "Thunderclap",
+	  "Ability Level": "Level 8",
+	  "power": 30,
+	  "cooldown": -1,
+	  "cast_speed": 50,
+	  "aoe_radius": 50,
+	  "dot_damage": 100,
+	  "dot_duration": 0.7
+	},
+	"36": {
+	  "Ability Name": "Lightning Javelin",
+	  "Ability Level": "Base",
+	  "power": 80,
+	  "cooldown": 5,
+	  "range": 400,
+	  "move_speed_bonus": 500,
+	  "pierce": 8,
+	  "crit_chance": 1,
+	  "reflect_chance": 20
+	},
+	"37": {
+	  "Ability Name": "Lightning Javelin",
+	  "Ability Level": "Level 1",
+	  "power": 15,
+	  "cooldown": -0.3
+	},
+	"38": {
+	  "Ability Name": "Lightning Javelin",
+	  "Ability Level": "Level 2",
+	  "crit_chance": 1
+	},
+	"39": {
+	  "Ability Name": "Lightning Javelin",
+	  "Ability Level": "Level 3",
+	  "power": 20,
+	  "cooldown": -0.3,
+	  "aoe_radius": 10
+	},
+	"40": {
+	  "Ability Name": "Lightning Javelin",
+	  "Ability Level": "Level 4",
+	  "crit_chance": 1
+	},
+	"41": {
+	  "Ability Name": "Lightning Javelin",
+	  "Ability Level": "Level 5",
+	  "power": 25,
+	  "cooldown": -0.4,
+	  "aoe_radius": 10
+	},
+	"42": {
+	  "Ability Name": "Lightning Javelin",
+	  "Ability Level": "Level 6",
+	  "crit_chance": 1
+	},
+	"43": {
+	  "Ability Name": "Lightning Javelin",
+	  "Ability Level": "Level 7",
+	  "power": 30,
+	  "cooldown": -0.5,
+	  "aoe_radius": 15
+	},
+	"44": {
+	  "Ability Name": "Lightning Javelin",
+	  "Ability Level": "Level 8",
+	  "power": 50,
+	  "cooldown": -0.5,
+	  "projectile_count": 25,
+	  "crit_damage": 2
+	},
+	"45": {
+	  "Ability Name": "Capacitor",
+	  "Ability Level": "Base",
+	  "power": 50,
+	  "projectile_speed": 350,
+	  "pierce": 100,
+	  "armor_bonus": 15
+	},
+	"46": {
+	  "Ability Name": "Capacitor",
+	  "Ability Level": "Level 1",
+	  "power": 20
+	},
+	"47": {
+	  "Ability Name": "Capacitor",
+	  "Ability Level": "Level 2",
+	  "pierce": 25
+	},
+	"48": {
+	  "Ability Name": "Capacitor",
+	  "Ability Level": "Level 3",
+	  "power": 25
+	},
+	"49": {
+	  "Ability Name": "Capacitor",
+	  "Ability Level": "Level 4",
+	  "pierce": 25
+	},
+	"50": {
+	  "Ability Name": "Capacitor",
+	  "Ability Level": "Level 5",
+	  "power": 30
+	},
+	"51": {
+	  "Ability Name": "Capacitor",
+	  "Ability Level": "Level 6",
+	  "pierce": 30
+	},
+	"52": {
+	  "Ability Name": "Capacitor",
+	  "Ability Level": "Level 7",
+	  "power": 35
+	},
+	"53": {
+	  "Ability Name": "Capacitor",
+	  "Ability Level": "Level 8",
+	  "power": 60,
+	  "projectile_speed": 100,
+	  "pierce": 50
+	},
+	"54": {
+	  "Ability Name": "Residual Current",
+	  "Ability Level": "Base",
+	  "power": 20,
+	  "range": 2,
+	  "cast_speed": 200,
+	  "aoe_radius": 60,
+	  "crit_chance": 1
+	},
+	"55": {
+	  "Ability Name": "Residual Current",
+	  "Ability Level": "Level 1",
+	  "power": 4
+	},
+	"56": {
+	  "Ability Name": "Residual Current",
+	  "Ability Level": "Level 2",
+	  "cast_speed": 0.5,
+	  "projectile_speed": 30
+	},
+	"57": {
+	  "Ability Name": "Residual Current",
+	  "Ability Level": "Level 3",
+	  "power": 5,
+	  "crit_aoe": 1
+	},
+	"58": {
+	  "Ability Name": "Residual Current",
+	  "Ability Level": "Level 4",
+	  "cast_speed": 0.5,
+	  "projectile_speed": 30
+	},
+	"59": {
+	  "Ability Name": "Residual Current",
+	  "Ability Level": "Level 5",
+	  "power": 5,
+	  "crit_aoe": 1
+	},
+	"60": {
+	  "Ability Name": "Residual Current",
+	  "Ability Level": "Level 6",
+	  "cooldown": "规律",
+	  "cast_speed": 0.5,
+	  "projectile_speed": 40
+	},
+	"61": {
+	  "Ability Name": "Residual Current",
+	  "Ability Level": "Level 7",
+	  "power": 6,
+	  "crit_aoe": 1
+	},
+	"62": {
+	  "Ability Name": "Residual Current",
+	  "Ability Level": "Level 8",
+	  "power": 10,
+	  "duration": "规律",
+	  "projectile_speed": 1,
+	  "move_speed_bonus": 50,
+	  "chain_length": 20,
+	  "mining_power": 1
+	},
+	"63": {
+	  "Ability Name": "Arc Overload",
+	  "Ability Level": "Base",
+	  "power": 40,
+	  "cooldown": 6,
+	  "duration": 1.2,
+	  "range": 300,
+	  "aoe_radius": 80,
+	  "crit_chance": 1,
+	  "slow_duration": 1,
+	  "dot_damage": 0.2,
+	  "dot_duration": 5,
+	  "damage_absorb": 10,
+	  "reflect_chance": 5
+	},
+	"64": {
+	  "Ability Name": "Arc Overload",
+	  "Ability Level": "Level 1",
+	  "power": 8
+	},
+	"65": {
+	  "Ability Name": "Arc Overload",
+	  "Ability Level": "Level 2",
+	  "cooldown": -0.4,
+	  "aoe_radius": 15
+	},
+	"66": {
+	  "Ability Name": "Arc Overload",
+	  "Ability Level": "Level 3",
+	  "power": 10,
+	  "duration": 0.2
+	},
+	"67": {
+	  "Ability Name": "Arc Overload",
+	  "Ability Level": "Level 4",
+	  "cooldown": -0.4,
+	  "aoe_radius": 20
+	},
+	"68": {
+	  "Ability Name": "Arc Overload",
+	  "Ability Level": "Level 5",
+	  "power": 12,
+	  "duration": 0.2
+	},
+	"69": {
+	  "Ability Name": "Arc Overload",
+	  "Ability Level": "Level 6",
+	  "cooldown": -0.4,
+	  "aoe_radius": 25
+	},
+	"70": {
+	  "Ability Name": "Arc Overload",
+	  "Ability Level": "Level 7",
+	  "power": 15,
+	  "duration": 0.2
+	},
+	"71": {
+	  "Ability Name": "Arc Overload",
+	  "Ability Level": "Level 8",
+	  "power": 25,
+	  "cooldown": -0.6,
+	  "duration": 0.3,
+	  "move_speed_bonus": 30,
+	  "chain_length": 1
+	}
+  }
+}

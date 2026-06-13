@@ -1,7 +1,0 @@
-[gd_resource type="Resource" script_class="UpgradeFlareLightLevel" format=3 uid="uid://uofk4pt5qkg1"]
-
-[ext_resource type="Script" uid="uid://sthrnbrgm5g3" path="res://scripts/upgrades/upgrade_flare_light.gd" id="1_k3lj1"]
-
-[resource]
-script = ExtResource("1_k3lj1")
-metadata/_custom_type_script = "uid://sthrnbrgm5g3"

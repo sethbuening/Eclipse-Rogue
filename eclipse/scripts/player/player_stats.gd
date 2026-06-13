@@ -1,10 +1,11 @@
+# player_stats.gd
 class_name PlayerStats
 extends Resource
 
 # ── movement ──────────────────────────────────────────────────────────────────
 @export_group("Movement")
-@export var speed:            float = 100.0  # pixels per second (scaled at runtime)
-@export var mine_speed_mult:  float = 1.0    # upgraded by UpgradeMineSpeed
+@export var speed:            float = 75.0  # pixels per second (scaled at runtime)
+@export var mine_speed:  float = 1.05   # upgraded by UpgradeMineSpeed
 
 # ── health ────────────────────────────────────────────────────────────────────
 @export_group("Health")
@@ -19,11 +20,19 @@ extends Resource
 @export_group("Crits")
 @export var guaranteed_crits: int   = 0      # next N attacks auto-crit
 
-# ── flares ────────────────────────────────────────────────────────────────────
-@export_group("Flares")
-@export var flare_light_level:    float = 1.0
-@export var flare_radius:         float = 80.0
-@export var flare_throw_velocity: float = 320.0
+# ── relics ────────────────────────────────────────────────────────────────────
+@export_group("Relics")
+## Maximum number of relics the player can hold at once. 0 means unlimited.
+@export var relic_max: int = 0
+
+# ── luck ──────────────────────────────────────────────────────────────────────
+@export_group("Luck")
+## Controls rarity weighting during level-up upgrade rolls.
+## Each point adds LUCK_WEIGHT_BONUS (see UpgradeRarityTable) to every
+## non-Common rarity tier. Starts at 0 (no bonus). Can be granted by relics,
+## upgrades, or other systems.
+@export var luck:             float = 0.0
+
 
 # ── ability stat modifiers ────────────────────────────────────────────────────
 # These are written to by relics (and any future system) when picked up.

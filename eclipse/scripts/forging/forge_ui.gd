@@ -1356,10 +1356,17 @@ func _build_orb_from_result(result: ForgeResult) -> Orb:
 		var src: Orb       = result.identity as Orb
 		orb.display_name   = src.display_name
 		orb.sprite_texture = src.sprite_texture
+		# Carry forward existing metal investment from the source orb.
+		orb.total_metal_forged = src.total_metal_forged
+		orb.metal_composition  = src.metal_composition.duplicate()
 	elif result.identity is MetalData:
 		var src: MetalData = result.identity as MetalData
 		orb.display_name   = src.display_name + " Orb"
 		orb.sprite_texture = src.sprite_texture
+	# Add the metal used in this forge session (per-metal for composition tracking).
+	for metal: MetalData in result.metal_counts_snapshot:
+		var count: int = result.metal_counts_snapshot[metal]
+		orb.add_metal_forged(count, metal)
 	for ability: AbilityData in result.abilities:
 		orb.abilities.append(ability.duplicate(true))
 	for ability: AbilityData in orb.abilities:

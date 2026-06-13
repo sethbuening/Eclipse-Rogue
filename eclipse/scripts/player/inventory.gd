@@ -12,10 +12,20 @@ var relics: Dictionary = {}   # RelicData → int
 var orbs:   Array[Orb] = []
 var metals: Dictionary = {}   # MetalData → int
 
+# Reference to PlayerStats for relic_max enforcement. Set by player.gd after ready.
+var _player_stats: PlayerStats = null
+
 
 # ── relics ────────────────────────────────────────────────────────────────────
 
 func add_relic(relic: RelicData, quantity: int = 1) -> void:
+	# Enforce relic_max if set (relic_max == 0 means unlimited).
+	if _player_stats != null and _player_stats.relic_max > 0:
+		var current_count: int = 0
+		for r: RelicData in relics:
+			current_count += relics[r]
+		if current_count + quantity > _player_stats.relic_max:
+			return
 	relics[relic] = relics.get(relic, 0) + quantity
 	emit_signal("relic_added", relic, quantity)
 

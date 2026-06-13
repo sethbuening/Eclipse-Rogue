@@ -42,18 +42,43 @@ func show_upgrades(player: CharacterBody2D, upgrades: Array) -> void:
 		card.queue_free()
 	_cards.clear()
 
-	await get_tree().process_frame
-	var vp_size  := get_viewport().get_visible_rect().size
-	var total_w  := CARD_WIDTH * upgrades.size() + CARD_GAP * (upgrades.size() - 1)
-	var start_x  := (vp_size.x - total_w) / 2.0
-	var target_y := (vp_size.y - CARD_HEIGHT) / 2.0
-
+	# Build all cards first (hidden) so the engine can measure their sizes.
 	for i in upgrades.size():
 		var upgrade: LevelUpUpgrade = upgrades[i]
 		var card := _make_card(upgrade)
-		card.position = Vector2(start_x + i * (CARD_WIDTH + CARD_GAP), target_y + 60.0)
+		card.visible = false
 		add_child(card)
 		_cards.append(card)
+
+	# Wait two frames: one for layout, one to be safe.
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	var vp_size := get_viewport().get_visible_rect().size
+
+	# Measure the widest card so all cards share the same width.
+	var max_card_w: float = CARD_WIDTH
+	for card in _cards:
+		max_card_w = maxf(max_card_w, card.size.x)
+
+	# Distribute cards with equal gaps, centred on screen.
+	var n: int       = _cards.size()
+	var total_w: float = max_card_w * n + CARD_GAP * (n - 1)
+	# Clamp so cards never overflow the viewport; shrink gap if needed.
+	var gap: float = CARD_GAP
+	if total_w > vp_size.x - 32.0:
+		total_w = vp_size.x - 32.0
+		gap = (total_w - max_card_w * n) / maxf(n - 1, 1)
+
+	var start_x  := (vp_size.x - total_w) / 2.0
+	var target_y := (vp_size.y - CARD_HEIGHT) / 2.0
+
+	for i in n:
+		var card: PanelContainer = _cards[i]
+		card.custom_minimum_size.x = max_card_w
+		var dest_x: float = start_x + i * (max_card_w + gap)
+		card.position = Vector2(dest_x, target_y + 60.0)
+		card.visible  = true
 
 		var tw := create_tween()
 		tw.set_process_mode(Tween.TWEEN_PROCESS_IDLE)
@@ -110,8 +135,10 @@ func _make_card(upgrade: LevelUpUpgrade) -> PanelContainer:
 	var name_label                    := Label.new()
 	name_label.text                    = upgrade.display_name
 	name_label.horizontal_alignment    = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.autowrap_mode           = TextServer.AUTOWRAP_WORD_SMART
 	name_label.add_theme_font_size_override("font_size", 18)
 	name_label.add_theme_color_override("font_color", Color(0.9, 0.95, 1.0))
+	name_label.custom_minimum_size     = Vector2(CARD_WIDTH - 24.0, 0.0)
 	name_label.mouse_filter            = Control.MOUSE_FILTER_IGNORE
 	vbox.add_child(name_label)
 

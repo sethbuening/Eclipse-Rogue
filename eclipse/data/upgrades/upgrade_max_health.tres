@@ -1,7 +1,0 @@
-[gd_resource type="Resource" script_class="UpgradeMaxHealth" format=3 uid="uid://cvxyxwigbl0am"]
-
-[ext_resource type="Script" uid="uid://wq5qspje0p8r" path="res://scripts/upgrades/upgrade_max_health.gd" id="1_eb8ck"]
-
-[resource]
-script = ExtResource("1_eb8ck")
-metadata/_custom_type_script = "uid://wq5qspje0p8r"

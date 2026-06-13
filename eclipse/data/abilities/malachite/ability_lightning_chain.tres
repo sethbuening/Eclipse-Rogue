@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" uid="uid://6704ai15jatu" path="res://scripts/abilities/malachite/lightning_chain/ability_lightning_chain.gd" id="1_vncvd"]
 [ext_resource type="Script" uid="uid://djuyt3y2iehml" path="res://scripts/abilities/ability_stats.gd" id="2_dhy1c"]
+[ext_resource type="Script" uid="uid://bt1phyhbnlmfw" path="res://scripts/upgrades/ability_upgrade_entry.gd" id="3_i1vq2"]
 
 [sub_resource type="Resource" id="Resource_bv5wb"]
 script = ExtResource("2_dhy1c")

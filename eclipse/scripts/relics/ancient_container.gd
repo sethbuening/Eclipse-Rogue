@@ -1,11 +1,12 @@
 # ancient_container.gd
-# Spawned on the ground tile layer (z_index = -4095, one above ground floor at -4096)
-# beneath the 2×2 relic rock cluster.  When the player mines all 4 tiles the
-# container becomes visible and interactable.
+# Spawned beneath a 2×2 relic rock cluster. When the player mines all 4 tiles
+# the container becomes interactable. Interacting opens the relic choice screen
+# (3 cards: mix of new relics and upgrades to owned relics) instead of
+# immediately collecting a fixed relic.
 class_name AncientContainer
 extends Node2D
 
-@export var relic: RelicData = null
+@export var relic: RelicData = null  # kept for TilemapManager compatibility; used as pool hint
 
 const INTERACT_RADIUS: float = 64.0
 
@@ -15,8 +16,6 @@ var _prompt_box:    HBoxContainer     = null
 var _prompt_icon:   TextureRect       = null
 var _prompt_label:  Label             = null
 const PROMPT_OFFSET: Vector2 = Vector2(-65, -55)
-
-var atlas_region: Rect2 = Rect2()
 
 func _ready() -> void:
 	process_priority = -1
@@ -38,12 +37,12 @@ func _build_prompt() -> void:
 	_prompt_box.add_child(_prompt_icon)
 
 	_prompt_label      = Label.new()
-	_prompt_label.text = "Collect Relic"
+	_prompt_label.text = "Choose Relic"
 	_prompt_box.add_child(_prompt_label)
-	
-	_prompt_box.position = PROMPT_OFFSET
+
+	_prompt_box.position    = PROMPT_OFFSET
 	_prompt_box.z_as_relative = false
-	_prompt_box.z_index = 4096
+	_prompt_box.z_index     = 4096
 
 	_update_prompt_icon()
 
@@ -65,15 +64,12 @@ func _process(_delta: float) -> void:
 		_collect()
 
 func _collect() -> void:
-	if relic == null:
+	if _player == null:
 		return
-	var inventory: Node = _player.get_node("Inventory")
-	inventory.add_relic(relic, 1)
-	if RelicPopup.instance != null:
-		RelicPopup.instance.display(relic)
-	else:
-		push_warning("AncientContainer: RelicPopup.instance is null — add RelicPopup to the scene")
-	queue_free()
+	_prompt_box.visible = false
+	_interactable       = false
+	# Ask the player to open the relic choice screen; free self when done.
+	_player.show_relic_screen(self)
 
 func set_interactable(enabled: bool) -> void:
 	_interactable = enabled

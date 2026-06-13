@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" uid="uid://4wmm8s042rpx" path="res://scripts/abilities/malachite/conductor_post/ability_conductor_post.gd" id="1_wjer2"]
 [ext_resource type="Script" uid="uid://djuyt3y2iehml" path="res://scripts/abilities/ability_stats.gd" id="2_0ctuv"]
+[ext_resource type="Script" uid="uid://bt1phyhbnlmfw" path="res://scripts/upgrades/ability_upgrade_entry.gd" id="3_usvnw"]
 
 [sub_resource type="Resource" id="Resource_b8uhw"]
 script = ExtResource("2_0ctuv")

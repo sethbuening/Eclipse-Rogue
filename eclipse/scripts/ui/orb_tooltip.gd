@@ -14,6 +14,10 @@ const C_POTENCY: Color = Color(0.45, 0.90, 0.55)
 
 var _ability_tooltip: AbilityTooltip = null
 
+# Optional graph context for showing node-boosted stats when hovering abilities.
+# Set via set_graph_context() before request_show().
+var _graph_manager: Node = null  # GraphManager reference (duck-typed)
+
 func _ready():
 	super._ready()
 	z_index = 4095
@@ -22,6 +26,10 @@ func set_ability_tooltip(t: AbilityTooltip) -> void:
 	_ability_tooltip = t
 	_ability_tooltip._on_hidden_callback = func() -> void:
 		_evaluate_hide()
+
+## Provide the graph manager so the tooltip can resolve node boosts.
+func set_graph_context(gm: Node) -> void:
+	_graph_manager = gm
 
 func _make_style() -> StyleBoxFlat:
 	var style              := StyleBoxFlat.new()
@@ -51,24 +59,44 @@ func _build_content(data: Object) -> void:
 	_vbox.add_child(_make_stat_row("Potency",  AbilityTooltip.fmt_stat_value(orb.orb_potency, "") if "orb_potency" in orb else "—"))
 	_vbox.add_child(_make_stat_row("Cooldown", AbilityTooltip.fmt_stat_value(orb.cooldown, " sec") if orb.cooldown > 0.0 else "—"))
 
+	# Show ability slot usage when the orb has a tracked capacity.
+	if "ability_max" in orb and orb.ability_max > 1:
+		_vbox.add_child(_make_stat_row("Ability Slots", "%d / %d" % [orb.abilities.size(), orb.ability_max]))
+
 	if not orb.abilities.is_empty():
 		_vbox.add_child(_make_sep(C_BORDER))
 		_vbox.add_child(_make_label("Abilities", FONT_SIZE_SMALL, C_SUBTEXT))
 
+		# Resolve the node that this orb is placed on (if any).
+		var orb_node: GraphNodeData = null
+		var node_is_inverse: bool   = false
+		if _graph_manager != null and orb.node_index >= 0:
+			var nodes: Array = _graph_manager.graph.nodes
+			if orb.node_index < nodes.size():
+				orb_node = nodes[orb.node_index]
+				node_is_inverse = _graph_manager.is_inverse(orb_node.stat_name)
+
 		for ability: AbilityData in orb.abilities:
 			var aname: String = ability.display_name \
 				if "display_name" in ability else ability.get_class()
+			# Append level indicator if upgraded.
+			if "level" in ability and ability.level > 0:
+				aname += " (Lv.%d)" % ability.level
 			var a_lbl := _make_label("• " + aname, FONT_SIZE_NORMAL + 3, C_TEXT)
 			a_lbl.autowrap_mode       = TextServer.AUTOWRAP_WORD_SMART
 			a_lbl.custom_minimum_size = Vector2(MAX_WIDTH - PAD * 2, 24)
 			a_lbl.mouse_filter        = Control.MOUSE_FILTER_PASS
-			var ability_ref: AbilityData = ability
+			var ability_ref: AbilityData   = ability
+			var node_ref:    GraphNodeData = orb_node
+			var inv_ref:     bool          = node_is_inverse
 			a_lbl.mouse_entered.connect(func() -> void:
 				if _ability_tooltip != null:
+					_ability_tooltip.set_node_context(node_ref, inv_ref)
 					_ability_tooltip.request_show(ability_ref,
 						get_viewport().get_mouse_position()))
 			a_lbl.mouse_exited.connect(func() -> void:
 				if _ability_tooltip != null:
+					_ability_tooltip.set_node_context(null)
 					_ability_tooltip.request_hide())
 			_vbox.add_child(a_lbl)
 

@@ -13,6 +13,19 @@ var node_power_base:        float              = -1.0
 @export var input_action:   String             = ""
 var cooldown:               float              = 0.0
 
+## Total metal units ever forged into this orb (cumulative across all forge sessions).
+## Every 100 metal increases ability_max by 1.
+var total_metal_forged:     int                = 0
+
+## Maximum number of abilities this orb can hold.
+## Starts at 1 and increases by 1 for every 100 total metal forged into it.
+var ability_max:            int                = 1
+
+## Per-metal breakdown of all metal ever forged into this orb.
+## Used to compute weighted ability type for the "add ability" level-up upgrade.
+## Keys: MetalData  Values: int (cumulative count)
+var metal_composition:      Dictionary         = {}  # MetalData → int
+
 var node_index: int = -1:
 	set(value):
 		var was_equipped: bool = node_index != -1
@@ -46,11 +59,27 @@ func clone() -> Orb:
 		duped_abilities.append(a.duplicate(true))
 	duped.abilities = duped_abilities
 	duped.cooldown = 0.0
+	duped.total_metal_forged = total_metal_forged
+	duped.ability_max = ability_max
+	duped.metal_composition = metal_composition.duplicate()
 	duped._compute_cooldown()
 	return duped
 
 func is_alloy() -> bool:
 	return orb_type == OrbType.ALLOY
+
+## Register [amount] units of metal being forged into this orb.
+## Recalculates ability_max: 1 base + 1 per 100 cumulative metal.
+## Pass [metal] to also update the per-metal composition used for ability-type weighting.
+func add_metal_forged(amount: int, metal: MetalData = null) -> void:
+	total_metal_forged += amount
+	ability_max = 1 + total_metal_forged / 100
+	if metal != null and amount > 0:
+		metal_composition[metal] = metal_composition.get(metal, 0) + amount
+
+## Returns true when the orb has at least one empty ability slot.
+func has_empty_ability_slot() -> bool:
+	return abilities.size() < ability_max
 
 func primary_ability() -> AbilityData:
 	if abilities.is_empty():
