@@ -1,25 +1,20 @@
 # hud_item_tray.gd
-# Displays acquired upgrades and relics as icon rows in the top-left corner.
-#
-# Setup:
-#   1. Add a Control node anywhere in your HUD scene, attach this script.
-#   2. That's it — it finds the player via the "player" group automatically.
-#      No wiring in game.gd required.
+# Displays relics (top-left) and current orbs (below relics) as icon rows.
+# Hovering an orb icon shows the OrbTooltip for that orb.
 
 extends Control
 
 # ── tunables ──────────────────────────────────────────────────────────────────
 
-const ICON_SIZE:    int   = 48     # fallback size when no texture is assigned
+const ICON_SIZE:    int   = 48
 const ICON_GAP:     int   = 10
 const ROW_GAP:      int   = 8
 const TOP_MARGIN:   int   = 20
 const LEFT_MARGIN:  int   = 20
-const ICON_PADDING: int   = 6      # padding around icon inside the bg rect
-const BADGE_FONT:   int   = 16     # stack count label font size
+const ICON_PADDING: int   = 6
+const BADGE_FONT:   int   = 16
 
 const RELIC_TINT:   Color = Color(1.0,  0.85, 0.3,  1.0)
-const UPGRADE_TINT: Color = Color(0.45, 0.7,  1.0,  1.0)
 const BADGE_TEXT:   Color = Color(1.0,  1.0,  1.0,  1.0)
 const ICON_BG:      Color = Color(0.0, 0.0, 0.0, 0.0)
 
@@ -27,12 +22,14 @@ const ICON_BG:      Color = Color(0.0, 0.0, 0.0, 0.0)
 
 var _player:        CharacterBody2D = null
 var _relic_row:     HBoxContainer   = null
-var _upgrade_row:   HBoxContainer   = null
+var _orb_row:       HBoxContainer   = null
+var _ability_row:   HBoxContainer   = null
 var _tooltip_panel: PanelContainer  = null
 var _tooltip_name:  Label           = null
 var _tooltip_desc:  Label           = null
 
-var _last_upgrade_fingerprint: Array = []
+# OrbTooltip reference — set externally via set_orb_tooltip() after scene loads.
+var _orb_tooltip:   OrbTooltip      = null
 
 # ── lifecycle ─────────────────────────────────────────────────────────────────
 
@@ -49,17 +46,18 @@ func _ready() -> void:
 		push_warning("HudItemTray: no node in group 'player' found")
 		return
 
-	_player.get_node("Inventory").relic_added.connect(_on_inventory_changed)
-	_player.get_node("Inventory").relic_removed.connect(_on_inventory_changed)
+	var inv := _player.get_node("Inventory")
+	inv.relic_added.connect(_on_inventory_changed)
+	inv.relic_removed.connect(_on_inventory_changed)
+	inv.orb_added.connect(_on_inventory_changed)
+	inv.orb_removed.connect(_on_inventory_changed)
+	inv.ability_added.connect(_on_inventory_changed)
+	inv.ability_removed.connect(_on_inventory_changed)
 	_rebuild_all()
 
-func _process(_delta: float) -> void:
-	if _player == null:
-		return
-	var fp := _upgrade_fingerprint()
-	if fp != _last_upgrade_fingerprint:
-		_last_upgrade_fingerprint = fp
-		_rebuild_upgrades()
+## Call this from game.gd to wire up the OrbTooltip for orb hover display.
+func set_orb_tooltip(tooltip: OrbTooltip) -> void:
+	_orb_tooltip = tooltip
 
 # ── layout construction ───────────────────────────────────────────────────────
 
@@ -75,10 +73,15 @@ func _build_rows() -> void:
 	_relic_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vbox.add_child(_relic_row)
 
-	_upgrade_row = HBoxContainer.new()
-	_upgrade_row.add_theme_constant_override("separation", ICON_GAP)
-	_upgrade_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vbox.add_child(_upgrade_row)
+	_ability_row = HBoxContainer.new()
+	_ability_row.add_theme_constant_override("separation", ICON_GAP)
+	_ability_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_child(_ability_row)
+
+	_orb_row = HBoxContainer.new()
+	_orb_row.add_theme_constant_override("separation", ICON_GAP)
+	_orb_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_child(_orb_row)
 
 func _build_tooltip() -> void:
 	_tooltip_panel              = PanelContainer.new()
@@ -127,7 +130,17 @@ func _build_tooltip() -> void:
 
 func _rebuild_all() -> void:
 	_rebuild_relics()
-	_rebuild_upgrades()
+	_rebuild_abilities()
+	_rebuild_orbs()
+
+func _rebuild_abilities() -> void:
+	for c in _ability_row.get_children():
+		c.queue_free()
+	if _player == null:
+		return
+	var inventory := _player.get_node("Inventory")
+	for ability: AbilityData in inventory.abilities:
+		_ability_row.add_child(_make_ability_icon(ability))
 
 func _rebuild_relics() -> void:
 	for c in _relic_row.get_children():
@@ -140,28 +153,115 @@ func _rebuild_relics() -> void:
 		var tint: Color = Util.rarity_color(relic.rarity)
 		_relic_row.add_child(_make_icon(relic.icon, relic.display_name, relic.description, qty, tint))
 
-func _rebuild_upgrades() -> void:
-	for c in _upgrade_row.get_children():
+func _rebuild_orbs() -> void:
+	for c in _orb_row.get_children():
 		c.queue_free()
 	if _player == null:
 		return
+	var inventory := _player.get_node("Inventory")
+	for orb: Orb in inventory.orbs:
+		_orb_row.add_child(_make_orb_icon(orb))
 
-	var counts: Dictionary = {}
-	for upgrade: LevelUpUpgrade in _player.acquired_upgrades:
-		var key := upgrade.display_name
-		if counts.has(key):
-			counts[key]["count"] += 1
-		else:
-			counts[key] = { "upgrade": upgrade, "count": 1 }
+# ── icon factories ────────────────────────────────────────────────────────────
 
-	for key in counts:
-		var entry   = counts[key]
-		var upgrade: LevelUpUpgrade = entry["upgrade"]
-		var qty:     int            = entry["count"]
-		var tint: Color = Util.rarity_color(upgrade.rarity)
-		_upgrade_row.add_child(_make_icon(upgrade.icon, upgrade.display_name, upgrade.description, qty, tint))
+func _make_orb_icon(orb: Orb) -> Control:
+	var tex: Texture2D = orb.sprite_texture
+	var sz: int = ICON_SIZE
+	if tex != null:
+		sz = maxi(tex.get_width(), tex.get_height())
 
-# ── icon factory ──────────────────────────────────────────────────────────────
+	var outer: int = sz + ICON_PADDING * 2
+
+	var root := Control.new()
+	root.custom_minimum_size = Vector2(outer, outer)
+	root.mouse_filter        = Control.MOUSE_FILTER_STOP
+	root.clip_contents       = false
+
+	if tex != null:
+		var img           := TextureRect.new()
+		img.texture        = tex
+		img.stretch_mode   = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		img.size           = Vector2(sz, sz)
+		img.position       = Vector2(ICON_PADDING, ICON_PADDING)
+		img.mouse_filter   = Control.MOUSE_FILTER_IGNORE
+		root.add_child(img)
+
+	var orb_ref: Orb = orb
+	root.mouse_entered.connect(func() -> void:
+		if _orb_tooltip != null:
+			_orb_tooltip.request_show(orb_ref, root.global_position + Vector2(outer, 0))
+	)
+	root.mouse_exited.connect(func() -> void:
+		if _orb_tooltip != null:
+			_orb_tooltip.request_hide()
+	)
+
+	return root
+
+func _make_ability_icon(ability: AbilityData) -> Control:
+	var tex: Texture2D = ability.icon
+	var outer: int = ICON_SIZE + ICON_PADDING * 2
+
+	# Use a Panel as root so it has real size and receives mouse events correctly
+	var root := Panel.new()
+	root.custom_minimum_size = Vector2(outer, outer)
+	root.size                = Vector2(outer, outer)
+	root.mouse_filter        = Control.MOUSE_FILTER_STOP
+	root.clip_contents       = false
+
+	var bg_style := StyleBoxFlat.new()
+	bg_style.bg_color                  = Color(0.08, 0.08, 0.12, 0.85)
+	bg_style.set_border_width_all(1)
+	bg_style.border_color              = Color(0.3, 0.35, 0.5, 0.8)
+	bg_style.corner_radius_top_left    = 4
+	bg_style.corner_radius_top_right   = 4
+	bg_style.corner_radius_bottom_left = 4
+	bg_style.corner_radius_bottom_right = 4
+	root.add_theme_stylebox_override("panel", bg_style)
+
+	if tex != null:
+		var img          := TextureRect.new()
+		img.texture       = tex
+		img.stretch_mode  = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		img.anchor_right  = 1.0
+		img.anchor_bottom = 1.0
+		img.offset_left   = ICON_PADDING
+		img.offset_top    = ICON_PADDING
+		img.offset_right  = -ICON_PADDING
+		img.offset_bottom = -ICON_PADDING
+		img.mouse_filter  = Control.MOUSE_FILTER_IGNORE
+		root.add_child(img)
+
+	# Level badge — bottom-right, only shown when level > 0
+	var level_label := Label.new()
+	level_label.text = "L%d" % ability.level if ability.level > 0 else ""
+	level_label.add_theme_font_size_override("font_size", 10)
+	level_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.4, 1.0))
+	level_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
+	level_label.add_theme_constant_override("shadow_offset_x", 1)
+	level_label.add_theme_constant_override("shadow_offset_y", 1)
+	level_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	level_label.vertical_alignment   = VERTICAL_ALIGNMENT_BOTTOM
+	level_label.anchor_right         = 1.0
+	level_label.anchor_bottom        = 1.0
+	level_label.offset_right         = -2.0
+	level_label.offset_bottom        = -2.0
+	level_label.mouse_filter         = Control.MOUSE_FILTER_IGNORE
+	root.add_child(level_label)
+
+	# Tooltip — position is set immediately on enter, no await needed
+	var ability_ref: AbilityData = ability
+	root.mouse_entered.connect(func():
+		_tooltip_name.text     = ability_ref.display_name
+		_tooltip_desc.text     = ability_ref.description
+		_tooltip_panel.visible = true
+		_tooltip_panel.position = root.global_position + Vector2(0, outer + 4)
+	)
+	root.mouse_exited.connect(func():
+		_tooltip_panel.visible = false
+	)
+
+	return root
 
 func _make_icon(tex: Texture2D, iname: String, desc: String, qty: int, tint: Color) -> Control:
 	var sz: int = ICON_SIZE
@@ -175,7 +275,6 @@ func _make_icon(tex: Texture2D, iname: String, desc: String, qty: int, tint: Col
 	root.mouse_filter        = Control.MOUSE_FILTER_STOP
 	root.clip_contents       = false
 
-	# Vignette background — sized generously beyond the icon, centred on it
 	var bg_expand: int = ICON_PADDING * 4
 	var bg_size := Vector2(outer + bg_expand * 2, outer + bg_expand * 2)
 	var bg         := ColorRect.new()
@@ -189,7 +288,6 @@ func _make_icon(tex: Texture2D, iname: String, desc: String, qty: int, tint: Col
 	bg.material          = bg_mat
 	root.add_child(bg)
 
-	# Texture centred inside padding
 	if tex != null:
 		var img           := TextureRect.new()
 		img.texture        = tex
@@ -200,7 +298,6 @@ func _make_icon(tex: Texture2D, iname: String, desc: String, qty: int, tint: Col
 		img.mouse_filter   = Control.MOUSE_FILTER_IGNORE
 		root.add_child(img)
 
-	# Stack badge — larger font, bottom-right corner
 	if qty > 1:
 		var badge := Label.new()
 		badge.text = "x%d" % qty
@@ -216,7 +313,6 @@ func _make_icon(tex: Texture2D, iname: String, desc: String, qty: int, tint: Col
 		badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		root.add_child(badge)
 
-	# Tooltip on hover
 	root.mouse_entered.connect(func():
 		_tooltip_name.text     = iname
 		_tooltip_desc.text     = desc
@@ -233,13 +329,5 @@ func _make_icon(tex: Texture2D, iname: String, desc: String, qty: int, tint: Col
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
-func _upgrade_fingerprint() -> Array:
-	if _player == null:
-		return []
-	var ids: Array = []
-	for u: LevelUpUpgrade in _player.acquired_upgrades:
-		ids.append(u.display_name)
-	return ids
-
 func _on_inventory_changed(_a = null, _b = null) -> void:
-	_rebuild_relics()
+	_rebuild_all()

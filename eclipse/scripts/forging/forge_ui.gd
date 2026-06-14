@@ -1375,6 +1375,10 @@ func _build_orb_from_result(result: ForgeResult) -> Orb:
 		for stat: String in result.stat_bonuses:
 			if stat in ability.stats:
 				ability.stats[stat] += result.stat_bonuses[stat]
+	# Orb.new() computed cooldown from an empty ability list (count == 0,
+	# fallback cooldown == 1.0). Recompute now that abilities are assigned.
+	orb.cooldown = 0.0
+	orb._compute_cooldown()
 	return orb
 
 # ── helpers ───────────────────────────────────────────────────────────────────

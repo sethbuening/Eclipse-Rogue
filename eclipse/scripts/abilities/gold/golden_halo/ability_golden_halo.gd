@@ -53,7 +53,7 @@ func tick(context: Dictionary) -> void:
 		radius = lerp(min_r, max_r, gold.fortune_fill())
 
 	var r2:    float = radius * radius
-	var power: float = stats.get_stat("power", orb_potency, main_stats)
+	var power: float = stats.get_stat("damage", orb_potency, main_stats)
 
 	for enemy: Enemy in EnemyManager.living_enemies:
 		if not is_instance_valid(enemy):

@@ -88,7 +88,7 @@ func _apply_damage_tick() -> void:
 		return
 
 	var stacks:     int   = _target.get_meta("arc_stacks", 0)
-	var base_power: float = _stats.get_stat("power", _orb_potency, _main_stats)
+	var base_power: float = _stats.get_stat("damage", _orb_potency, _main_stats)
 
 	# Scale damage with stacks — each stack adds STACK_DAMAGE_MULT * base_power.
 	var stack_bonus: float = float(stacks) * AbilityArcOverload.STACK_DAMAGE_MULT * base_power

@@ -26,7 +26,7 @@ const INT_STATS: Array[String] = [
 
 # Human-readable labels for stat deltas shown on upgrade cards.
 const STAT_LABELS: Dictionary = {
-	"power":            "Power",
+	"damage":            "Damage",
 	"cooldown":         "Cooldown",
 	"duration":         "Duration",
 	"range":            "Range",

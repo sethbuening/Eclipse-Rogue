@@ -1,12 +1,12 @@
 [gd_resource type="Resource" script_class="AbilityLightningChain" format=3 uid="uid://cm12yj011wi28"]
 
+[ext_resource type="Texture2D" uid="uid://c7kaheiu0fxgy" path="res://art/abilities/malachite/lightning_chain.png" id="1_ddgvu"]
 [ext_resource type="Script" uid="uid://6704ai15jatu" path="res://scripts/abilities/malachite/lightning_chain/ability_lightning_chain.gd" id="1_vncvd"]
 [ext_resource type="Script" uid="uid://djuyt3y2iehml" path="res://scripts/abilities/ability_stats.gd" id="2_dhy1c"]
 [ext_resource type="Script" uid="uid://bt1phyhbnlmfw" path="res://scripts/upgrades/ability_upgrade_entry.gd" id="3_i1vq2"]
 
 [sub_resource type="Resource" id="Resource_bv5wb"]
 script = ExtResource("2_dhy1c")
-power = 50.0
 cooldown = 20.0
 duration = 0.5
 range = 150.0
@@ -25,6 +25,8 @@ script = ExtResource("1_vncvd")
 id = "Lightning Chain"
 display_name = "Lightning Chain"
 description = "Chains lightning between enemies, dealing decreased damage each jump."
+icon = ExtResource("1_ddgvu")
+ore_type = "malachite"
 targeting_type = 3
 stats = SubResource("Resource_bv5wb")
 main_stats = Array[String](["crit_aoe", "pierce", "power"])

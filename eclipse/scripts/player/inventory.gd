@@ -3,17 +3,38 @@ extends Node
 
 signal relic_added(relic: RelicData, quantity: int)
 signal relic_removed(relic: RelicData, quantity: int)
+signal ability_added(ability: AbilityData)
+signal ability_removed(ability: AbilityData)
 signal orb_added(orb: Orb)
 signal orb_removed(orb: Orb)
 signal metal_added(metal: MetalData, quantity: int)
 signal metal_removed(metal: MetalData, quantity: int)
 
-var relics: Dictionary = {}   # RelicData → int
-var orbs:   Array[Orb] = []
-var metals: Dictionary = {}   # MetalData → int
+var relics:    Dictionary       = {}   # RelicData → int
+var abilities: Array[AbilityData] = []
+var orbs:      Array[Orb]       = []
+var metals:    Dictionary       = {}   # MetalData → int
 
 # Reference to PlayerStats for relic_max enforcement. Set by player.gd after ready.
 var _player_stats: PlayerStats = null
+
+
+# ── abilities ─────────────────────────────────────────────────────────────────
+
+func add_ability(ability: AbilityData) -> void:
+	ability.ensure_loaded()
+	abilities.append(ability)
+	emit_signal("ability_added", ability)
+
+func remove_ability(ability: AbilityData) -> bool:
+	if not abilities.has(ability):
+		return false
+	abilities.erase(ability)
+	emit_signal("ability_removed", ability)
+	return true
+
+func has_ability(ability: AbilityData) -> bool:
+	return abilities.has(ability)
 
 
 # ── relics ────────────────────────────────────────────────────────────────────
@@ -73,6 +94,8 @@ func get_metals() -> Dictionary:
 # ── orbs ──────────────────────────────────────────────────────────────────────
 
 func add_orb(orb: Orb) -> void:
+	if _player_stats != null and orbs.size() >= _player_stats.orb_max:
+		return
 	orbs.append(orb)
 	emit_signal("orb_added", orb)
 

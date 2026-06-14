@@ -76,7 +76,7 @@ func _check_trigger() -> void:
 func _fire_shock(target: Enemy) -> void:
 	_fired = true
 
-	var power:   float = _stats.get_stat("power", _orb_potency, _main_stats) * 0.6
+	var power:   float = _stats.get_stat("damage", _orb_potency, _main_stats) * 0.6
 	var is_crit: bool  = _stats.roll_crit(null)
 	var damage:  float = power * (_stats.crit_damage if is_crit else 1.0)
 

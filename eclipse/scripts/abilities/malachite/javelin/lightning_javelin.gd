@@ -88,7 +88,7 @@ func _process(delta: float) -> void:
 
 func _apply_hit(enemy: Enemy) -> void:
 	var is_crit: bool  = _stats.roll_crit(_player)
-	var power:   float = _stats.get_stat("power", _orb_potency, _main_stats)
+	var power:   float = _stats.get_stat("damage", _orb_potency, _main_stats)
 	var damage:  float = power * (_stats.crit_damage if is_crit else 1.0)
 
 	# Flag as lightning kill so ResidualCurrent can respond.

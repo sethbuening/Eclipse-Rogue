@@ -31,12 +31,6 @@ extends Resource
 ## Effective damage = max(1, raw_damage - target_armor + armor_penetration)
 @export var armor_penetration:   int   = 0
 
-@export_group("Separation")
-@export var sep_radius:       float = 64.0
-@export var sep_force:        float = 1.0
-@export var preferred_range:  float = 32.0
-@export var min_separation:   float = 16.0
-
 @export_group("Resistances")
 @export var damage_reduction:     float = 0.0
 @export var knockback_resistance: float = 0.0
@@ -63,7 +57,6 @@ extends Resource
 @export var buff_speed_mult:     float = 1.0
 @export var buff_damage_mult:    float = 1.0
 @export var buff_cooldown_mult:  float = 1.0
-@export var buff_sep_force_mult: float = 1.0
 @export_subgroup("Buff Resistances")
 @export var buff_stun_resistance: float = 0.0
 @export var buff_slow_resistance: float = 0.0

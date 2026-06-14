@@ -116,10 +116,7 @@ func tick_ai(delta: float) -> void:
 	_tick_behavior(delta)
 	_tick_attack(delta)
 
-	var offscreen: bool     = EnemyManager.offscreen_enemies.has(self)
-	var desired:   Vector2  = _navigator.navigate_toward(player.global_position, delta, true)
-	if not offscreen:
-		desired += _separation_velocity()
+	var desired: Vector2 = _navigator.navigate_toward(player.global_position, delta, true)
 	_velocity = _velocity.lerp(desired, data.turn_speed * delta)
 
 func _tick_behavior(_delta: float) -> void:
@@ -196,28 +193,6 @@ func _resolve_enemies() -> void:
 			continue
 		var dist: float = sqrt(d_sq)
 		global_position += (away / dist) * (MIN_SEPARATION - dist) * 0.5
-
-# ── separation ────────────────────────────────────────────────────────────────
-
-func _separation_velocity() -> Vector2:
-	var push:     Vector2 = Vector2.ZERO
-	var sep_r:    float   = data.sep_radius
-	var sep_r_sq: float   = sep_r * sep_r
-
-	for other in EnemyManager.get_nearby_enemies(global_position, sep_r):
-		if not is_instance_valid(other) or other == self:
-			continue
-		var away: Vector2 = global_position - other.global_position
-		var d_sq: float   = away.length_squared()
-		if d_sq >= sep_r_sq:
-			continue
-		if d_sq < 0.0001:
-			push += Vector2(randf_range(-1, 1), randf_range(-1, 1)).normalized() * data.speed * data.sep_force
-			continue
-		var dist: float = sqrt(d_sq)
-		push += (away / dist) * (1.0 - dist / sep_r) * data.speed * data.sep_force
-
-	return push
 
 # ── attack ────────────────────────────────────────────────────────────────────
 
@@ -344,6 +319,9 @@ func remove_effect(effect_id: String) -> void:
 # ── effects — internal tick ────────────────────────────────────────────
 
 func _tick_effects(delta: float) -> void:
+	if _effects.is_empty():
+		return
+
 	var expired: Array[String] = []
 
 	for id in _effects:
@@ -354,12 +332,14 @@ func _tick_effects(delta: float) -> void:
 		if effect.is_expired():
 			expired.append(id)
 
+	if expired.is_empty():
+		return
+
 	for id in expired:
 		(_effects[id] as EffectData).on_remove(self)
 		_effects.erase(id)
 
-	if not expired.is_empty():
-		_sync_effect_icons()
+	_sync_effect_icons()
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -389,13 +369,6 @@ func _apply_modifier(modifier: Util.Modifier) -> void:
 	if modifier == Util.Modifier.FAST:
 		data.speed *= 1.6
 
-func _range_offset_target(target: Vector2, preferred_range: float) -> Vector2:
-	if preferred_range <= 0.0:
-		return target
-	var to_target: Vector2 = target - global_position
-	var dist:      float   = to_target.length()
-	return global_position if dist <= preferred_range else target - to_target / dist * preferred_range
-
 func _sync_children() -> void:
 	for child in get_children():
 		if child is EnemyHealthBar:
@@ -411,11 +384,22 @@ func _update_z_index() -> void:
 
 # ── spawn ─────────────────────────────────────────────────────────────────────
 
+## Margin (world px) added beyond the screen edge so enemies spawn just
+## out of view, matching the "spawn just offscreen" approach.
+const SPAWN_SCREEN_MARGIN: float = 48.0
+
 func _find_spawn_position() -> Vector2:
 	if tilemap == null:
 		return player.global_position
-	var origin: Vector2i = tilemap.world_to_map(player.global_position)
 
+	# Cast a ray outward from the player in a random direction and walk past
+	# the edge of the screen, looking for the first clear tile to spawn in.
+	var pos: Vector2 = _raycast_offscreen_spawn()
+	if pos != Vector2.INF:
+		return pos
+
+	# Fallback: scattershot search around the player (handles tight/odd rooms).
+	var origin: Vector2i = tilemap.world_to_map(player.global_position)
 	for _i in range(40):
 		var off: Vector2i = Vector2i(randi_range(-20, 20), randi_range(-20, 20))
 		var c:   Vector2i = origin + off
@@ -434,6 +418,49 @@ func _find_spawn_position() -> Vector2:
 
 	push_warning("[Enemy] No valid spawn for %s" % data.id)
 	return player.global_position
+
+## Walks outward from the player along a random direction, starting just past
+## the screen edge, looking for the first clear (open + surrounded by open)
+## tile. Returns Vector2.INF if nothing suitable was found along that ray.
+func _raycast_offscreen_spawn() -> Vector2:
+	var cam: Camera2D = tilemap.camera
+	if cam == null:
+		return Vector2.INF
+
+	var vp_size: Vector2 = get_viewport().get_visible_rect().size
+	var zoom:    Vector2 = cam.zoom
+	# Half-screen extent in world space, plus a margin so we spawn just outside.
+	var half_screen: Vector2 = (vp_size * 0.5) / zoom
+	var edge_dist:   float   = maxf(half_screen.x, half_screen.y) + SPAWN_SCREEN_MARGIN
+
+	var tile_size: float = float(tilemap.TILE_SIZE.x)
+	var dir:       Vector2 = Vector2.RIGHT.rotated(randf() * TAU)
+	var step_tiles: int    = int(ceil(edge_dist / tile_size))
+	var origin:     Vector2i = tilemap.world_to_map(player.global_position)
+
+	# Walk from just past the screen edge outward, looking for a clear tile.
+	for step in range(step_tiles, step_tiles + 12):
+		var world_pos: Vector2 = player.global_position + dir * (float(step) * tile_size)
+		var c: Vector2i = tilemap.world_to_map(world_pos)
+		if not _in_bounds(c):
+			continue
+		if abs(c.x - origin.x) + abs(c.y - origin.y) < min_spawn_distance_tiles:
+			continue
+		if _is_clear(c):
+			return tilemap.map_to_world(c)
+
+	# Second pass along the same ray: accept any open tile, not just fully-clear.
+	for step in range(step_tiles, step_tiles + 12):
+		var world_pos: Vector2 = player.global_position + dir * (float(step) * tile_size)
+		var c: Vector2i = tilemap.world_to_map(world_pos)
+		if not _in_bounds(c):
+			continue
+		if abs(c.x - origin.x) + abs(c.y - origin.y) < min_spawn_distance_tiles:
+			continue
+		if tilemap.is_air(c):
+			return tilemap.map_to_world(c)
+
+	return Vector2.INF
 
 func _is_clear(pos: Vector2i) -> bool:
 	if not tilemap.is_air(pos):

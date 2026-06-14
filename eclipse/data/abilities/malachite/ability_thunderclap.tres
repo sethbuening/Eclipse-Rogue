@@ -2,10 +2,10 @@
 
 [ext_resource type="Script" uid="uid://cp64f17k17t0d" path="res://scripts/abilities/malachite/thunderclap/ability_thunderclap.gd" id="1_b5n4h"]
 [ext_resource type="Script" uid="uid://djuyt3y2iehml" path="res://scripts/abilities/ability_stats.gd" id="2_baiti"]
+[ext_resource type="Script" uid="uid://bt1phyhbnlmfw" path="res://scripts/upgrades/ability_upgrade_entry.gd" id="3_bhbth"]
 
 [sub_resource type="Resource" id="Resource_bhbth"]
 script = ExtResource("2_baiti")
-power = 5.0
 cooldown = 10.0
 duration = 10.0
 range = 100.0
@@ -20,5 +20,7 @@ script = ExtResource("1_b5n4h")
 id = "thunderclap"
 display_name = "Thunderclap"
 description = "Send out a shockwave in all directions of lightning energy."
+ore_type = "malachite"
+targeting_type = null
 stats = SubResource("Resource_bhbth")
 metadata/_custom_type_script = "uid://cp64f17k17t0d"

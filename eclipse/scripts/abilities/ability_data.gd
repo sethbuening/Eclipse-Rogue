@@ -5,6 +5,10 @@ extends Resource
 @export var id:            String       = ""
 @export var display_name:  String       = ""
 @export_multiline var description: String = ""
+@export var icon:          Texture2D    = null
+## Ore/metal type folder this ability's icon lives under
+## (res://art/abilities/<ore_type>/<id>.png), e.g. "gold", "malachite".
+@export var ore_type:      String       = ""
 @export var targeting_type: Util.TargetingType = Util.TargetingType.ENEMY_TILE
 @export var stats:         AbilityStats = AbilityStats.new()
 
@@ -26,22 +30,23 @@ var level: int = 0
 ## Editor:  Inspector → upgrade_levels → Add Element → AbilityUpgradeEntry
 ##          → fill in display_name, description, stat_deltas_* per rarity.
 ## Code:    var e := AbilityUpgradeEntry.new()
-##          e.stat_deltas_common = {"power": 4.0}; e.stat_deltas_rare = {"power": 9.0}
+##          e.stat_deltas_common = {"damage": 4.0}; e.stat_deltas_rare = {"damage": 9.0}
 ##          upgrade_levels.append(e)
 @export var upgrade_levels: Array[AbilityUpgradeEntry] = []
 
 ## Returns the next upgrade entry as a Dictionary for the given rarity.
 ## Falls back to a generic stat-boost entry if upgrade_levels is empty or exhausted.
 func next_upgrade_entry(rarity: int = 0) -> Dictionary:
+	_ensure_loaded()
 	if level < upgrade_levels.size():
 		return upgrade_levels[level].to_dict(rarity)
 	# Generic fallback: scale power/damage boost by rarity
 	var boost: float = 2.0 + rarity * 2.0
 	return {
 		"display_name": display_name + " +" + str(level + 1),
-		"description":  "Increases power by " + str(int(boost)) + ".",
+		"description":  "Increases damage by " + str(int(boost)) + ".",
 		"icon":         null,
-		"stat_deltas":  { "power": boost },
+		"stat_deltas":  { "damage": boost },
 		"main_stats":   [],
 	}
 
@@ -49,18 +54,79 @@ func next_upgrade_entry(rarity: int = 0) -> Dictionary:
 func can_upgrade() -> bool:
 	return level < 8
 
+# ── automatic data loading ──────────────────────────────────────────────────
+
+## True once base stats / icon / upgrade_levels have been loaded for this
+## instance. Guards against repeated work on duplicates and resource reloads.
+var _data_loaded: bool = false
+
+## Public entry point — loads base stats, upgrade_levels, and icon from data
+## files if not already done. Call this once [id]/[ore_type] are set (e.g.
+## from Inventory.add_ability) so the ability is fully configured before use.
+## Safe to call multiple times — only runs once per instance.
+func ensure_loaded() -> void:
+	_ensure_loaded()
+
+func _ensure_loaded() -> void:
+	if _data_loaded:
+		return
+	if not _has_data_loader():
+		return  # retry next call — DataLoader autoload not in tree yet
+	_data_loaded = true
+	DataLoader.apply_ability_data(self)
+	_load_icon()
+
+## Returns true if the DataLoader autoload is available in the scene tree.
+func _has_data_loader() -> bool:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	if tree == null:
+		return false
+	return tree.root.has_node("DataLoader")
+
+## Loads the ability's icon from res://art/abilities/<ore_type>/<id>.png
+## if [icon] hasn't already been set manually.
+func _load_icon() -> void:
+	if icon != null:
+		return
+	if ore_type.is_empty() or id.is_empty():
+		return
+	var file_name: String = id.strip_edges().to_lower().replace(" ", "_")
+	var path: String = "res://art/abilities/%s/%s.png" % [ore_type.strip_edges().to_lower(), file_name]
+	if ResourceLoader.exists(path):
+		icon = load(path)
+
 # ── runtime ───────────────────────────────────────────────────────────────────
 
-var _orb_potency: float = 1.0
+var _orb_potency:      float = 1.0
+var _cooldown_elapsed: float = INF  # starts ready; resets to 0 on activation
+
+## True when the ability's cooldown has fully elapsed (or no cooldown is set).
+func is_ready() -> bool:
+	_ensure_loaded()
+	var cd: float = stats.cooldown if stats.cooldown > 0.0 else 0.0
+	return _cooldown_elapsed >= cd
+
+## Call after a successful activation to restart the cooldown.
+func trigger_cooldown() -> void:
+	_cooldown_elapsed = 0.0
+
+## Advance the cooldown timer. Call once per frame from tick().
+func tick_cooldown(delta: float) -> void:
+	var cd: float = stats.cooldown if stats.cooldown > 0.0 else 0.0
+	if cd > 0.0 and _cooldown_elapsed < cd:
+		_cooldown_elapsed = minf(_cooldown_elapsed + delta, cd)
 
 func get_stat(stat_name: String) -> float:
+	_ensure_loaded()
 	return stats.get_stat(stat_name, _orb_potency, main_stats)
 
 ## Called every frame by the player for every ability, regardless of type.
 ## Subclasses fire whenever they find a valid target — no input gating.
 ## Write context["activated"] = true to trigger the orb shatter.
 func tick(context: Dictionary) -> void:
+	_ensure_loaded()
 	_orb_potency = context.get("potency", 1.0)
+	tick_cooldown(context.get("delta", 0.0))
 
 ## Applies all stat-driven on-hit effects (knockback, stun, slow, DoT)
 ## to [target] on behalf of [player]. Call this from any ability after damage.

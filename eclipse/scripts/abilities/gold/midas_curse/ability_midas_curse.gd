@@ -102,7 +102,7 @@ func _on_enemy_died(enemy: Enemy, gold: GoldManager) -> void:
 	if gold != null and not enemy.has_meta("killed_by_crit"):
 		var player: CharacterBody2D = EnemyManager.player
 		if player != null:
-			var power: float = stats.get_stat("power", _orb_potency, [])
+			var power: float = stats.get_stat("damage", _orb_potency, [])
 			gold.add_fortune(power * 0.5, player)
 
 	_clear_mark_meta(enemy)

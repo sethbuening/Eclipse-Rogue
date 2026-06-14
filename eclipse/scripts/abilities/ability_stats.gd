@@ -3,7 +3,7 @@ extends Resource
 
 # ── core ──────────────────────────────────────────────────────────────────────
 @export_group("Core")
-@export var power:            float = -1
+@export var damage:           float = -1
 @export var cooldown:         float = -1
 @export var duration:         float = -1
 @export var range:            float = -1
@@ -101,8 +101,8 @@ func roll_crit(player: CharacterBody2D = null) -> bool:
 		printerr("[ability_stats.gd] player is null in roll_crit — cannot check guaranteed_crits")
 	return randf() < crit_chance
 
-func get_power(is_crit: bool = false) -> float:
-	return power * (crit_damage if is_crit else 1.0)
+func get_damage(is_crit: bool = false) -> float:
+	return damage * (crit_damage if is_crit else 1.0)
 
 func get_aoe(is_crit: bool = false) -> float:
 	return aoe_radius + (crit_aoe if is_crit else 0.0)

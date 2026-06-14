@@ -22,8 +22,6 @@ func _ready() -> void:
 	WaveManager.forging_wave_started.connect(_on_forging_wave_started)
 	WaveManager.forging_wave_ended.connect(_on_forging_wave_ended)
 	%TilemapManager.camera = %Camera2D
-	%GraphManager.generate()
-	%OrbGraphMenu.player            = %Player
 	%DebugLabel.add_theme_font_size_override(
 		"normal_font_size",
 		DisplayServer.window_get_size().y / 50
@@ -67,7 +65,7 @@ func _build_debug_text(fps: int, env: Environment, player: CharacterBody2D) -> S
 		"fps: "     + str(fps),
 		"bloom: "   + str(snappedf(env.glow_bloom, 0.01)),
 		"glow: "    + str(snappedf(env.glow_intensity, 0.01)),
-		"enemies: " + str(WaveManager._enemies_alive) + " / " + str(EnemyManager.living_enemies.size()),
+		"enemies: " + str(EnemyManager.living_enemies.size()),
 	]
 
 	# ── ore collection counts ─────────────────────────────────────────────────

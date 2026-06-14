@@ -55,7 +55,7 @@ func _fire(player: Node2D, context: Dictionary) -> void:
 	var radius:      float = get_stat("aoe_radius")
 	if radius <= 0.0:
 		radius = 80.0
-	var power:       float = stats.get_stat("power",        orb_potency, main_stats)
+	var power:       float = stats.get_stat("damage",        orb_potency, main_stats)
 	var stun_dur:    float = stats.get_stat("stun_duration", orb_potency, main_stats)
 	var knockback:   float = stats.get_stat("knockback",    orb_potency, main_stats)
 	var radius_sq:   float = radius * radius

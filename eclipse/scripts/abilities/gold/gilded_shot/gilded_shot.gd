@@ -72,7 +72,7 @@ func _process(delta: float) -> void:
 			queue_free()
 
 func _deal_hit(enemy: Enemy, effective_crit_chance: float) -> void:
-	var power: float = _stats.get_stat("power", _orb_potency, _main_stats)
+	var power: float = _stats.get_stat("damage", _orb_potency, _main_stats)
 
 	var is_crit: bool = false
 	if _player != null and _player.guaranteed_crits > 0:

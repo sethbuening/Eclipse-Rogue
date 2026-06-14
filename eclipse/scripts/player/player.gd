@@ -13,11 +13,8 @@ extends CharacterBody2D
 @export var orb_orbit_speed:  float   = 1.25
 @export var orb_reform_flash: float   = 0.2
 
-@export_group("Starting Orbs")
-const starting_orb_3: Orb = preload("res://data/orbs/orb_lightning_chain.tres")
-const starting_orb_4: Orb = preload("res://data/orbs/orb_conductor_post.tres")
 
-@export_group("Stats")
+
 @export var stats: PlayerStats = PlayerStats.new()
 
 
@@ -187,11 +184,9 @@ func _ready() -> void:
 	health = max_health
 	add_to_group("player")
 	$Inventory._player_stats = stats
-	$Inventory.orb_added.connect(_on_orb_added)
-	$Inventory.orb_removed.connect(_on_orb_removed)
 	$Inventory.relic_added.connect(_on_relic_added)
-	$Inventory.add_orb(starting_orb_3.clone())
-	$Inventory.add_orb(starting_orb_4.clone())
+	var _starting_chain := AbilityLightningChain.new()
+	$Inventory.add_ability(_starting_chain)
 
 	xp_bar.leveled_up.connect(_on_leveled_up)
 
@@ -281,59 +276,25 @@ func _on_died() -> void:
 # ================================================================ abilities ==
 
 func _tick_abilities(delta: float) -> void:
-	var orbs: Array[Orb] = $Inventory.orbs
-
-	if orbs.size() != orb_visuals.size():
-		return
-
-	for i in range(orbs.size()):
-		orb_visuals[i].glow_target = 0.0
-
-		var orb: Orb = orbs[i]
-		if orb.node_index == -1:
-			continue
-		if orb_visuals[i].shattered:
-			continue
-		if orb_visuals[i].ready_delay > 0.0:
-			continue
-
-		var ctx := _make_context(delta, i)
-
-		for ability: AbilityData in orb.abilities:
-			ability.tick(ctx)
-
-		if ctx["activated"] and not orb_visuals[i].shattered:
-			shatter_orb(i)
-			_trigger_connections(i, delta)
-
-		if ctx["lock_movement"]:
-			movement_enabled = false
-
-		orb_visuals[i].glow_target = ctx["orb_t"]
-
-	_update_body_glow_from_visuals()
-
-
-# ── context helpers ───────────────────────────────────────────────────────
-
-func _make_context(delta: float, orb_index: int) -> Dictionary:
-	return {
+	var ctx: Dictionary = {
 		"player":        self,
 		"tilemap":       %TilemapManager,
 		"delta":         delta,
 		"lock_movement": false,
 		"orb_t":         0.0,
 		"activated":     false,
-		"orb_shattered": orb_visuals[orb_index].shattered,
-		"orb_index":     orb_index,
-		"potency":       $Inventory.orbs[orb_index].orb_potency,
+		"orb_shattered": false,
+		"orb_index":     0,
+		"potency":       1.0,
 	}
+	for ability: AbilityData in $Inventory.abilities:
+		ability.tick(ctx)
 
-func _update_body_glow_from_visuals() -> void:
-	var max_t: float = 0.0
-	for ov: OrbVisual in orb_visuals:
-		max_t = maxf(max_t, ov.glow)
-	_update_body_glow(max_t)
+	if ctx["lock_movement"]:
+		movement_enabled = false
+
+
+# ── context helpers ───────────────────────────────────────────────────────
 
 func _update_body_glow(t: float) -> void:
 	var glow: Color = Color(lerpf(1.0, 2.0, t), lerpf(1.0, 2.0, t), lerpf(1.0, 2.0, t))
@@ -376,7 +337,7 @@ func _update_orb_visuals(delta: float) -> void:
 		if ov.ready_delay > 0.0:
 			ov.ready_delay = maxf(0.0, ov.ready_delay - delta)
 
-		if orb.node_index == -1 or ov.shattered:
+		if ov.shattered:
 			ov.sprite.visible = false
 			continue
 
@@ -406,12 +367,9 @@ func _angle_to_orbit_pos(angle: float) -> Vector2:
 	return Vector2(cos(angle), sin(angle)) * orb_orbit_radius + orb_orbit_center
 
 func _recalculate_orb_offsets() -> void:
-	var active: Array[int] = []
-	for i in range($Inventory.orbs.size()):
-		if $Inventory.orbs[i].node_index != -1:
-			active.append(i)
-	for slot in range(active.size()):
-		orb_visuals[active[slot]].angle_offset = (float(slot) / float(active.size())) * TAU
+	var count: int = $Inventory.orbs.size()
+	for slot in range(count):
+		orb_visuals[slot].angle_offset = (float(slot) / float(count)) * TAU if count > 0 else 0.0
 
 
 # ============================================================= orb management ==
@@ -614,68 +572,41 @@ func _show_next_upgrade_screen() -> void:
 func _build_upgrade_choices() -> Array:
 	const SLOT_COUNT: int = 3
 
-	# ── 1. Build the pool of (orb, ability, slot_index) upgrade candidates ──────
-	# Only abilities that can_upgrade() — no fallback to non-upgradeable.
+	# ── 1. Build the pool of upgradeable abilities ────────────────────────────
 	var pairs: Array = []
-	for orb: Orb in $Inventory.orbs:
-		for i in range(orb.abilities.size()):
-			var ability: AbilityData = orb.abilities[i]
-			if ability.can_upgrade():
-				pairs.append({ "orb": orb, "ability": ability, "index": i })
+	for ability: AbilityData in $Inventory.abilities:
+		if ability.can_upgrade():
+			pairs.append(ability)
 	pairs.shuffle()
 
-	# ── 2. Compute the "add ability" probability from empty slot ratio ───────────
-	var total_capacity: int = 0
-	var total_empty:    int = 0
-	var slot_candidates: Array[Orb] = []
-	for orb: Orb in $Inventory.orbs:
-		if orb.ability_max <= 0:
-			continue
-		total_capacity += orb.ability_max
-		var empty: int = orb.ability_max - orb.abilities.size()
-		if empty > 0:
-			total_empty += empty
-			slot_candidates.append(orb)
-
-	# ── 3. Fill the 3 choice slots ───────────────────────────────────────────────
-	var choices: Array = []
-	var used_abilities: Array = []  # AbilityData instances already represented
-	var pair_cursor: int = 0        # walk through the shuffled pairs list
-
-	# If any orb has an empty slot, guarantee exactly one "add ability" choice
-	# in a random slot position.
-	var add_upgrade: UpgradeAddAbilityToOrb = null
-	if not slot_candidates.is_empty():
-		# Build a fallback ability pool from all abilities across all orbs
-		var all_abilities: Array[AbilityData] = []
-		for orb: Orb in $Inventory.orbs:
-			for a: AbilityData in orb.abilities:
-				all_abilities.append(a)
-		slot_candidates.shuffle()
-		for candidate: Orb in slot_candidates:
-			var rarity: int = UpgradeRarityTable.roll(stats.luck)
-			add_upgrade = UpgradeAddAbilityToOrb.build(candidate, $Inventory.metals, all_abilities, rarity)
-			if add_upgrade != null:
-				break
+	# ── 2. Decide whether to guarantee a "new ability" slot ──────────────────
+	# Offer a new ability if the metals pool is non-empty and there are
+	# fewer than a reasonable cap of abilities already owned.
+	var all_abilities: Array[AbilityData] = $Inventory.abilities
+	var add_upgrade: UpgradeAddAbility = null
+	if not $Inventory.metals.is_empty():
+		var rarity: int = UpgradeRarityTable.roll(stats.luck)
+		add_upgrade = UpgradeAddAbility.build($Inventory.metals, all_abilities, rarity)
 
 	var add_slot: int = randi() % SLOT_COUNT if add_upgrade != null else -1
+
+	# ── 3. Fill the 3 choice slots ────────────────────────────────────────────
+	var choices: Array = []
+	var used_abilities: Array = []
+	var pair_cursor: int = 0
 
 	for slot in range(SLOT_COUNT):
 		if slot == add_slot:
 			choices.append(add_upgrade)
 			continue
 
-		# Find the next unused ability pair for a level-up upgrade.
 		while pair_cursor < pairs.size():
-			var pair: Dictionary = pairs[pair_cursor]
+			var ability: AbilityData = pairs[pair_cursor]
 			pair_cursor += 1
-			var ability: AbilityData = pair["ability"]
 			if ability in used_abilities:
 				continue
 			var rarity: int = UpgradeRarityTable.roll(stats.luck)
-			var upgrade: AbilityLevelUpUpgrade = AbilityLevelUpUpgrade.build(
-				pair["orb"], ability, pair["index"], rarity
-			)
+			var upgrade: AbilityLevelUpUpgrade = AbilityLevelUpUpgrade.build(ability, rarity)
 			if upgrade != null:
 				choices.append(upgrade)
 				used_abilities.append(ability)
@@ -820,6 +751,8 @@ func _tick_dev_input() -> void:
 			_dev_reset_cooldowns()
 	if Input.is_action_just_pressed("dev_call_wave"):
 		WaveManager._enter_swell()
+	if Input.is_action_just_pressed("dev_mode"):
+		EnemyManager.debug_force_visible = not EnemyManager.debug_force_visible
 	if Input.is_action_just_pressed("interact") and _nearby_forge != null:
 		_try_open_forge()
 	if Input.is_action_just_pressed("zoom_in"):
@@ -838,12 +771,6 @@ func _dev_reset_cooldowns() -> void:
 		ov.glow_target  = 0.0
 
 # =================================================================== helpers ==
-
-func _trigger_connections(orb_index: int, delta: float) -> void:
-	var node_index: int = $Inventory.orbs[orb_index].node_index
-	if node_index == -1:
-		return
-	%GraphManager.on_orb_fired(node_index, {}, $Inventory.orbs[orb_index])
 
 func Log(msg: Variant) -> void:
 	print("[player.gd] " + str(msg))

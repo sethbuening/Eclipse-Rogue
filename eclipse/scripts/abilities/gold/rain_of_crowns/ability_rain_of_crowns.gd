@@ -24,8 +24,8 @@
 class_name AbilityRainOfCrowns
 extends AbilityData
 
-const CrownScene:       preload("res://scenes/abilities/gold_crown.tscn")
-const CROWNS_PER_VOLLEY: int = 3
+const CrownScene: PackedScene = preload("res://scenes/abilities/gold_crown.tscn")
+const CROWNS_PER_VOLLEY: int  = 3
 
 func tick(context: Dictionary) -> void:
 	super.tick(context)
@@ -69,7 +69,7 @@ func _fire_volley(player: Node2D, orb_potency: float, gold: GoldManager) -> void
 	if crown_drop_delay <= 0.0:
 		crown_drop_delay = 0.6
 
-	var power:    float = stats.get_stat("power",              orb_potency, main_stats)
+	var power:    float = stats.get_stat("damage",              orb_potency, main_stats)
 	var crater_r: float = stats.get_stat("crown_crater_radius", orb_potency, main_stats)
 	if crater_r <= 0.0:
 		crater_r = 72.0

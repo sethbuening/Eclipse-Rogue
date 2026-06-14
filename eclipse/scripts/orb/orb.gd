@@ -8,7 +8,7 @@ enum OrbType { SIMPLE, ALLOY }
 @export var orb_type:       OrbType            = OrbType.SIMPLE
 @export var abilities:      Array[AbilityData] = []
 @export var orb_potency:    float              = 1.0
-var node_power_base:        float              = -1.0
+var node_damage_base:        float              = -1.0
 @export var sprite_texture: Texture2D
 @export var input_action:   String             = ""
 var cooldown:               float              = 0.0
@@ -87,11 +87,11 @@ func primary_ability() -> AbilityData:
 	return abilities[0]
 
 func add_charge(stacks: int) -> void:
-	var base: float = node_power_base if node_power_base >= 0.0 else orb_potency
+	var base: float = node_damage_base if node_damage_base >= 0.0 else orb_potency
 	for ability: AbilityData in abilities:
-		ability.stats.power = base * (1.0 + stacks * 0.1)
+		ability.stats.damage = base * (1.0 + stacks * 0.1)
 
 func clear_charges() -> void:
-	var base: float = node_power_base if node_power_base >= 0.0 else orb_potency
+	var base: float = node_damage_base if node_damage_base >= 0.0 else orb_potency
 	for ability: AbilityData in abilities:
-		ability.stats.power = base
+		ability.stats.damage = base

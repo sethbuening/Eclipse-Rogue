@@ -2,7 +2,7 @@
 # ---------------------------------------------------------------------------
 # Passive ability.  Tracks damage absorbed by the player since last
 # discharge.  When accumulated damage crosses the threshold (stored in
-# stats.power), fires a lightning explosion centered on the player and resets.
+# stats.damage), fires a lightning explosion centered on the player and resets.
 #
 # There is no fixed cooldown.  The "cooldown" is the damage threshold — it
 # fires faster under heavy punishment, slower when the player is healthy.
@@ -48,7 +48,7 @@ func tick(context: Dictionary) -> void:
 		_damage_accum += float(damage_this_frame)
 
 	# Threshold is stored in the power stat so it benefits from orb upgrades.
-	var threshold: float = get_stat("power")
+	var threshold: float = get_stat("damage")
 	if threshold <= 0.0:
 		threshold = 50.0
 
@@ -66,7 +66,7 @@ func _discharge(player: CharacterBody2D, context: Dictionary) -> void:
 	var radius:      float = stats.get_stat("aoe_radius", orb_potency, main_stats)
 	if radius <= 0.0:
 		radius = 100.0
-	var power:       float = stats.get_stat("power", orb_potency, main_stats)
+	var power:       float = stats.get_stat("damage", orb_potency, main_stats)
 	var radius_sq:   float = radius * radius
 
 	for enemy: Enemy in EnemyManager.living_enemies.duplicate():

@@ -1,12 +1,12 @@
 [gd_resource type="Resource" script_class="AbilityArcOverload" format=3 uid="uid://bjy2wemdlq0wp"]
 
 [ext_resource type="Script" uid="uid://dqj5opsx8sk2f" path="res://scripts/abilities/malachite/arc_overload/ability_arc_overload.gd" id="1_33bct"]
+[ext_resource type="Texture2D" uid="uid://pax1gi440kdw" path="res://art/abilities/malachite/arc_overload.png" id="1_bk4wd"]
 [ext_resource type="Script" uid="uid://djuyt3y2iehml" path="res://scripts/abilities/ability_stats.gd" id="2_gknkh"]
 [ext_resource type="Script" uid="uid://bt1phyhbnlmfw" path="res://scripts/upgrades/ability_upgrade_entry.gd" id="3_ijue5"]
 
 [sub_resource type="Resource" id="Resource_ijue5"]
 script = ExtResource("2_gknkh")
-power = 25.0
 cooldown = 10.0
 duration = 5.0
 range = 250.0
@@ -22,5 +22,8 @@ script = ExtResource("1_33bct")
 id = "arc_overload"
 display_name = "Arc Overload"
 description = "Overloaded electric arcs slam down from the sky and smite enemies."
+icon = ExtResource("1_bk4wd")
+ore_type = "malachite"
+targeting_type = null
 stats = SubResource("Resource_ijue5")
 metadata/_custom_type_script = "uid://dqj5opsx8sk2f"

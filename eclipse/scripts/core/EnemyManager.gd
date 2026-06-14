@@ -16,6 +16,10 @@ var tilemap:        Node = null
 # set of enemies currently offscreen — read by enemy.gd in tick_ai
 var offscreen_enemies: Dictionary = {}
 
+## When true (toggled by dev_mode), all enemy children stay visible
+## regardless of on-screen culling — useful for debugging spawn logic.
+var debug_force_visible: bool = false
+
 signal enemy_died(enemy: Enemy)
 
 # ── private state ─────────────────────────────────────────────────────────────
@@ -61,9 +65,10 @@ func _update_visibility() -> void:
 						  and screen_pos.y < vp_size.y + CULL_MARGIN
 		if not on_screen:
 			offscreen_enemies[enemy] = true
+		var show: bool = on_screen or debug_force_visible
 		for child in enemy.get_children():
 			if child is Node2D:
-				child.visible = on_screen
+				child.visible = show
 
 # ── separation grid ───────────────────────────────────────────────────────────
 

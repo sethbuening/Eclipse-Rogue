@@ -145,7 +145,7 @@ func _pulse(power_scale: float = 1.0) -> void:
 	if radius <= 0.0:
 		radius = 48.0
 	var radius_sq: float = radius * radius
-	var power:     float = _stats.get_stat("power", _orb_potency, _main_stats) * power_scale
+	var power:     float = _stats.get_stat("damage", _orb_potency, _main_stats) * power_scale
 
 	for enemy: Enemy in EnemyManager.living_enemies:
 		if not is_instance_valid(enemy):

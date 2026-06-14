@@ -22,8 +22,11 @@ extends Resource
 
 # ── relics ────────────────────────────────────────────────────────────────────
 @export_group("Relics")
-## Maximum number of relics the player can hold at once. 0 means unlimited.
-@export var relic_max: int = 0
+## Maximum number of orbs the player can hold at once.
+@export var orb_max: int = 2
+
+## Maximum number of relics the player can hold at once.
+@export var relic_max: int = 2
 
 # ── luck ──────────────────────────────────────────────────────────────────────
 @export_group("Luck")
@@ -45,8 +48,8 @@ extends Resource
 # mult — stacks additively; 0.2 means +20%, -0.1 means -10%.
 # All default to 0.0 (neutral — no effect on stats that return -1 as "unused").
 @export_group("Ability Stat Modifiers")
-@export var power_flat:              float = 0.0
-@export var power_mult:              float = 0.0
+@export var damage_flat:              float = 0.0
+@export var damage_mult:              float = 0.0
 @export var cooldown_flat:           float = 0.0
 @export var cooldown_mult:           float = 0.0
 @export var duration_flat:           float = 0.0

@@ -80,7 +80,6 @@ var _horde_queue:      int   = 0
 var _horde_step_acc:   float = 0.0
 var _is_forging:       bool  = false
 var _paused:           bool  = false
-var _enemies_alive:    int   = 0
 
 # ── signals ───────────────────────────────────────────────────────────────────
 
@@ -92,7 +91,6 @@ signal forging_wave_ended()
 # ── lifecycle ─────────────────────────────────────────────────────────────────
 
 func _ready() -> void:
-	EnemyManager.enemy_died.connect(_on_enemy_died)
 	_build_rosters()
 	_spawn_timer     = first_spawn_delay
 	_encounter_timer = encounter_period + randf_range(-encounter_period_variance, encounter_period_variance)
@@ -154,7 +152,6 @@ func _do_trickle_spawn() -> void:
 	if _is_forging:
 		modifier = Util.Modifier.ALERTED
 	EnemyManager.spawn_enemy(pick, modifier)
-	_enemies_alive += 1
 
 # ── encounter scheduling ──────────────────────────────────────────────────────
 
@@ -218,7 +215,6 @@ func _encounter_swarm() -> void:
 	var budget := _current_budget() * 6
 	var squad  := _build_squad(budget, pool, "cheapest")
 	EnemyManager.spawn_squad(squad, Util.Modifier.FAST)
-	_enemies_alive += squad.size()
 	Log("Swarm — %d units" % squad.size())
 
 func _encounter_patrol() -> void:
@@ -231,7 +227,6 @@ func _encounter_patrol() -> void:
 	if mid_pool.is_empty(): mid_pool = pool
 	var squad  := _build_squad(budget, mid_pool, "random")
 	EnemyManager.spawn_squad(squad, Util.Modifier.CLUSTERED)
-	_enemies_alive += squad.size()
 	Log("Patrol — %d units" % squad.size())
 
 func _encounter_titan() -> void:
@@ -244,13 +239,11 @@ func _encounter_titan() -> void:
 	var budget := _current_budget() * 4
 	var elite: EnemyData = pool[0]
 	EnemyManager.spawn_enemy(elite, Util.Modifier.ALERTED)
-	_enemies_alive += 1
 	budget -= elite.cost
 
 	# Optional second elite if budget allows
 	if budget >= elite.cost:
 		EnemyManager.spawn_enemy(elite, Util.Modifier.ALERTED)
-		_enemies_alive += 1
 		budget -= elite.cost
 
 	# Fill remainder with cheap bodyguards
@@ -258,8 +251,9 @@ func _encounter_titan() -> void:
 	if not cheap.is_empty() and budget > 0:
 		var guards := _build_squad(budget, cheap, "cheapest")
 		EnemyManager.spawn_squad(guards, Util.Modifier.NONE)
-		_enemies_alive += guards.size()
-	Log("Titan — elite + %d bodyguards" % _enemies_alive)
+		Log("Titan — elite + %d bodyguards" % guards.size())
+	else:
+		Log("Titan — elite, no bodyguards")
 
 func _encounter_crossfire() -> void:
 	# Two separate squads spawned back-to-back — EnemyManager handles direction
@@ -271,7 +265,6 @@ func _encounter_crossfire() -> void:
 	var squad_b := _build_squad(half, pool, "cheapest")
 	EnemyManager.spawn_squad(squad_a, Util.Modifier.ALERTED)
 	EnemyManager.spawn_squad(squad_b, Util.Modifier.FAST)
-	_enemies_alive += squad_a.size() + squad_b.size()
 	Log("Crossfire — %d + %d units" % [squad_a.size(), squad_b.size()])
 
 # ── horde ─────────────────────────────────────────────────────────────────────
@@ -300,7 +293,6 @@ func _spawn_horde_unit() -> void:
 	if pool.is_empty(): return
 	pool.sort_custom(func(a: EnemyData, b: EnemyData): return a.cost < b.cost)
 	EnemyManager.spawn_enemy(pool[0], Util.Modifier.CLUSTERED)
-	_enemies_alive += 1
 
 # ── squad building ────────────────────────────────────────────────────────────
 
@@ -371,14 +363,10 @@ func add_to_normal_roster(enemies: Array[EnemyData]) -> void:
 
 # ── enemy tracking ────────────────────────────────────────────────────────────
 
-func _on_enemy_died(_enemy: Enemy) -> void:
-	_enemies_alive = maxi(0, _enemies_alive - 1)
-
 # ── level lifecycle ───────────────────────────────────────────────────────────
 
 func on_level_changed() -> void:
 	_elapsed       = 0.0
-	_enemies_alive = 0
 	_is_forging    = false
 	_horde_queue   = 0
 	_horde_timer   = horde_every_minutes * 60.0

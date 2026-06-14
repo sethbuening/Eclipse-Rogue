@@ -18,7 +18,7 @@ const STAT_DEFAULTS: Dictionary = {
 }
 
 const STAT_UNITS: Dictionary = {
-	"power": "", "cooldown": " sec", "duration": " sec", "range": " tiles",
+	"damage": "", "cooldown": " sec", "duration": " sec", "range": " tiles",
 	"cast_speed": "", "projectile_speed": " px/s", "move_speed_bonus": " px/s",
 	"aoe_radius": " tiles", "pierce": "", "crit_chance": " %", "crit_damage": "x",
 	"crit_aoe": " tiles",
@@ -31,18 +31,11 @@ const STAT_UNITS: Dictionary = {
 # Stats that are stored in px and should be displayed divided by 32 (tile size).
 const STAT_DIVIDE_BY_TILE: Array = ["range", "aoe_radius", "crit_aoe"]
 
-# Optional node context: if set, the tooltip will show stats with the node's
-# multiplicative boost applied (highlighted in a different colour).
-# Set via set_node_context() before request_show().
-var _node_context: GraphNodeData = null
+
 # Whether the node stat is inverse (lower = better), so boost divides.
 var _node_context_inverse: bool  = false
 
-## Call this before request_show() to make the tooltip reflect a node boost.
-## Pass null to clear any existing context.
-func set_node_context(node: GraphNodeData, is_inverse: bool = false) -> void:
-	_node_context         = node
-	_node_context_inverse = is_inverse
+
 
 # Shared formatter used by ability_tooltip, orb_tooltip, and forge_ui.
 # Returns a display string with trailing zeros stripped and unit appended.
@@ -111,24 +104,11 @@ func _build_content(data: Object) -> void:
 			for row in rows:
 				_vbox.add_child(row)
 
-	# If a node context is active, show a footer note about which stat is boosted.
-	if _node_context != null:
-		var sign_str: String = "-" if _node_context_inverse else "+"
-		var pct: float = (_node_context.stat_value - 1.0) * 100.0
-		var note := _make_label(
-			"Node boost: %s%.0f%% %s" % [sign_str, pct, _node_context.stat_name.replace("_", " ")],
-			FONT_SIZE_SMALL, C_BOOSTED
-		)
-		_vbox.add_child(note)
-
 func _collect_stat_rows(stats: AbilityStats) -> Array:
 	var rows: Array = []
 	# Determine node boost parameters if a node context is set.
 	var boost_stat:  String = ""
 	var boost_mult:  float  = 1.0
-	if _node_context != null:
-		boost_stat = _node_context.stat_name
-		boost_mult = (1.0 / _node_context.stat_value) if _node_context_inverse else _node_context.stat_value
 
 	for prop in stats.get_property_list():
 		if prop["usage"] & PROPERTY_USAGE_SCRIPT_VARIABLE == 0:
@@ -165,3 +145,8 @@ func _trigger_label(trigger_type) -> String:
 		1: return "Passive"
 		2: return "On hold"
 		_: return ""
+
+func _open(data: Object, at_global: Vector2) -> void:
+	await super._open(data, at_global)
+	# Ensure the panel itself passes mouse events so hovering any part keeps tooltip open.
+	_panel.mouse_filter = Control.MOUSE_FILTER_PASS

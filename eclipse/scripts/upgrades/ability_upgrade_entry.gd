@@ -23,11 +23,11 @@
 # Code usage:
 #   var entry := AbilityUpgradeEntry.new()
 #   entry.display_name = "Overcharged Bolt"
-#   entry.stat_deltas_common    = { "power": 4.0 }
-#   entry.stat_deltas_uncommon  = { "power": 6.0 }
-#   entry.stat_deltas_rare      = { "power": 9.0 }
-#   entry.stat_deltas_epic      = { "power": 13.0 }
-#   entry.stat_deltas_legendary = { "power": 18.0 }
+#   entry.stat_deltas_common    = { "damage": 4.0 }
+#   entry.stat_deltas_uncommon  = { "damage": 6.0 }
+#   entry.stat_deltas_rare      = { "damage": 9.0 }
+#   entry.stat_deltas_epic      = { "damage": 13.0 }
+#   entry.stat_deltas_legendary = { "damage": 18.0 }
 #   ability.upgrade_levels.append(entry)
 # ---------------------------------------------------------------------------
 class_name AbilityUpgradeEntry

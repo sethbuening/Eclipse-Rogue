@@ -25,6 +25,7 @@ script = ExtResource("1_wjer2")
 id = "Conductor Post"
 display_name = "Conductor Post"
 description = "Place down a conductor post, which boosts lightning abilitys within its range. It also deals damage over time and slows down enemies within its range."
+ore_type = "malachite"
 targeting_type = 0
 stats = SubResource("Resource_b8uhw")
 main_stats = Array[String](["range", "dot_damage", "mining_power", "slow_amount", "slow_duration"])

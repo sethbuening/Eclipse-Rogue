@@ -1,6 +1,6 @@
 # ability_level_up_upgrade.gd
 # ---------------------------------------------------------------------------
-# A LevelUpUpgrade that upgrades one specific ability on one specific orb.
+# A LevelUpUpgrade that upgrades one specific ability in the player's inventory.
 #
 # Upgrades are strictly ordered: the upgrade offered is always for the ability's
 # CURRENT level (ability.level), which advances it to level+1.  There is only
@@ -8,9 +8,8 @@
 # upgrade_levels[ability.level].
 #
 # display_name format:
-#   "<Orb Name> · <Ability Name> (Slot <N>) → Level <M>"
-# This makes it unambiguous even when two orbs share the same ability, or one
-# orb has the same ability twice in different slots.
+#   "<Ability Name>"  (line 1)
+#   "<Upgrade display_name>"  (line 2)
 # ---------------------------------------------------------------------------
 class_name AbilityLevelUpUpgrade
 extends LevelUpUpgrade
@@ -19,18 +18,14 @@ extends LevelUpUpgrade
 # Index matches Util.Rarity: 0=Common, 1=Uncommon, 2=Rare, 3=Epic, 4=Legendary.
 const RARITY_MULTIPLIERS: Array[float] = [1.0, 1.5, 2.0, 3.0, 5.0]
 
-var target_orb:      Orb         = null
-var target_ability:  AbilityData = null
-var ability_slot:    int         = -1   # 1-based slot index within the orb
+var target_ability: AbilityData = null
 
 # The upgrade entry dict pulled from target_ability.upgrade_levels[level].
-var _upgrade_entry: Dictionary  = {}
+var _upgrade_entry: Dictionary = {}
 
 static func build(
-	orb:          Orb,
-	ability:      AbilityData,
-	ability_index: int,   # 0-based index of ability in orb.abilities
-	rarity:       int
+	ability: AbilityData,
+	rarity:  int
 ) -> AbilityLevelUpUpgrade:
 	# Ensure upgrade_levels are populated from JSON (only on first build).
 	if ability.upgrade_levels.is_empty():
@@ -42,9 +37,7 @@ static func build(
 		return null
 
 	var u := AbilityLevelUpUpgrade.new()
-	u.target_orb    = orb
 	u.target_ability = ability
-	u.ability_slot  = ability_index + 1  # convert to 1-based
 	u._upgrade_entry = entry
 	u.rarity         = rarity
 
@@ -57,10 +50,9 @@ static func build(
 	u._upgrade_entry = entry.duplicate()
 	u._upgrade_entry["stat_deltas"] = scaled_deltas
 
-	# Display name: two lines — "<Orb> (Slot N)" on line 1, entry display_name on line 2.
-	u.display_name = "%s (Slot %d)\n%s" % [
-		orb.display_name,
-		u.ability_slot,
+	# Display name: ability name on line 1, upgrade name on line 2.
+	u.display_name = "%s\n%s" % [
+		ability.display_name,
 		entry.get("display_name", ability.display_name),
 	]
 

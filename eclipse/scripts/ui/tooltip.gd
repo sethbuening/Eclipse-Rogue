@@ -39,8 +39,6 @@ func _ready() -> void:
 	_vbox.add_theme_constant_override("separation", 4)
 	_panel.add_child(_vbox)
 
-# ── override in subclasses ────────────────────────────────────────────────────
-
 func _build_content(_data: Object) -> void:
 	pass
 
