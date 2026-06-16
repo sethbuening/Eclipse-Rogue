@@ -57,6 +57,12 @@ static func build(inventory_metals: Dictionary, all_abilities: Array[AbilityData
 	u.description = desc
 	u.icon = picked.icon if "icon" in picked else null
 
+	# ── ore cost ──────────────────────────────────────────────────────────────
+	var cost_metal: MetalData = ItemManager.get_metal_by_id(picked.ore_type)
+	if cost_metal == null:
+		cost_metal = _pick_weighted_metal(inventory_metals)
+	u.metal_cost = UpgradeCostTable.build_cost(cost_metal, UpgradeCostTable.new_item_cost(rarity))
+
 	return u
 
 func apply(player: CharacterBody2D) -> void:

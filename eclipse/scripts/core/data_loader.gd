@@ -21,7 +21,8 @@ var _loaded_relics:    bool       = false
 
 const INT_STATS: Array[String] = [
 	"pierce", "projectile_count", "chain_length", "mining_power",
-	"mining_radius", "armor_bonus", "armor_pen", "engine_base_stack_cap"
+	"mining_radius", "armor_bonus", "armor_pen", "engine_base_stack_cap",
+	"cost"
 ]
 
 # Human-readable labels for stat deltas shown on upgrade cards.
@@ -113,9 +114,11 @@ func apply_ability_data(ability: AbilityData) -> void:
 		entry.display_name = "%s Level %d" % [ability.display_name, level_after]
 
 		# Collect stat deltas, skipping non-numeric and metadata columns.
+		# "cost" is excluded here — it's the ability's static ore cost, read
+		# once from the base row, not a per-level combat stat delta.
 		var deltas: Dictionary = {}
 		for key: String in row.keys():
-			if key in ["Ability Name", "Ability Level"]:
+			if key in ["Ability Name", "Ability Level", "cost"]:
 				continue
 			var raw = row[key]
 			var parsed: float = _try_parse_float(raw)

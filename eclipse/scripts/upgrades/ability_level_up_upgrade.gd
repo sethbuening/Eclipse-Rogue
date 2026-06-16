@@ -74,6 +74,23 @@ static func build(
 
 	u.icon = ability.icon if "icon" in ability else null
 
+	# ── ore cost ──────────────────────────────────────────────────────────────
+	# Prefer the ability's own "cost" stat (read from the same data sheet as
+	# damage/cooldown/etc. — see DataLoader/AbilityStats). Falls back to the
+	# generic rarity-based UpgradeCostTable if the ability doesn't define one.
+	var cost_metal: MetalData = ItemManager.get_metal_by_id(ability.ore_type)
+	var base_amount: int = ability.stats.cost if ability.stats.cost >= 0 else UpgradeCostTable.upgrade_cost(rarity)
+	var amount: int = maxi(1, roundi(base_amount * mult))
+
+	# Random chance to roll a discount: lowers the total cost but splits it
+	# across two metals (the ability's own ore_type + one random other metal)
+	# instead of a single metal type.
+	u.metal_cost = UpgradeCostTable.build_discountable_cost(
+		cost_metal, amount, ItemManager.get_all_metals()
+	)
+	if u.metal_cost.size() > 1:
+		u.description += "\n(Discounted — 2 ores required)"
+
 	return u
 
 func apply(_player: CharacterBody2D) -> void:

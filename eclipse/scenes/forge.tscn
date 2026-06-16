@@ -2,7 +2,6 @@
 
 [ext_resource type="Script" uid="uid://djpnnk51toyae" path="res://scripts/forging/forge.gd" id="1_huql2"]
 [ext_resource type="Texture2D" uid="uid://cff7kji88i6qv" path="res://art/forge.png" id="2_7gn74"]
-[ext_resource type="Script" uid="uid://bvpht4epwp2nb" path="res://scripts/pathfinding/nav_obstacle.gd" id="3_cc85a"]
 [ext_resource type="Environment" uid="uid://boy3e0tstlb4q" path="res://new_environment.tres" id="4_uunk1"]
 [ext_resource type="Texture2D" uid="uid://bbbnehjskb610" path="res://art/lava.png" id="5_7gn74"]
 
@@ -47,9 +46,6 @@ shape = SubResource("CapsuleShape2D_uunk1")
 visible = false
 position = Vector2(-49, -128)
 texture = ExtResource("2_7gn74")
-
-[node name="NavObstacle" type="Node2D" parent="." unique_id=892351366]
-script = ExtResource("3_cc85a")
 
 [node name="PointLight2D" type="PointLight2D" parent="." unique_id=229252036]
 position = Vector2(0, 3)

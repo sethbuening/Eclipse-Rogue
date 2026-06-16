@@ -25,13 +25,27 @@ func _load_relic_pool() -> void:
 	_relic_pool.shuffle()
 	print("[ItemManager] Loaded %d relics into pool" % _relic_pool.size())
 
-var _metal_map: Dictionary = {}  # Util.tile → MetalData
+var _metal_map: Dictionary = {}     # Util.tile → MetalData
+var _metal_id_map: Dictionary = {}  # String (MetalData.id) → MetalData
 
 func _load_metal_pool() -> void:
 	var resources: Array[Resource] = Util.load_resources("res://data/metals/")
 	for res in resources:
 		if res is MetalData and res.tile_type != null:
 			_metal_map[res.tile_type] = res
+			if res.id != "":
+				_metal_id_map[res.id] = res
+
+## Returns the MetalData with [id] (matches AbilityData.ore_type), or null.
+func get_metal_by_id(id: String) -> MetalData:
+	return _metal_id_map.get(id, null)
+
+## Returns all loaded metals.
+func get_all_metals() -> Array[MetalData]:
+	var out: Array[MetalData] = []
+	for m: MetalData in _metal_id_map.values():
+		out.append(m)
+	return out
 
 # ── spawning ──────────────────────────────────────────────────────────────────
 

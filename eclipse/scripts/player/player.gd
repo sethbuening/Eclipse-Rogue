@@ -54,6 +54,7 @@ var body_left:  Texture2D = preload("res://art/player/body_left.png")
 var time:             float = 0.0
 var env_t:            float = 0.0
 var movement_enabled: bool  = true
+var _pause_consumed: bool = false
 
 var _last_move_dir:    Vector2 = Vector2.RIGHT
 
@@ -711,7 +712,7 @@ func _build_relic_choices() -> Array:
 			upgrade_cursor += 1
 			if r in used_relics:
 				continue
-			var u: RelicLevelUpUpgrade = RelicLevelUpUpgrade.build(r, rarity)
+			var u: RelicLevelUpUpgrade = RelicLevelUpUpgrade.build(r, rarity, $Inventory.get_metals())
 			if u != null:
 				choices.append(u)
 				used_relics.append(r)
@@ -736,21 +737,20 @@ func _tick_upgrades(delta: float) -> void:
 # ================================================================= dev tools ==
 
 func _tick_dev_input() -> void:
-	if Input.is_action_just_pressed("pause"):
+	if Input.is_action_just_pressed("pause") and not _pause_consumed:
 		%PauseMenu.open()
+	_pause_consumed = false
 	if Input.is_action_just_pressed("dev_mode"):
 		if $CollisionShape2D.disabled:
 			speed /= 10.0
 			$CollisionShape2D.disabled = false
-			%CanvasModulate.color      = Color("101010")
 			heal(100)
 		else:
 			speed *= 10.0
 			$CollisionShape2D.disabled = true
-			%CanvasModulate.color      = Color.WHITE
 			_dev_reset_cooldowns()
 	if Input.is_action_just_pressed("dev_call_wave"):
-		WaveManager._enter_swell()
+		WaveManager.dev_trigger_swarm()
 	if Input.is_action_just_pressed("dev_mode"):
 		EnemyManager.debug_force_visible = not EnemyManager.debug_force_visible
 	if Input.is_action_just_pressed("interact") and _nearby_forge != null:

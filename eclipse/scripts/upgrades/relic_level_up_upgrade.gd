@@ -14,7 +14,7 @@ var target_relic: RelicData = null
 # The upgrade entry dict pulled from target_relic.upgrade_levels[level].
 var _upgrade_entry: Dictionary = {}
 
-static func build(relic: RelicData, rarity: int) -> RelicLevelUpUpgrade:
+static func build(relic: RelicData, rarity: int, inventory_metals: Dictionary = {}) -> RelicLevelUpUpgrade:
 	# Populate upgrade_levels from JSON if not already loaded.
 	if relic.upgrade_levels.is_empty():
 		DataLoader.apply_relic_data(relic)
@@ -57,6 +57,10 @@ static func build(relic: RelicData, rarity: int) -> RelicLevelUpUpgrade:
 	if u.icon == null:
 		u.icon = relic.icon
 
+	# ── ore cost ──────────────────────────────────────────────────────────────
+	var cost_metal: MetalData = _pick_weighted_metal(inventory_metals)
+	u.metal_cost = UpgradeCostTable.build_cost(cost_metal, UpgradeCostTable.upgrade_cost(rarity))
+
 	return u
 
 func apply(_player: CharacterBody2D) -> void:
@@ -73,3 +77,21 @@ func apply(_player: CharacterBody2D) -> void:
 		target_relic.set(stat_name, base + float(stat_deltas[stat_name]))
 
 	target_relic.level += 1
+
+# ── private helpers ────────────────────────────────────────────────────────────
+
+## Picks a random metal weighted by quantity from [composition] (MetalData → int).
+## Returns null if composition is empty or sums to zero.
+static func _pick_weighted_metal(composition: Dictionary) -> MetalData:
+	var total: int = 0
+	for m: MetalData in composition:
+		total += composition[m]
+	if total <= 0:
+		return null
+	var roll: int = randi() % total
+	var cumulative: int = 0
+	for m: MetalData in composition:
+		cumulative += composition[m]
+		if roll < cumulative:
+			return m
+	return null

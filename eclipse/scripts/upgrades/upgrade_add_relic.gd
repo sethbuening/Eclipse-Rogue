@@ -51,6 +51,10 @@ static func build(
 	u.description  = picked.description if picked.description != "" else "A powerful relic."
 	u.icon         = picked.icon
 
+	# ── ore cost ──────────────────────────────────────────────────────────────
+	var cost_metal: MetalData = RelicLevelUpUpgrade._pick_weighted_metal(inventory.get_metals())
+	u.metal_cost = UpgradeCostTable.build_cost(cost_metal, UpgradeCostTable.new_item_cost(rarity))
+
 	return u
 
 func apply(player: CharacterBody2D) -> void:

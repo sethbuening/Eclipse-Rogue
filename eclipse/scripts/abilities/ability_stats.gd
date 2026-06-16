@@ -1,6 +1,14 @@
 class_name AbilityStats
 extends Resource
 
+# ── economy ───────────────────────────────────────────────────────────────────
+@export_group("Economy")
+## Ore cost (in the ability's ore_type metal) to take an upgrade for this
+## ability. Read from the same data sheet as the rest of the base stats
+## (see DataLoader.apply_ability_data / INT_STATS). -1 means "not set" —
+## AbilityLevelUpUpgrade falls back to the rarity-based UpgradeCostTable.
+@export var cost:             int   = -1
+
 # ── core ──────────────────────────────────────────────────────────────────────
 @export_group("Core")
 @export var damage:           float = -1

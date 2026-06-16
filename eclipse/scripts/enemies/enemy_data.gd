@@ -31,6 +31,9 @@ extends Resource
 ## Effective damage = max(1, raw_damage - target_armor + armor_penetration)
 @export var armor_penetration:   int   = 0
 
+@export_group("Collision")
+@export var collision_radius: float = 6.0
+
 @export_group("Resistances")
 @export var damage_reduction:     float = 0.0
 @export var knockback_resistance: float = 0.0

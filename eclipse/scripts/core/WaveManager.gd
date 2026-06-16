@@ -383,3 +383,29 @@ func resume_waves() -> void: _paused = false
 
 func Log(msg: Variant) -> void:
 	print("[WaveManager] " + str(msg))
+
+# ── dev tools ─────────────────────────────────────────────────────────────────
+
+@export_group("Dev")
+## Number of enemies spawned by the dev_call_wave action (player.gd's
+## _tick_dev_input). Bypasses budget/cost entirely — picks the single
+## cheapest eligible enemy and spawns this many at once, for stress-testing
+## high simultaneous enemy counts (pooling, AI tiers, separation grid, etc).
+@export var dev_swarm_size: int = 300
+
+## Spawns dev_swarm_size enemies immediately, ignoring budget/timers.
+## Called from player.gd when the "dev_call_wave" input action fires.
+func dev_trigger_swarm() -> void:
+	var pool := _eligible_pool()
+	if pool.is_empty():
+		Log("dev_trigger_swarm: no eligible enemies in roster yet")
+		return
+	pool.sort_custom(func(a: EnemyData, b: EnemyData): return a.cost < b.cost)
+	var pick: EnemyData = pool[0]
+
+	var squad: Array[EnemyData] = []
+	squad.resize(dev_swarm_size)
+	squad.fill(pick)
+
+	EnemyManager.spawn_squad(squad, Util.Modifier.FAST)
+	Log("DEV SWARM — %d x %s" % [dev_swarm_size, pick.display_name])
