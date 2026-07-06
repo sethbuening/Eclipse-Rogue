@@ -1,35 +1,21 @@
-# upgrade_add_relic.gd
-# ---------------------------------------------------------------------------
-# A LevelUpUpgrade that adds a new relic from the item pool to the player's
-# inventory. Mirrors UpgradeAddAbilityToOrb.
-#
-# Candidate relics are drawn from ItemManager._relic_pool, excluding any the
-# player already owns. If the player's inventory is at relic_max, this
-# upgrade type will not be offered.
-# ---------------------------------------------------------------------------
 class_name UpgradeAddRelic
 extends LevelUpUpgrade
 
 var new_relic: RelicData = null
 
-static func build(
-	player: CharacterBody2D,
-	rarity: int = 0
-) -> UpgradeAddRelic:
-	var inventory: Node   = player.get_node("Inventory")
-	var p_stats: PlayerStats = player.stats
+## Returns Array[UpgradeAddRelic] with 3 tiers.
+static func build(player: CharacterBody2D, rarity: int = 0) -> Array:
+	var run_inv: RunInventory = player.get_node("RunInventory")
+	var p_stats: PlayerStats  = player.stats
 
-	# Don't offer if inventory is already full.
 	if p_stats.relic_max > 0:
-		var current_count: int = 0
-		for r: RelicData in inventory.relics:
-			current_count += inventory.relics[r]
-		if current_count >= p_stats.relic_max:
-			return null
+		var total: int = 0
+		for v: int in run_inv.relics.values(): total += v
+		if total >= p_stats.relic_max:
+			return []
 
-	# Build candidate pool: all relics not already owned.
 	var owned_ids: Array[String] = []
-	for r: RelicData in inventory.relics:
+	for r: RelicData in run_inv.relics:
 		owned_ids.append(r.id)
 
 	var candidates: Array[RelicData] = []
@@ -38,26 +24,36 @@ static func build(
 			candidates.append(r)
 
 	if candidates.is_empty():
-		return null
+		return []
 
 	candidates.shuffle()
-	var picked: RelicData = candidates[0]
+	var picked: RelicData   = candidates[0]
+	var cost_item: ItemData = RelicLevelUpUpgrade._pick_weighted_item(run_inv)
+	var base_amount: int    = UpgradeCostTable.new_item_cost(rarity)
 
-	var u := UpgradeAddRelic.new()
-	u.new_relic = picked
-	u.rarity    = rarity
+	var result: Array = []
+	var tier_labels: Array = ["Free", "Enhanced", "Supercharged"]
+	for t in 3:
+		var u        := UpgradeAddRelic.new()
+		u.new_relic   = picked
+		u.rarity      = rarity
+		u.tier        = t
+		u.item_cost   = UpgradeCostTable.build_tiered_cost(cost_item, base_amount, t)
+		u.icon        = picked.icon
+		u.display_name = "New Relic\n%s" % picked.display_name
+		var desc := picked.description if picked.description != "" else "A powerful relic."
+		desc += "\n— %s —" % tier_labels[t]
+		if u.item_cost.is_empty():
+			desc += "\nCost: Free"
+		else:
+			for item: ItemData in u.item_cost:
+				desc += "\nCost: %d %s" % [u.item_cost[item], item.display_name]
+		u.description = desc
+		result.append(u)
 
-	u.display_name = "New Relic\n%s" % picked.display_name
-	u.description  = picked.description if picked.description != "" else "A powerful relic."
-	u.icon         = picked.icon
-
-	# ── ore cost ──────────────────────────────────────────────────────────────
-	var cost_metal: MetalData = RelicLevelUpUpgrade._pick_weighted_metal(inventory.get_metals())
-	u.metal_cost = UpgradeCostTable.build_cost(cost_metal, UpgradeCostTable.new_item_cost(rarity))
-
-	return u
+	return result
 
 func apply(player: CharacterBody2D) -> void:
 	if new_relic == null:
 		return
-	player.get_node("Inventory").add_relic(new_relic, 1)
+	player.get_node("RunInventory").add_relic(new_relic, 1)

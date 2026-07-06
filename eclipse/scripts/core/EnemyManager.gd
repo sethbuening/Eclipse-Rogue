@@ -7,11 +7,10 @@ const FAR_RADIUS_SQ:         float = 1400.0 * 1400.0
 const MID_TIER_MULT:         float = 2.0
 const FAR_TIER_MULT:         float = 5.0
 const MAX_POOL_SIZE_PER_TYPE: int  = 64
-const SEP_CELL:              float = 32.0
 const MAX_ENEMY_DISTANCE_SQ: float = 1800.0 * 1800.0
 const TELEPORT_CHECK_BATCH:  int   = 30
-const OFFSCREEN_AI_MULT:     float = 4.0   # extra AI slowdown when offscreen
-const OFFSCREEN_MOVE_DIV:    int   = 4     # only integrate movement every Nth frame offscreen
+const OFFSCREEN_AI_MULT:     float = 4.0
+const OFFSCREEN_MOVE_DIV:    int   = 4
 
 var living_enemies:      Array[Enemy] = []
 var player:              CharacterBody2D
@@ -23,7 +22,6 @@ signal enemy_died(enemy: Enemy)
 var _ai_accum:         float       = 0.0
 var _pool:             Dictionary  = {}
 var _flow_cache:       Dictionary  = {}
-var _sep_grid:         Dictionary  = {}
 var _tick_index:       int         = 0
 var _teleport_index:   int         = 0
 var _vp_size:          Vector2     = Vector2.ZERO
@@ -31,19 +29,17 @@ var _canvas_transform: Transform2D
 
 # --- Timing (usec accumulators, reset every T_PRINT_EVERY frames) ---
 const T_PRINT_EVERY: int = 60
-var _t_frame:        int = 0   # frame counter
-var _t_main_loop:    int = 0   # sep grid + visibility + tick_move
-var _t_teleport:     int = 0   # teleport batch
-var _t_ai:           int = 0   # AI tick slice
+var _t_frame:        int = 0
+var _t_main_loop:    int = 0
+var _t_teleport:     int = 0
+var _t_ai:           int = 0
 
 func _process(delta: float) -> void:
 	var player_pos: Vector2 = player.global_position if player != null else Vector2.ZERO
 	_vp_size          = get_viewport().get_visible_rect().size
 	_canvas_transform = get_viewport().get_canvas_transform()
 
-	# --- Main loop: sep grid + visibility + tick_move ---
 	var t0: int = Time.get_ticks_usec()
-	_sep_grid.clear()
 	var count: int = living_enemies.size()
 	for i in count:
 		var enemy: Enemy = living_enemies[i]
@@ -56,13 +52,11 @@ func _process(delta: float) -> void:
 		enemy._offscreen = not on
 		if was_offscreen != enemy._offscreen or debug_force_visible:
 			var show: bool = on or debug_force_visible
-			for child in enemy.get_children():
-				if child is Node2D: child.visible = show
+			# OPT: use cached _sprite_nodes instead of get_children()
+			for node in enemy._sprite_nodes:
+				node.visible = show
 
 		if not enemy._offscreen:
-			var sc := Vector2i(int(floor(epos.x / SEP_CELL)), int(floor(epos.y / SEP_CELL)))
-			if not _sep_grid.has(sc): _sep_grid[sc] = []
-			_sep_grid[sc].append(enemy)
 			enemy._move_skip = 0
 			enemy.tick_move(delta, false)
 		else:
@@ -75,7 +69,6 @@ func _process(delta: float) -> void:
 				enemy.tick_move(d, true)
 	_t_main_loop += Time.get_ticks_usec() - t0
 
-	# --- Teleport batch ---
 	t0 = Time.get_ticks_usec()
 	if count > 0:
 		var t_end: int = mini(_teleport_index + TELEPORT_CHECK_BATCH, count)
@@ -88,7 +81,6 @@ func _process(delta: float) -> void:
 		_teleport_index = t_end % count
 	_t_teleport += Time.get_ticks_usec() - t0
 
-	# --- AI tick ---
 	_ai_accum += delta
 	if _ai_accum >= AI_TICK_RATE:
 		t0 = Time.get_ticks_usec()
@@ -105,7 +97,6 @@ func _process(delta: float) -> void:
 				_tick_enemy(living_enemies[i], ai_delta, player_pos)
 		_t_ai += Time.get_ticks_usec() - t0
 
-	# --- Print timing every T_PRINT_EVERY frames ---
 	_t_frame += 1
 	if _t_frame >= T_PRINT_EVERY:
 		var f: int = T_PRINT_EVERY
@@ -138,6 +129,13 @@ func _tick_enemy(enemy: Enemy, ai_delta: float, player_pos: Vector2) -> void:
 			_flow_cache[cell] = dir
 		enemy._last_flow_dir = dir
 		enemy._velocity = dir * enemy.data.speed
+		# Slow down if another enemy is directly ahead
+		var ahead: Vector2 = enemy.global_position + dir * (enemy.data.collision_radius * 2.2)
+		for other in living_enemies:
+			if other == enemy: continue
+			if ahead.distance_squared_to(other.global_position) < enemy.data.collision_radius * enemy.data.collision_radius:
+				enemy._velocity *= 0
+				break
 		return
 
 	enemy._ai_accum += ai_delta
@@ -176,19 +174,13 @@ func _world_to_cell(world: Vector2) -> Vector2i:
 	var ts: float = tilemap.TILE_SIZE.x
 	return Vector2i(int(floor(world.x / ts)), int(floor(world.y / ts))) + Vector2i(tilemap.WIDTH / 2, tilemap.HEIGHT / 2)
 
-func get_nearby_enemies_into(pos: Vector2, radius: float, result: Array) -> void:
-	result.clear()
-	var cr:     int   = int(ceil(radius / SEP_CELL)) + 1
-	var origin  := Vector2i(int(floor(pos.x / SEP_CELL)), int(floor(pos.y / SEP_CELL)))
-	for dx in range(-cr, cr + 1):
-		for dy in range(-cr, cr + 1):
-			var bucket = _sep_grid.get(origin + Vector2i(dx, dy))
-			if bucket: result.append_array(bucket)
-
 func spawn_squad(squad: Array[EnemyData], modifier: Util.Modifier) -> void:
 	for d: EnemyData in squad: spawn_enemy(d, modifier)
 
 func spawn_enemy(data: EnemyData, modifier: Util.Modifier = Util.Modifier.NONE) -> void:
+	if not is_instance_valid(player):
+		push_warning("[EnemyManager] spawn_enemy called before player is set — skipping.")
+		return
 	if data.scene == null:
 		push_error("[EnemyManager] '%s' has no scene assigned." % data.id)
 		return
@@ -204,8 +196,9 @@ func spawn_enemy(data: EnemyData, modifier: Util.Modifier = Util.Modifier.NONE) 
 		enemy.data      = data
 		enemy.tilemap   = tilemap
 		enemy._ai_accum = 0.0
-		for child in enemy.get_children():
-			if child is Node2D: child.visible = true
+		# OPT: use cached _sprite_nodes instead of get_children()
+		for node in enemy._sprite_nodes:
+			node.visible = true
 	enemy.initialize(player, modifier)
 	living_enemies.append(enemy)
 
@@ -249,6 +242,8 @@ func on_level_changed() -> void:
 		for enemy: Enemy in _pool[id]:
 			if is_instance_valid(enemy): enemy.queue_free()
 	_pool.clear()
+	# OPT: solid-tile cache is per-map — must be cleared when the level changes
+	Enemy.invalidate_tile_cache()
 
 func _on_enemy_died(enemy: Enemy) -> void:
 	living_enemies.erase(enemy)

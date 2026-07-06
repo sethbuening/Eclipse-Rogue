@@ -1,21 +1,32 @@
+# Pause menu — intentionally kept minimal (no terminal/CRT treatment for now).
+# If a terminal makeover gets added later, keep it scoped to _build()/_make_btn()
+# below so it can be ripped out cleanly without touching input/focus logic.
 extends CanvasLayer
 
-const FONT_TITLE: String = "res://assets/fonts/Cinzel-Bold.ttf"
-const FONT_MENU:  String = "res://assets/fonts/Cinzel-Regular.ttf"
+# Sci-fi font recommendations (drop-ins for Cinzel):
+#   Title:   "Orbitron"  (geometric, NASA-esque)      → res://assets/fonts/Orbitron-Bold.ttf
+#   Menu:    "Rajdhani"  (techy, military feel)        → res://assets/fonts/Rajdhani-SemiBold.ttf
+#   UI/body: "Share Tech Mono" (monospace terminal)    → res://assets/fonts/ShareTechMono-Regular.ttf
+#
+# Using Cinzel for now until fonts are swapped in.
 
-const C_BG: Color = Color(0.02, 0.01, 0.04, 0.88)
-const C_TITLE:   Color = Color("#f0dfa0")
-const C_MENU:    Color = Color("#c8a87a")
-const C_HOVER:   Color = Color("#f5d78e")
-const C_DIVIDER: Color = Color("#3a2e1e")
+const FONT_TITLE: String = "res://assets/fonts/Orbitron-Bold.ttf"
+const FONT_MENU:  String = "res://assets/fonts/Rajdhani-SemiBold.ttf"
+
+const C_BG:      Color = Color(0.01, 0.03, 0.05, 0.88)
+const C_TITLE:   Color = Color("#a0e8f0")
+const C_MENU:    Color = Color("#7ac8d8")
+const C_HOVER:   Color = Color("#e0f8ff")
+const C_DIVIDER: Color = Color("#0e2a38")
 
 const _STICK_DEAD: float = 0.4
 
 signal resumed
 
-var _ctrl_index: int   = 0
-var _buttons:    Array = []
+var _ctrl_index: int = 0
+var _buttons: Array = []
 var _stick_was_active: Dictionary = {}
+var _settings_menu: Control = null
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_WHEN_PAUSED
@@ -23,56 +34,67 @@ func _ready() -> void:
 	_build()
 
 func _build() -> void:
-	const HALF_W: float = 200.0
-	const HALF_H: float = 130.0
-	
+	# Dim background
 	var bg := ColorRect.new()
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	bg.color = C_BG
 	add_child(bg)
 
-	var anchor := Control.new()
-	anchor.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	anchor.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(anchor)
+	# CenterContainer — reliable centering, no manual anchor math
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(center)
 
 	var panel := VBoxContainer.new()
-	panel.add_theme_constant_override("separation", 16)
-	panel.custom_minimum_size = Vector2(400, 0)
-	panel.anchor_left = 0.5
-	panel.anchor_right = 0.5
-	panel.anchor_top  = 0.5
-	panel.anchor_bottom = 0.5
-	panel.offset_left = -130.0; panel.offset_right  =  130.0
-	panel.offset_top    = -130.0   # was -160 + HALF_H, now just -HALF_H
-	panel.offset_bottom =  130.0
-	panel.grow_vertical   = Control.GROW_DIRECTION_END
-	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	anchor.add_child(panel)
+	panel.add_theme_constant_override("separation", 8)
+	panel.custom_minimum_size = Vector2(420, 0)
+	center.add_child(panel)
 
+	# Title
 	var title := Label.new()
-	title.text = "PAUSED"
-	title.add_theme_font_override("font", load(FONT_TITLE))
-	title.add_theme_font_size_override("font_size", 52)
-	title.add_theme_color_override("font_color", C_TITLE)
+	title.text = "// PAUSED"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_override("font", load(FONT_TITLE))
+	title.add_theme_font_size_override("font_size", 48)
+	title.add_theme_color_override("font_color", C_TITLE)
 	panel.add_child(title)
 
+	# Divider
 	var div := HSeparator.new()
 	div.add_theme_color_override("color", C_DIVIDER)
-	div.custom_minimum_size = Vector2(0, 24)
+	div.custom_minimum_size = Vector2(0, 16)
 	panel.add_child(div)
 
-	for item in [{"label": "Resume", "cb": _on_resume}, {"label": "Quit", "cb": _on_quit}]:
+	# Buttons
+	for item in [
+		{"label": "RESUME",  "cb": _on_resume},
+		{"label": "SETTINGS", "cb": _on_settings},
+		{"label": "QUIT",    "cb": _on_quit},
+	]:
 		var btn := _make_btn(item["label"])
 		btn.pressed.connect(item["cb"])
 		panel.add_child(btn)
+		var idx: int = _buttons.size()
+		# Bug fix: mouse hover never updated _ctrl_index, so after touching a
+		# button with the mouse, keyboard/controller "confirm" would still
+		# fire whatever button was selected last via _ctrl_navigate instead
+		# of the one actually focused/hovered. Keep both input methods in sync.
+		btn.mouse_entered.connect(func(): _ctrl_index = idx; btn.grab_focus())
+		btn.focus_entered.connect(func(): _ctrl_index = idx)
 		_buttons.append(btn)
+
+	# Options overlay — child of the CanvasLayer so it covers everything
+	_settings_menu = preload("res://scenes/ui/settings_menu.tscn").instantiate()
+	_settings_menu.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_settings_menu.visible = false
+	_settings_menu.closed.connect(_on_settings_closed)
+	add_child(_settings_menu)
 
 func _make_btn(text: String) -> Button:
 	var btn := Button.new()
-	btn.text = text; btn.flat = true
-	btn.custom_minimum_size = Vector2(400, 60)
+	btn.text = text
+	btn.flat = true
+	btn.custom_minimum_size = Vector2(420, 58)
 	btn.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	btn.add_theme_font_override("font", load(FONT_MENU))
 	btn.add_theme_font_size_override("font_size", 22)
@@ -95,9 +117,17 @@ func close() -> void:
 	get_tree().paused = false
 
 func _on_resume() -> void:
-	%Player._pause_consumed = true  # adjust path as needed
+	%Player._pause_consumed = true
 	close()
 	resumed.emit()
+
+func _on_settings() -> void:
+	_settings_menu.visible = true
+	_settings_menu.open()
+
+func _on_settings_closed() -> void:
+	_settings_menu.visible = false
+	_ctrl_refresh_focus()
 
 func _on_quit() -> void:
 	get_tree().paused = false
@@ -106,14 +136,14 @@ func _on_quit() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not visible:
 		return
-
+	if _settings_menu and _settings_menu.visible:
+		return
 	if event.is_action_pressed("pause"):
 		_on_resume()
-		get_viewport().set_input_as_handled()  # blocks player.gd from seeing it
+		get_viewport().set_input_as_handled()
 		return
-
 	if event is InputEventJoypadMotion:
-		var axis: int  = event.axis
+		var axis: int = event.axis
 		var active: bool = absf(event.get_axis_value()) > _STICK_DEAD
 		if not active:
 			_stick_was_active[axis] = false
@@ -123,13 +153,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		_stick_was_active[axis] = true
 	elif event is InputEventJoypadButton and not event.is_pressed():
 		return
-
 	if   event.is_action_pressed("ui_navigate_up"):   _ctrl_navigate(-1)
 	elif event.is_action_pressed("ui_navigate_down"):  _ctrl_navigate(1)
 	elif event.is_action_pressed("confirm"):           _buttons[_ctrl_index].emit_signal("pressed")
 	elif event.is_action_pressed("cancel"):            _on_resume()
 	else: return
-
 	get_viewport().set_input_as_handled()
 
 func _ctrl_navigate(dir: int) -> void:

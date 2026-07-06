@@ -899,9 +899,9 @@ func get_nearest_mineable_tile(aim_world: Vector2, origin_world: Vector2, range:
 func _drop_ore(pos: Vector2i) -> void:
 	if not ore_types.has(pos):
 		return
-	var metal: MetalData = ItemManager._metal_map.get(ore_types[pos], null)
-	if metal != null:
-		ItemManager.spawn_metal_drop(map_to_world(pos), metal)
+	var item: ItemData = ItemManager.get_item_for_tile(ore_types[pos])
+	if item != null:
+		ItemManager.spawn_item_drop(map_to_world(pos), item)
 
 # ══════════════════════════════════════════════════════════ damage / removal ══
 func damage_tile(pos: Vector2i, damage: int = 1, play_bounce: bool = true) -> bool:

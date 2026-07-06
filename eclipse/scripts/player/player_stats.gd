@@ -5,7 +5,7 @@ extends Resource
 # ── movement ──────────────────────────────────────────────────────────────────
 @export_group("Movement")
 @export var speed:            float = 75.0  # pixels per second (scaled at runtime)
-@export var mine_speed:  float = 1.35
+@export var mine_speed:  float = 1.5
 
 # ── health ────────────────────────────────────────────────────────────────────
 @export_group("Health")

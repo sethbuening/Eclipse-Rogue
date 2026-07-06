@@ -28,8 +28,6 @@ var _tooltip_panel: PanelContainer  = null
 var _tooltip_name:  Label           = null
 var _tooltip_desc:  Label           = null
 
-# OrbTooltip reference — set externally via set_orb_tooltip() after scene loads.
-var _orb_tooltip:   OrbTooltip      = null
 
 # ── lifecycle ─────────────────────────────────────────────────────────────────
 
@@ -46,18 +44,12 @@ func _ready() -> void:
 		push_warning("HudItemTray: no node in group 'player' found")
 		return
 
-	var inv := _player.get_node("Inventory")
+	var inv := _player.get_node("RunInventory")
 	inv.relic_added.connect(_on_inventory_changed)
 	inv.relic_removed.connect(_on_inventory_changed)
-	inv.orb_added.connect(_on_inventory_changed)
-	inv.orb_removed.connect(_on_inventory_changed)
 	inv.ability_added.connect(_on_inventory_changed)
 	inv.ability_removed.connect(_on_inventory_changed)
 	_rebuild_all()
-
-## Call this from game.gd to wire up the OrbTooltip for orb hover display.
-func set_orb_tooltip(tooltip: OrbTooltip) -> void:
-	_orb_tooltip = tooltip
 
 # ── layout construction ───────────────────────────────────────────────────────
 
@@ -131,14 +123,13 @@ func _build_tooltip() -> void:
 func _rebuild_all() -> void:
 	_rebuild_relics()
 	_rebuild_abilities()
-	_rebuild_orbs()
 
 func _rebuild_abilities() -> void:
 	for c in _ability_row.get_children():
 		c.queue_free()
 	if _player == null:
 		return
-	var inventory := _player.get_node("Inventory")
+	var inventory := _player.get_node("RunInventory")
 	for ability: AbilityData in inventory.abilities:
 		_ability_row.add_child(_make_ability_icon(ability))
 
@@ -147,56 +138,12 @@ func _rebuild_relics() -> void:
 		c.queue_free()
 	if _player == null:
 		return
-	var inventory := _player.get_node("Inventory")
+	var inventory := _player.get_node("RunInventory")
 	for relic: RelicData in inventory.relics:
 		var qty: int = inventory.get_relic_quantity(relic)
 		var tint: Color = Util.rarity_color(relic.rarity)
 		_relic_row.add_child(_make_icon(relic.icon, relic.display_name, relic.description, qty, tint))
 
-func _rebuild_orbs() -> void:
-	for c in _orb_row.get_children():
-		c.queue_free()
-	if _player == null:
-		return
-	var inventory := _player.get_node("Inventory")
-	for orb: Orb in inventory.orbs:
-		_orb_row.add_child(_make_orb_icon(orb))
-
-# ── icon factories ────────────────────────────────────────────────────────────
-
-func _make_orb_icon(orb: Orb) -> Control:
-	var tex: Texture2D = orb.sprite_texture
-	var sz: int = ICON_SIZE
-	if tex != null:
-		sz = maxi(tex.get_width(), tex.get_height())
-
-	var outer: int = sz + ICON_PADDING * 2
-
-	var root := Control.new()
-	root.custom_minimum_size = Vector2(outer, outer)
-	root.mouse_filter        = Control.MOUSE_FILTER_STOP
-	root.clip_contents       = false
-
-	if tex != null:
-		var img           := TextureRect.new()
-		img.texture        = tex
-		img.stretch_mode   = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		img.size           = Vector2(sz, sz)
-		img.position       = Vector2(ICON_PADDING, ICON_PADDING)
-		img.mouse_filter   = Control.MOUSE_FILTER_IGNORE
-		root.add_child(img)
-
-	var orb_ref: Orb = orb
-	root.mouse_entered.connect(func() -> void:
-		if _orb_tooltip != null:
-			_orb_tooltip.request_show(orb_ref, root.global_position + Vector2(outer, 0))
-	)
-	root.mouse_exited.connect(func() -> void:
-		if _orb_tooltip != null:
-			_orb_tooltip.request_hide()
-	)
-
-	return root
 
 func _make_ability_icon(ability: AbilityData) -> Control:
 	var tex: Texture2D = ability.icon

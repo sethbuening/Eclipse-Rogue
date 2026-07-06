@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="BiomeData" format=3 uid="uid://dcgmgtuy650ic"]
+
+[ext_resource type="Script" uid="uid://bqgpipt4kov3x" path="res://scripts/data/biome_data.gd" id="1_oxuet"]
+
+[resource]
+script = ExtResource("1_oxuet")
+display_name = "Frozen Expanse"
+tint = Color(0.26666668, 1, 1, 1)
+metadata/_custom_type_script = "uid://bqgpipt4kov3x"

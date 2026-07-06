@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://banbpkc7xx35m"]
+
+[ext_resource type="Texture2D" uid="uid://qec7emg2av70" path="res://art/items/gold_item.png" id="1_56iis"]
+[ext_resource type="Script" uid="uid://be2oeb1a3o34" path="res://scripts/data/item_data.gd" id="1_krthx"]
+
+[resource]
+script = ExtResource("1_krthx")
+id = &"gold"
+display_name = "Gold"
+description = "A glimpse into heaven itself."
+icon = ExtResource("1_56iis")
+metadata/_custom_type_script = "uid://be2oeb1a3o34"

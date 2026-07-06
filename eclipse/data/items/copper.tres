@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://dq62a8oh8mem7"]
+
+[ext_resource type="Script" uid="uid://be2oeb1a3o34" path="res://scripts/data/item_data.gd" id="1_mhnw7"]
+[ext_resource type="Texture2D" uid="uid://bxm33gkbq2mqf" path="res://art/items/copper_item.png" id="1_xn8ja"]
+
+[resource]
+script = ExtResource("1_mhnw7")
+id = &"copper"
+display_name = "Copper"
+description = "A strange malleable metal, used in the creation of many primitive tools."
+icon = ExtResource("1_xn8ja")
+metadata/_custom_type_script = "uid://be2oeb1a3o34"

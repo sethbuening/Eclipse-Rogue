@@ -1,76 +1,63 @@
-# upgrade_add_ability.gd
-# ---------------------------------------------------------------------------
-# A LevelUpUpgrade that adds a new ability directly to the player's inventory.
-#
-# The ability's metal type is chosen by weighted probability using the overall
-# metal composition from the player's inventory metals.
-# A random ability from that metal's pool is then selected.
-#
-# display_name format:
-#   "New Ability"  (line 1)
-#   "<Ability Name>"  (line 2)
-# ---------------------------------------------------------------------------
 class_name UpgradeAddAbility
 extends LevelUpUpgrade
 
+const TIER_MULTIPLIERS: Array[float] = [1.0, 1.5, 2.5]
+
 var new_ability: AbilityData = null
 
-static func build(inventory_metals: Dictionary, all_abilities: Array[AbilityData], rarity: int = 0) -> UpgradeAddAbility:
+## Returns Array[UpgradeAddAbility] with 3 tiers (free levels: 0 / rarity / rarity*2).
+static func build(run_inv: RunInventory, all_abilities: Array[AbilityData], rarity: int = 0) -> Array:
 	var existing_ids: Array[String] = []
-	# Collect ability IDs already in the inventory so we don't duplicate.
-	# (all_abilities is passed in as the current inventory abilities array.)
 	for a: AbilityData in all_abilities:
 		existing_ids.append(_ability_id(a))
 
+	# Pick from any ability not already owned.
 	var candidates: Array[AbilityData] = []
-
-	if not inventory_metals.is_empty():
-		var chosen_metal: MetalData = _pick_weighted_metal(inventory_metals)
-		if chosen_metal != null and not chosen_metal.ability_pool.is_empty():
-			for a: AbilityData in chosen_metal.ability_pool:
-				if _ability_id(a) not in existing_ids:
-					candidates.append(a)
-			if candidates.is_empty():
-				candidates = chosen_metal.ability_pool.duplicate()
-
-	# Final fallback: offer any ability not already owned.
-	if candidates.is_empty():
-		candidates = all_abilities.duplicate()
+	for a: AbilityData in DataLoader.get_all_abilities():
+		if _ability_id(a) not in existing_ids:
+			candidates.append(a)
 
 	if candidates.is_empty():
-		return null
+		return []
 
 	candidates.shuffle()
-	var picked: AbilityData = candidates[0].duplicate(true)
+	var picked: AbilityData = candidates[0]
 
-	var u := UpgradeAddAbility.new()
-	u.new_ability = picked
-	u.rarity      = rarity
+	var cost_item: ItemData = RelicLevelUpUpgrade._pick_weighted_item(run_inv)
+	var base_amount: int    = UpgradeCostTable.new_item_cost(rarity)
 
-	var free_levels: int = rarity  # Common=0 … Legendary=4
+	var result: Array = []
+	for t in 3:
+		var free_levels: int = rarity * t   # 0 / rarity / rarity*2
 
-	u.display_name = "New Ability\n%s" % picked.display_name
+		var u         := UpgradeAddAbility.new()
+		u.new_ability  = picked
+		u.rarity       = rarity
+		u.tier         = t
+		u.item_cost    = UpgradeCostTable.build_tiered_cost(cost_item, base_amount, t)
+		u.icon         = picked.icon if "icon" in picked else null
+		u.display_name = "New Ability\n%s" % picked.display_name
 
-	var desc: String = "Adds %s to your abilities." % picked.display_name
-	if free_levels > 0:
-		desc += "\nStarts at Level %d." % free_levels
-	u.description = desc
-	u.icon = picked.icon if "icon" in picked else null
+		var desc := "Adds %s to your abilities." % picked.display_name
+		if free_levels > 0:
+			desc += "\nStarts at Level %d." % free_levels
+		var tier_labels: Array = ["Free", "Enhanced", "Supercharged"]
+		desc += "\n— %s —" % tier_labels[t]
+		if u.item_cost.is_empty():
+			desc += "\nCost: Free"
+		else:
+			for item: ItemData in u.item_cost:
+				desc += "\nCost: %d %s" % [u.item_cost[item], item.display_name]
+		u.description = desc
+		result.append(u)
 
-	# ── ore cost ──────────────────────────────────────────────────────────────
-	var cost_metal: MetalData = ItemManager.get_metal_by_id(picked.ore_type)
-	if cost_metal == null:
-		cost_metal = _pick_weighted_metal(inventory_metals)
-	u.metal_cost = UpgradeCostTable.build_cost(cost_metal, UpgradeCostTable.new_item_cost(rarity))
-
-	return u
+	return result
 
 func apply(player: CharacterBody2D) -> void:
 	if new_ability == null:
 		return
 	var ability: AbilityData = new_ability.duplicate(true)
-	# Apply free head-start levels (rarity: Common=0 … Legendary=4)
-	var free_levels: int = rarity
+	var free_levels: int = rarity * tier
 	if free_levels > 0:
 		if ability.upgrade_levels.is_empty():
 			DataLoader.apply_ability_data(ability)
@@ -84,26 +71,9 @@ func apply(player: CharacterBody2D) -> void:
 			for stat: String in deltas:
 				var current = ability.stats.get(stat)
 				if current != null:
-					var base: float = current if current != -1 else 0.0
-					ability.stats.set(stat, base + float(deltas[stat]))
+					ability.stats.set(stat, (current if current != -1 else 0.0) + float(deltas[stat]))
 			ability.level += 1
-	player.get_node("Inventory").add_ability(ability)
-
-# ── private helpers ────────────────────────────────────────────────────────────
-
-static func _pick_weighted_metal(composition: Dictionary) -> MetalData:
-	var total: int = 0
-	for m: MetalData in composition:
-		total += composition[m]
-	if total <= 0:
-		return null
-	var roll: int = randi() % total
-	var cumulative: int = 0
-	for m: MetalData in composition:
-		cumulative += composition[m]
-		if roll < cumulative:
-			return m
-	return null
+	player.get_node("RunInventory").add_ability(ability)
 
 static func _ability_id(a: AbilityData) -> String:
 	return a.get_script().get_path() if a.get_script() else a.display_name

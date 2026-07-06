@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="BiomeData" format=3 uid="uid://c7u6k76d1xufc"]
+
+[ext_resource type="Script" uid="uid://bqgpipt4kov3x" path="res://scripts/data/biome_data.gd" id="1_xl7c2"]
+
+[resource]
+script = ExtResource("1_xl7c2")
+display_name = "Magma Caverns"
+tint = Color(0.99607843, 0.22352941, 0, 1)
+metadata/_custom_type_script = "uid://bqgpipt4kov3x"

@@ -1,309 +1,318 @@
 # level_up_screen.gd
-# Add as a CanvasLayer node named "LevelUpScreen" in your HUD.
-# Set process_mode to PROCESS_MODE_WHEN_PAUSED in the inspector.
 extends CanvasLayer
 
 signal upgrade_chosen(upgrade: LevelUpUpgrade)
 
-const CARD_WIDTH:  float = 280.0
-const CARD_HEIGHT: float = 340.0
-const CARD_GAP:    float = 32.0
-const CARD_RADIUS: float = 12.0
+const CARD_WIDTH:     float = 300.0
+const CARD_HEIGHT:    float = 380.0
+const CARD_GAP:       float = 28.0
+const CARD_RADIUS:    float = 12.0
+const TIER_BTN_H:     float = 52.0
+const COST_ICON_SIZE: float = 16.0
 
-const COST_ICON_SIZE: float = 18.0
+const SKIP_WIDTH:  float = 180.0
+const SKIP_HEIGHT: float = 44.0
+const SKIP_RADIUS: float = 10.0
+const SKIP_MARGIN_Y: float = 16.0
 
 const COLOR_AFFORDABLE:   Color = Color(0.75, 0.95, 0.55, 1.0)
 const COLOR_UNAFFORDABLE: Color = Color(0.95, 0.35, 0.35, 1.0)
 
-# ── skip button ───────────────────────────────────────────────────────────────
-const SKIP_MARGIN_X:  float = 32.0
-const SKIP_MARGIN_Y:  float = 32.0
-const SKIP_WIDTH:     float = 180.0
-const SKIP_HEIGHT:    float = 44.0
-const SKIP_RADIUS:    float = 10.0
+const TIER_LABELS:   Array = ["Free",      "Enhanced",   "Supercharged"]
+const TIER_COLORS:   Array = [Color(0.65, 0.70, 0.80), Color(0.95, 0.80, 0.30), Color(0.95, 0.45, 0.20)]
 
-var _player:  CharacterBody2D = null
-var _overlay: ColorRect
-var _cards:   Array[PanelContainer] = []
-var _skip_button: PanelContainer = null
+var _player:      CharacterBody2D   = null
+var _overlay:     ColorRect
+var _cards:       Array[PanelContainer] = []
+var _skip_button: PanelContainer    = null
+var _chaining:    bool              = false
 
 func _ready() -> void:
 	layer        = 128
 	visible      = false
 	process_mode = Node.PROCESS_MODE_WHEN_PAUSED
-
 	_overlay               = ColorRect.new()
-	_overlay.color         = Color(0.0, 0.0, 0.0, 0.0)
+	_overlay.color         = Color(0, 0, 0, 0)
 	_overlay.anchor_right  = 1.0
 	_overlay.anchor_bottom = 1.0
 	_overlay.process_mode  = Node.PROCESS_MODE_WHEN_PAUSED
 	add_child(_overlay)
 
-var _chaining: bool = false
-
+## upgrades: Array of Array[LevelUpUpgrade] — each inner array is 3 tiers for one slot.
 func show_upgrades(player: CharacterBody2D, upgrades: Array) -> void:
-	_chaining  = true
-	_player    = player
-	visible    = true
+	_chaining = true
+	_player   = player
+	visible   = true
 	get_tree().paused = true
 
 	var tween := create_tween()
 	tween.set_process_mode(Tween.TWEEN_PROCESS_IDLE)
-	tween.tween_property(_overlay, "color", Color(0.0, 0.0, 0.0, 0.65), 0.25)
+	tween.tween_property(_overlay, "color", Color(0, 0, 0, 0.65), 0.25)
 
-	for card in _cards:
-		card.queue_free()
+	for card in _cards: card.queue_free()
 	_cards.clear()
-
 	if _skip_button != null:
 		_skip_button.queue_free()
 		_skip_button = null
 
-	# Build all cards first (hidden) so the engine can measure their sizes.
-	for i in upgrades.size():
-		var upgrade: LevelUpUpgrade = upgrades[i]
-		var card := _make_card(upgrade)
+	for tiers in upgrades:
+		var card := _make_card(tiers as Array)
 		card.visible = false
 		add_child(card)
 		_cards.append(card)
 
-	# Wait two frames: one for layout, one to be safe.
 	await get_tree().process_frame
 	await get_tree().process_frame
 
-	var vp_size := get_viewport().get_visible_rect().size
+	var vp   := get_viewport().get_visible_rect().size
+	var n    := _cards.size()
+	var max_w: float = CARD_WIDTH
+	for card in _cards: max_w = maxf(max_w, card.size.x)
 
-	# Measure the widest card so all cards share the same width.
-	var max_card_w: float = CARD_WIDTH
-	for card in _cards:
-		max_card_w = maxf(max_card_w, card.size.x)
+	var gap: float     = CARD_GAP
+	var total_w: float = max_w * n + gap * (n - 1)
+	if total_w > vp.x - 32.0:
+		total_w = vp.x - 32.0
+		gap = (total_w - max_w * n) / maxf(n - 1, 1)
 
-	# Distribute cards with equal gaps, centred on screen.
-	var n: int       = _cards.size()
-	var total_w: float = max_card_w * n + CARD_GAP * (n - 1)
-	# Clamp so cards never overflow the viewport; shrink gap if needed.
-	var gap: float = CARD_GAP
-	if total_w > vp_size.x - 32.0:
-		total_w = vp_size.x - 32.0
-		gap = (total_w - max_card_w * n) / maxf(n - 1, 1)
-
-	var start_x  := (vp_size.x - total_w) / 2.0
-	var target_y := (vp_size.y - CARD_HEIGHT) / 2.0
+	var start_x  := (vp.x - total_w) / 2.0
+	var target_y := (vp.y - CARD_HEIGHT) / 2.0
 
 	for i in n:
 		var card: PanelContainer = _cards[i]
-		card.custom_minimum_size.x = max_card_w
-		var dest_x: float = start_x + i * (max_card_w + gap)
-		card.position = Vector2(dest_x, target_y + 60.0)
+		card.custom_minimum_size.x = max_w
+		card.position = Vector2(start_x + i * (max_w + gap), target_y + 60.0)
 		card.visible  = true
-
 		var tw := create_tween()
 		tw.set_process_mode(Tween.TWEEN_PROCESS_IDLE)
 		tw.tween_property(card, "position:y", target_y, 0.22) \
-			.set_delay(i * 0.07) \
-			.set_trans(Tween.TRANS_BACK) \
-			.set_ease(Tween.EASE_OUT)
+			.set_delay(i * 0.07).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
-	# ── skip button — bottom-right of the card area ──────────────────────────
 	_skip_button = _make_skip_button()
 	_skip_button.visible = false
 	add_child(_skip_button)
-
 	await get_tree().process_frame
 
-	var card_area_right: float = start_x + total_w
-	var card_area_bottom: float = target_y + CARD_HEIGHT
-	var skip_target := Vector2(card_area_right - SKIP_WIDTH, card_area_bottom + SKIP_MARGIN_Y)
+	var skip_target := Vector2(start_x + total_w - SKIP_WIDTH, target_y + CARD_HEIGHT + SKIP_MARGIN_Y)
 	_skip_button.position = skip_target + Vector2(0, 40.0)
 	_skip_button.visible  = true
+	var stw := create_tween()
+	stw.set_process_mode(Tween.TWEEN_PROCESS_IDLE)
+	stw.tween_property(_skip_button, "position", skip_target, 0.22) \
+		.set_delay(n * 0.07).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
-	var skip_tw := create_tween()
-	skip_tw.set_process_mode(Tween.TWEEN_PROCESS_IDLE)
-	skip_tw.tween_property(_skip_button, "position", skip_target, 0.22) \
-		.set_delay(n * 0.07) \
-		.set_trans(Tween.TRANS_BACK) \
-		.set_ease(Tween.EASE_OUT)
+# ── card: one column per upgrade slot, 3 tier buttons at the bottom ───────────
 
-func _make_card(upgrade: LevelUpUpgrade) -> PanelContainer:
+func _make_card(tiers: Array) -> PanelContainer:
+	# Use tier 0 (free) for display name / icon / rarity — shared across tiers.
+	var base: LevelUpUpgrade = tiers[0]
+	var rarity_col: Color    = Util.rarity_color(base.rarity)
+	var rarity_dim: Color    = Color(rarity_col.r * 0.5, rarity_col.g * 0.5, rarity_col.b * 0.5, 0.8)
+
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size = Vector2(CARD_WIDTH, CARD_HEIGHT)
 	panel.process_mode        = Node.PROCESS_MODE_WHEN_PAUSED
-	# Make the whole card receive mouse input and show a pointer cursor
 	panel.mouse_filter        = Control.MOUSE_FILTER_STOP
-	panel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-
-	var inventory: Node  = _player.get_node("Inventory")
-	var affordable: bool = upgrade.is_affordable(inventory)
-
-	var rarity_col: Color = Util.rarity_color(upgrade.rarity)
-	var rarity_dim: Color = Color(rarity_col.r * 0.5, rarity_col.g * 0.5, rarity_col.b * 0.5, 0.8)
 
 	var style := StyleBoxFlat.new()
-	style.bg_color                       = Color(0.10, 0.11, 0.15, 0.97)
-	style.border_color                   = rarity_dim
+	style.bg_color           = Color(0.10, 0.11, 0.15, 0.97)
+	style.border_color       = rarity_dim
 	style.set_border_width_all(2)
-	style.corner_radius_top_left         = CARD_RADIUS
-	style.corner_radius_top_right        = CARD_RADIUS
-	style.corner_radius_bottom_left      = CARD_RADIUS
-	style.corner_radius_bottom_right     = CARD_RADIUS
+	style.corner_radius_top_left    = CARD_RADIUS
+	style.corner_radius_top_right   = CARD_RADIUS
+	style.corner_radius_bottom_left = CARD_RADIUS
+	style.corner_radius_bottom_right = CARD_RADIUS
 	panel.add_theme_stylebox_override("panel", style)
 
-	if not affordable:
-		# Dim the whole card — unaffordable upgrades can't be selected.
-		panel.modulate = Color(1.0, 1.0, 1.0, 0.55)
-		panel.mouse_default_cursor_shape = Control.CURSOR_FORBIDDEN
-
 	var vbox := VBoxContainer.new()
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 12)
-	# VBox should not consume mouse events — the panel handles them
+	vbox.add_theme_constant_override("separation", 10)
 	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_child(vbox)
 
+	# Icon
 	var icon_wrap := CenterContainer.new()
 	icon_wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	if upgrade.icon != null:
-		var icon_tex          := TextureRect.new()
-		icon_tex.texture       = upgrade.icon
-		icon_tex.stretch_mode  = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon_tex.custom_minimum_size = Vector2(64.0, 64.0)
-		icon_tex.mouse_filter  = Control.MOUSE_FILTER_IGNORE
-		icon_wrap.add_child(icon_tex)
+	if base.icon != null:
+		var tex := TextureRect.new()
+		tex.texture      = base.icon
+		tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tex.custom_minimum_size = Vector2(56.0, 56.0)
+		tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon_wrap.add_child(tex)
 	else:
-		var icon_placeholder      := ColorRect.new()
-		icon_placeholder.color     = Color(0.0, 0.0, 0.0, 0.0)
-		icon_placeholder.custom_minimum_size = Vector2(64.0, 64.0)
-		icon_placeholder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		icon_wrap.add_child(icon_placeholder)
+		var ph := ColorRect.new()
+		ph.color = Color(0, 0, 0, 0)
+		ph.custom_minimum_size = Vector2(56.0, 56.0)
+		ph.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon_wrap.add_child(ph)
 	vbox.add_child(icon_wrap)
 
-	var name_label                    := Label.new()
-	name_label.text                    = upgrade.display_name
-	name_label.horizontal_alignment    = HORIZONTAL_ALIGNMENT_CENTER
-	name_label.autowrap_mode           = TextServer.AUTOWRAP_WORD_SMART
-	name_label.add_theme_font_size_override("font_size", 18)
-	name_label.add_theme_color_override("font_color", Color(0.9, 0.95, 1.0))
-	name_label.custom_minimum_size     = Vector2(CARD_WIDTH - 24.0, 0.0)
-	name_label.mouse_filter            = Control.MOUSE_FILTER_IGNORE
-	vbox.add_child(name_label)
+	# Name
+	var name_lbl := Label.new()
+	name_lbl.text               = base.display_name
+	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_lbl.autowrap_mode      = TextServer.AUTOWRAP_WORD_SMART
+	name_lbl.add_theme_font_size_override("font_size", 17)
+	name_lbl.add_theme_color_override("font_color", Color(0.9, 0.95, 1.0))
+	name_lbl.custom_minimum_size = Vector2(CARD_WIDTH - 24.0, 0.0)
+	name_lbl.mouse_filter        = Control.MOUSE_FILTER_IGNORE
+	vbox.add_child(name_lbl)
 
-	var desc_label                    := Label.new()
-	desc_label.text                    = upgrade.description
-	desc_label.horizontal_alignment    = HORIZONTAL_ALIGNMENT_CENTER
-	desc_label.autowrap_mode           = TextServer.AUTOWRAP_WORD_SMART
-	desc_label.add_theme_font_size_override("font_size", 13)
-	desc_label.add_theme_color_override("font_color", Color(0.65, 0.70, 0.80))
-	desc_label.custom_minimum_size     = Vector2(CARD_WIDTH - 24.0, 0.0)
-	desc_label.mouse_filter            = Control.MOUSE_FILTER_IGNORE
-	vbox.add_child(desc_label)
+	# Rarity badge
+	var rarity_lbl := Label.new()
+	rarity_lbl.text               = Util.rarity_name(base.rarity).to_upper()
+	rarity_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	rarity_lbl.add_theme_font_size_override("font_size", 12)
+	rarity_lbl.add_theme_color_override("font_color", Color(rarity_col.r, rarity_col.g, rarity_col.b, 0.75))
+	rarity_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_child(rarity_lbl)
 
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	spacer.mouse_filter        = Control.MOUSE_FILTER_IGNORE
 	vbox.add_child(spacer)
 
-	# ── ore cost row(s) ──────────────────────────────────────────────────────
-	# One row per required metal: icon (or color swatch) + "owned / needed".
-	if not upgrade.metal_cost.is_empty():
-		for metal: MetalData in upgrade.metal_cost.keys():
-			var needed: int = upgrade.metal_cost[metal]
-			var owned:  int = inventory.get_metal_quantity(metal)
-			var row := _make_cost_row(metal, owned, needed)
-			vbox.add_child(row)
-	else:
-		# Free upgrades (e.g. the Skip option) get a small "Free" label so the
-		# layout stays visually consistent with costed cards.
-		var free_label := Label.new()
-		free_label.text                 = "Free"
-		free_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		free_label.add_theme_font_size_override("font_size", 13)
-		free_label.add_theme_color_override("font_color", COLOR_AFFORDABLE)
-		free_label.mouse_filter          = Control.MOUSE_FILTER_IGNORE
-		free_label.custom_minimum_size   = Vector2(CARD_WIDTH - 32.0, 18.0)
-		vbox.add_child(free_label)
-
-	# "Choose" hint label at the bottom instead of a button
-	var hint_label := Label.new()
-	hint_label.text                 = Util.rarity_name(upgrade.rarity).to_upper()
-	hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint_label.add_theme_font_size_override("font_size", 14)
-	hint_label.add_theme_color_override("font_color", Color(rarity_col.r, rarity_col.g, rarity_col.b, 0.75))
-	hint_label.mouse_filter         = Control.MOUSE_FILTER_IGNORE
-	hint_label.custom_minimum_size  = Vector2(CARD_WIDTH - 32.0, 32.0)
-	vbox.add_child(hint_label)
-
-	if affordable:
-		# Hover: brighten border + background, brighten the hint text
-		panel.mouse_entered.connect(func():
-			style.border_color = rarity_col
-			style.bg_color     = Color(0.15, 0.18, 0.28, 0.97)
-			hint_label.add_theme_color_override("font_color", Color(rarity_col.r, rarity_col.g, rarity_col.b, 1.0))
-		)
-		panel.mouse_exited.connect(func():
-			style.border_color = rarity_dim
-			style.bg_color     = Color(0.10, 0.11, 0.15, 0.97)
-			hint_label.add_theme_color_override("font_color", Color(rarity_col.r, rarity_col.g, rarity_col.b, 0.75))
-		)
-
-		# Clicking anywhere on the card selects the upgrade
-		panel.gui_input.connect(func(event: InputEvent):
-			if event is InputEventMouseButton \
-					and event.button_index == MOUSE_BUTTON_LEFT \
-					and event.pressed:
-				_on_card_chosen(upgrade)
-		)
+	# 3 tier buttons
+	var run_inv: RunInventory = _player.get_node("RunInventory")
+	for t in tiers.size():
+		var upgrade: LevelUpUpgrade = tiers[t]
+		var btn := _make_tier_button(upgrade, t, run_inv)
+		vbox.add_child(btn)
 
 	return panel
 
-## Builds a single "icon  owned / needed" row for the ore cost section.
-## Text is colored green if the player can afford this metal's portion of
-## the cost, red otherwise.
-func _make_cost_row(metal: MetalData, owned: int, needed: int) -> HBoxContainer:
-	var row := HBoxContainer.new()
-	row.alignment       = BoxContainer.ALIGNMENT_CENTER
-	row.mouse_filter    = Control.MOUSE_FILTER_IGNORE
-	row.add_theme_constant_override("separation", 6)
-	row.custom_minimum_size = Vector2(CARD_WIDTH - 32.0, COST_ICON_SIZE)
+func _make_tier_button(upgrade: LevelUpUpgrade, tier_idx: int, run_inv: RunInventory) -> PanelContainer:
+	var affordable: bool  = upgrade.is_affordable(run_inv)
+	var tcol: Color       = TIER_COLORS[tier_idx]
+	var tcol_dim: Color   = Color(tcol.r * 0.4, tcol.g * 0.4, tcol.b * 0.4, 0.9)
 
-	if metal.sprite_texture != null:
-		var icon := TextureRect.new()
-		icon.texture      = metal.sprite_texture
-		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon.custom_minimum_size = Vector2(COST_ICON_SIZE, COST_ICON_SIZE)
-		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		row.add_child(icon)
+	var btn := PanelContainer.new()
+	btn.custom_minimum_size = Vector2(CARD_WIDTH - 16.0, TIER_BTN_H)
+	btn.process_mode        = Node.PROCESS_MODE_WHEN_PAUSED
+	btn.mouse_filter        = Control.MOUSE_FILTER_STOP
+	btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if affordable \
+		else Control.CURSOR_FORBIDDEN
+
+	var style := StyleBoxFlat.new()
+	style.bg_color     = Color(0.08, 0.09, 0.13, 0.95)
+	style.border_color = tcol_dim if affordable else Color(0.3, 0.3, 0.3, 0.5)
+	style.set_border_width_all(1)
+	style.corner_radius_top_left    = 6
+	style.corner_radius_top_right   = 6
+	style.corner_radius_bottom_left = 6
+	style.corner_radius_bottom_right = 6
+	btn.add_theme_stylebox_override("panel", style)
+	if not affordable:
+		btn.modulate = Color(1, 1, 1, 0.45)
+
+	var col := VBoxContainer.new()
+	col.alignment     = BoxContainer.ALIGNMENT_CENTER
+	col.mouse_filter  = Control.MOUSE_FILTER_IGNORE
+	col.add_theme_constant_override("separation", 2)
+	btn.add_child(col)
+
+	# Tier label row
+	var header_row := HBoxContainer.new()
+	header_row.alignment    = BoxContainer.ALIGNMENT_CENTER
+	header_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	header_row.add_theme_constant_override("separation", 8)
+	col.add_child(header_row)
+
+	var tier_lbl := Label.new()
+	tier_lbl.text = TIER_LABELS[tier_idx]
+	tier_lbl.add_theme_font_size_override("font_size", 13)
+	tier_lbl.add_theme_color_override("font_color", tcol if affordable else Color(0.5, 0.5, 0.5))
+	tier_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	header_row.add_child(tier_lbl)
+
+	# Cost display inline in header
+	if upgrade.item_cost.is_empty():
+		var free_lbl := Label.new()
+		free_lbl.text = "· Free"
+		free_lbl.add_theme_font_size_override("font_size", 12)
+		free_lbl.add_theme_color_override("font_color", COLOR_AFFORDABLE)
+		free_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		header_row.add_child(free_lbl)
+	else:
+		for item: ItemData in upgrade.item_cost:
+			var needed: int  = upgrade.item_cost[item]
+			var owned: int   = run_inv.get_quantity(item)
+			var cost_row     := _make_cost_row(item, owned, needed)
+			header_row.add_child(cost_row)
+
+	# Stat summary (first line of description, or whole if short)
+	var stat_lines: Array = upgrade.description.split("\n")
+	# Show lines that are stat deltas (contain ": +"/": -"), skip tier/cost lines
+	var shown: Array[String] = []
+	for line: String in stat_lines:
+		if ": +" in line or ": -" in line:
+			shown.append(line)
+	if not shown.is_empty():
+		var stat_lbl := Label.new()
+		stat_lbl.text               = "\n".join(shown)
+		stat_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		stat_lbl.add_theme_font_size_override("font_size", 11)
+		stat_lbl.add_theme_color_override("font_color", Color(0.65, 0.70, 0.80, 0.9))
+		stat_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		col.add_child(stat_lbl)
+
+	if affordable:
+		btn.mouse_entered.connect(func():
+			style.border_color = tcol
+			style.bg_color     = Color(0.14, 0.16, 0.24, 0.97)
+		)
+		btn.mouse_exited.connect(func():
+			style.border_color = tcol_dim
+			style.bg_color     = Color(0.08, 0.09, 0.13, 0.95)
+		)
+		btn.gui_input.connect(func(event: InputEvent):
+			if event is InputEventMouseButton \
+					and event.button_index == MOUSE_BUTTON_LEFT \
+					and event.pressed:
+				_on_tier_chosen(upgrade)
+		)
+
+	return btn
+
+func _make_cost_row(item: ItemData, owned: int, needed: int) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.alignment    = BoxContainer.ALIGNMENT_CENTER
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_theme_constant_override("separation", 4)
+
+	if item.icon != null:
+		var tex := TextureRect.new()
+		tex.texture      = item.icon
+		tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tex.custom_minimum_size = Vector2(COST_ICON_SIZE, COST_ICON_SIZE)
+		tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(tex)
 	else:
 		var swatch := ColorRect.new()
-		swatch.color = Util.rarity_color(clampi(metal.rarity, 0, 4))
+		swatch.color = item.tint
 		swatch.custom_minimum_size = Vector2(COST_ICON_SIZE, COST_ICON_SIZE)
 		swatch.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		row.add_child(swatch)
 
-	var can_afford: bool = owned >= needed
-	var label := Label.new()
-	label.text = "%s  %d / %d" % [metal.display_name, owned, needed]
-	label.add_theme_font_size_override("font_size", 13)
-	label.add_theme_color_override("font_color", COLOR_AFFORDABLE if can_afford else COLOR_UNAFFORDABLE)
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(label)
-
+	var lbl := Label.new()
+	lbl.text = "%d/%d %s" % [owned, needed, item.display_name]
+	lbl.add_theme_font_size_override("font_size", 11)
+	lbl.add_theme_color_override("font_color", COLOR_AFFORDABLE if owned >= needed else COLOR_UNAFFORDABLE)
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(lbl)
 	return row
 
-func _on_card_chosen(upgrade: LevelUpUpgrade) -> void:
-	var inventory: Node = _player.get_node("Inventory")
-	if not upgrade.is_affordable(inventory):
+func _on_tier_chosen(upgrade: LevelUpUpgrade) -> void:
+	var run_inv: RunInventory = _player.get_node("RunInventory")
+	if not upgrade.is_affordable(run_inv):
 		return
-	upgrade.pay_cost(inventory)
-
+	upgrade.pay_cost(run_inv)
 	upgrade.apply(_player)
 	_chaining = false
-	emit_signal("upgrade_chosen", upgrade)
+	upgrade_chosen.emit(upgrade)
 	if not _chaining:
 		_dismiss()
 
-## Builds the small "SKIP (+1 LUCK)" button shown bottom-left of the screen.
-## Always free and always selectable — lets the player decline every
-## ore-cost upgrade in favor of Prosperity (permanent Luck).
 func _make_skip_button() -> PanelContainer:
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size = Vector2(SKIP_WIDTH, SKIP_HEIGHT)
@@ -313,58 +322,46 @@ func _make_skip_button() -> PanelContainer:
 
 	var rarity_col: Color = Util.rarity_color(Util.Rarity.COMMON)
 	var rarity_dim: Color = Color(rarity_col.r * 0.5, rarity_col.g * 0.5, rarity_col.b * 0.5, 0.8)
-
 	var style := StyleBoxFlat.new()
-	style.bg_color                   = Color(0.10, 0.11, 0.15, 0.92)
-	style.border_color               = rarity_dim
+	style.bg_color = Color(0.10, 0.11, 0.15, 0.92)
+	style.border_color = rarity_dim
 	style.set_border_width_all(2)
-	style.corner_radius_top_left     = SKIP_RADIUS
-	style.corner_radius_top_right    = SKIP_RADIUS
-	style.corner_radius_bottom_left  = SKIP_RADIUS
+	style.corner_radius_top_left    = SKIP_RADIUS
+	style.corner_radius_top_right   = SKIP_RADIUS
+	style.corner_radius_bottom_left = SKIP_RADIUS
 	style.corner_radius_bottom_right = SKIP_RADIUS
 	panel.add_theme_stylebox_override("panel", style)
 
-	var label := Label.new()
-	var amount: String = UpgradeSkipProsperity._format_amount(UpgradeSkipProsperity.PROSPERITY_AMOUNT)
-	label.text                 = "SKIP (+%s LUCK)" % amount
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
-	label.add_theme_font_size_override("font_size", 14)
-	label.add_theme_color_override("font_color", Color(0.85, 0.90, 0.95))
-	label.mouse_filter         = Control.MOUSE_FILTER_IGNORE
-	panel.add_child(label)
+	var lbl := Label.new()
+	var amt: String = UpgradeSkipProsperity._format_amount(UpgradeSkipProsperity.PROSPERITY_AMOUNT)
+	lbl.text               = "SKIP (+%s LUCK)" % amt
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+	lbl.add_theme_font_size_override("font_size", 14)
+	lbl.add_theme_color_override("font_color", Color(0.85, 0.90, 0.95))
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(lbl)
 
-	panel.mouse_entered.connect(func():
-		style.border_color = rarity_col
-		style.bg_color     = Color(0.16, 0.18, 0.24, 0.95)
-	)
-	panel.mouse_exited.connect(func():
-		style.border_color = rarity_dim
-		style.bg_color     = Color(0.10, 0.11, 0.15, 0.92)
-	)
-
+	panel.mouse_entered.connect(func(): style.border_color = rarity_col; style.bg_color = Color(0.16, 0.18, 0.24, 0.95))
+	panel.mouse_exited.connect(func(): style.border_color = rarity_dim;  style.bg_color = Color(0.10, 0.11, 0.15, 0.92))
 	panel.gui_input.connect(func(event: InputEvent):
-		if event is InputEventMouseButton \
-				and event.button_index == MOUSE_BUTTON_LEFT \
-				and event.pressed:
+		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 			_on_skip_chosen()
 	)
-
 	return panel
 
 func _on_skip_chosen() -> void:
 	var upgrade := UpgradeSkipProsperity.build()
 	upgrade.apply(_player)
 	_chaining = false
-	emit_signal("upgrade_chosen", upgrade)
+	upgrade_chosen.emit(upgrade)
 	if not _chaining:
 		_dismiss()
 
 func _dismiss() -> void:
 	visible        = false
-	_overlay.color = Color(0.0, 0.0, 0.0, 0.0)
-	for card in _cards:
-		card.queue_free()
+	_overlay.color = Color(0, 0, 0, 0)
+	for card in _cards: card.queue_free()
 	_cards.clear()
 	if _skip_button != null:
 		_skip_button.queue_free()

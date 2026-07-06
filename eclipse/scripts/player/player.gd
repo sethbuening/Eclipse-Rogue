@@ -162,12 +162,6 @@ var _mine_press_timer: float    = 0.0
 var _mine_target:      Vector2i = Vector2i(-1, -1)
 var _mine_timer:       float    = 0.0
 
-
-# ================================================================== forging ==
-
-var _nearby_forge: Forge = null
-
-
 # ================================================================ level ups ==
 
 static var _upgrade_pool:    Array                = []
@@ -184,10 +178,10 @@ func _ready() -> void:
 	stats.speed *= _speed_scale
 	health = max_health
 	add_to_group("player")
-	$Inventory._player_stats = stats
-	$Inventory.relic_added.connect(_on_relic_added)
+	$RunInventory._player_stats = stats
+	$RunInventory.relic_added.connect(_on_relic_added)
 	var _starting_chain := AbilityLightningChain.new()
-	$Inventory.add_ability(_starting_chain)
+	$RunInventory.add_ability(_starting_chain)
 
 	xp_bar.leveled_up.connect(_on_leveled_up)
 
@@ -202,7 +196,6 @@ func _process(delta: float) -> void:
 	$head.offset = head_offset + Vector2(0, round(bob_amount * sin(time * 2.0)))
 	$body.offset = body_offset + Vector2(0, round(bob_amount * sin(time * 2.0 + 0.5)))
 
-	_update_orb_visuals(delta)
 	_tick_abilities(delta)
 	#_tick_basic_attacks(delta)
 	_tick_relics(delta)
@@ -288,7 +281,7 @@ func _tick_abilities(delta: float) -> void:
 		"orb_index":     0,
 		"potency":       1.0,
 	}
-	for ability: AbilityData in $Inventory.abilities:
+	for ability: AbilityData in $RunInventory.abilities:
 		ability.tick(ctx)
 
 	if ctx["lock_movement"]:
@@ -303,119 +296,14 @@ func _update_body_glow(t: float) -> void:
 	%head.self_modulate = glow if t > 0.0 else Color.WHITE
 
 
-# ================================================================ orb visuals ==
-
-func _update_orb_visuals(delta: float) -> void:
-	if orb_visuals.is_empty():
-		return
-
-	orbit_time += delta * orb_orbit_speed * orbit_speed_mult
-
-	for i in range(orb_visuals.size()):
-		var ov: OrbVisual = orb_visuals[i]
-		if not ov.shattered:
-			continue
-		ov.cooldown_age += delta
-		if ov.cooldown_age < ov.cooldown:
-			continue
-		ov.shattered      = false
-		ov.reforming      = true
-		ov.reform_flash   = orb_reform_flash
-		ov.cooldown_age   = 0.0
-		ov.ready_delay    = ORB_READY_DELAY if ov.ready_delay <= 0.0 else ov.ready_delay
-		ov.glow           = 0.0
-		ov.glow_target    = 0.0
-		ov.sprite.visible = false
-
-	for i in range(orb_visuals.size()):
-		var ov:  OrbVisual = orb_visuals[i]
-		var orb: Orb       = $Inventory.orbs[i]
-
-		ov.glow = lerpf(ov.glow, ov.glow_target, minf(12.0 * delta, 1.0))
-		if absf(ov.glow - ov.glow_target) < 0.01:
-			ov.glow = ov.glow_target
-
-		if ov.ready_delay > 0.0:
-			ov.ready_delay = maxf(0.0, ov.ready_delay - delta)
-
-		if ov.shattered:
-			ov.sprite.visible = false
-			continue
-
-		ov.current_angle   = orbit_time + ov.angle_offset
-		ov.sprite.position = _angle_to_orbit_pos(ov.current_angle)
-		ov.sprite.scale    = Vector2.ONE
-
-		if ov.reforming:
-			ov.reforming = false
-			continue
-
-		if not ov.sprite.visible:
-			ov.sprite.reset_physics_interpolation()
-			ov.sprite.visible = true
-
-		ov.sprite.self_modulate = Color.WHITE * _orb_brightness(ov, delta)
-
-func _orb_brightness(ov: OrbVisual, delta: float) -> float:
-	if ov.reform_flash > 0.0:
-		ov.reform_flash -= delta
-		return lerpf(1.0, 4.0, ov.reform_flash / orb_reform_flash)
-	if ov.glow > 0.0:
-		return lerpf(1.0, 3.0, ov.glow)
-	return 1.0
-
-func _angle_to_orbit_pos(angle: float) -> Vector2:
-	return Vector2(cos(angle), sin(angle)) * orb_orbit_radius + orb_orbit_center
-
-func _recalculate_orb_offsets() -> void:
-	var count: int = $Inventory.orbs.size()
-	for slot in range(count):
-		orb_visuals[slot].angle_offset = (float(slot) / float(count)) * TAU if count > 0 else 0.0
-
-
 # ============================================================= orb management ==
-
-func _on_orb_added(orb: Orb) -> void:
-	var ov               := OrbVisual.new()
-	ov.sprite             = Sprite2D.new()
-	ov.sprite.texture     = orb.sprite_texture
-	ov.sprite.centered    = true
-	ov.sprite.visible     = false
-	ov.sprite.z_as_relative = false
-	ov.sprite.z_index     = 4096
-	add_child(ov.sprite)
-	orb_visuals.append(ov)
-	_orb_visual_map[orb] = ov
-
-func _on_orb_removed(orb: Orb) -> void:
-	if not _orb_visual_map.has(orb):
-		return
-	var ov: OrbVisual = _orb_visual_map[orb]
-	ov.sprite.queue_free()
-	orb_visuals.erase(ov)
-	_orb_visual_map.erase(orb)
 
 func _on_relic_added(relic: RelicData, _qty: int) -> void:
 	relic.on_equip(self)
 
 func _tick_relics(delta: float) -> void:
-	for relic: RelicData in $Inventory.relics:
+	for relic: RelicData in $RunInventory.relics:
 		relic.tick(delta, self)
-
-func shatter_orb(orb_index: int) -> void:
-	if orb_index >= orb_visuals.size():
-		return
-	var ov:  OrbVisual = orb_visuals[orb_index]
-	var orb: Orb       = $Inventory.orbs[orb_index]
-	if ov.shattered:
-		return
-	ov.shattered      = true
-	ov.glow           = 0.0
-	ov.cooldown_age   = 0.0
-	ov.cooldown       = orb.cooldown if orb.cooldown != 0.0 else 1.0
-	ov.sprite.visible = false
-	ov.current_angle  = orbit_time + (float(orb_index) / float(orb_visuals.size())) * TAU
-	ParticleManager.spawn_orb_shatter(global_position + ov.sprite.position)
 
 
 # ================================================================== mining ==
@@ -458,7 +346,7 @@ func _tick_mining(delta: float) -> void:
 	# that minimum so the animation always completes before the next strike.
 	var interval: float = maxf(MINE_TICK_INTERVAL / mine_speed, MINE_MIN_INTERVAL)
 	tilemap.bounce_tile(_mine_target, bounce_px, 0.0, MINE_BOUNCE_DURATION)
-	tilemap.damage_tile(_mine_target, 4, false)
+	tilemap.damage_tile(_mine_target, 3, false)
 
 	for dx: int in range(-MINE_AOE_RADIUS, MINE_AOE_RADIUS + 1):
 		for dy: int in range(-MINE_AOE_RADIUS, MINE_AOE_RADIUS + 1):
@@ -480,28 +368,6 @@ func _tick_mining(delta: float) -> void:
 	%Camera2D.shake(0.2)
 
 	_mine_timer = interval
-
-
-# ================================================================== forging ==
-
-func _on_forge_in_range(forge: Forge) -> void:
-	_nearby_forge = forge
-
-func _on_forge_out_of_range(forge: Forge) -> void:
-	if _nearby_forge == forge:
-		_nearby_forge = null
-
-func _try_open_forge() -> void:
-	if _nearby_forge == null:
-		Log("Error! _nearby_forge = null, while trying to forge")
-		return
-	if _nearby_forge.state != Forge.State.IDLE:
-		Log("Error! _nearby_forge is already forging!")
-		return
-	_nearby_forge.interact_request()
-	%ForgeUI.open(self, _nearby_forge)
-	Log("ForgeUI opened!")
-
 
 # =============================================================== environment ==
 
@@ -573,46 +439,39 @@ func _show_next_upgrade_screen() -> void:
 func _build_upgrade_choices() -> Array:
 	const SLOT_COUNT: int = 3
 
-	# ── 1. Build the pool of upgradeable abilities ────────────────────────────
 	var pairs: Array = []
-	for ability: AbilityData in $Inventory.abilities:
+	for ability: AbilityData in $RunInventory.abilities:
 		if ability.can_upgrade():
 			pairs.append(ability)
 	pairs.shuffle()
 
-	# ── 2. Decide whether to guarantee a "new ability" slot ──────────────────
-	# Offer a new ability if the metals pool is non-empty and there are
-	# fewer than a reasonable cap of abilities already owned.
-	var all_abilities: Array[AbilityData] = $Inventory.abilities
-	var add_upgrade: UpgradeAddAbility = null
-	if not $Inventory.metals.is_empty():
+	var all_abilities: Array[AbilityData] = $RunInventory.abilities
+	var add_tiers: Array = []
+	if true:  # always offer a new ability slot
 		var rarity: int = UpgradeRarityTable.roll(stats.luck)
-		add_upgrade = UpgradeAddAbility.build($Inventory.metals, all_abilities, rarity)
+		add_tiers = UpgradeAddAbility.build($RunInventory, all_abilities, rarity)
 
-	var add_slot: int = randi() % SLOT_COUNT if add_upgrade != null else -1
+	var add_slot: int = randi() % SLOT_COUNT if not add_tiers.is_empty() else -1
 
-	# ── 3. Fill the 3 choice slots ────────────────────────────────────────────
 	var choices: Array = []
 	var used_abilities: Array = []
 	var pair_cursor: int = 0
 
 	for slot in range(SLOT_COUNT):
 		if slot == add_slot:
-			choices.append(add_upgrade)
+			choices.append(add_tiers)
 			continue
-
 		while pair_cursor < pairs.size():
 			var ability: AbilityData = pairs[pair_cursor]
 			pair_cursor += 1
 			if ability in used_abilities:
 				continue
 			var rarity: int = UpgradeRarityTable.roll(stats.luck)
-			var upgrade: AbilityLevelUpUpgrade = AbilityLevelUpUpgrade.build(ability, rarity)
-			if upgrade != null:
-				choices.append(upgrade)
+			var tiers: Array = AbilityLevelUpUpgrade.build(ability, rarity)
+			if not tiers.is_empty():
+				choices.append(tiers)
 				used_abilities.append(ability)
 				break
-		# If the pair pool ran dry, this slot stays empty (fewer than 3 is fine).
 
 	return choices
 
@@ -624,6 +483,9 @@ func _on_upgrade_chosen(upgrade: LevelUpUpgrade) -> void:
 		_level_up_screen.upgrade_chosen.disconnect(_on_upgrade_chosen)
 
 
+
+
+
 # =============================================================== relic screen ==
 
 ## Called by AncientContainer when the player interacts with it.
@@ -631,13 +493,9 @@ func _on_upgrade_chosen(upgrade: LevelUpUpgrade) -> void:
 func show_relic_screen(container: Node) -> void:
 	var choices: Array = _build_relic_choices()
 	if choices.is_empty():
-		# No choices available (inventory full, no upgrades, no pool) — just free.
 		container.queue_free()
 		return
-
 	_level_up_screen.show_upgrades(self, choices)
-
-	# One-shot: disconnect after a choice is made, then free the container.
 	var handler: Callable
 	handler = func(upgrade: LevelUpUpgrade) -> void:
 		acquired_upgrades.append(upgrade)
@@ -660,61 +518,52 @@ func show_relic_screen(container: Node) -> void:
 func _build_relic_choices() -> Array:
 	const SLOT_COUNT: int = 3
 
-	# ── 1. Collect upgradeable relics ───────────────────────────────────────
 	var upgradeable: Array[RelicData] = []
-	for r: RelicData in $Inventory.relics:
+	for r: RelicData in $RunInventory.relics:
 		if r.upgrade_levels.is_empty():
 			DataLoader.apply_relic_data(r)
 		if r.can_upgrade():
 			upgradeable.append(r)
 	upgradeable.shuffle()
 
-	# ── 2. Determine how many "new relic" slots to include ──────────────────
-	# Always offer at least one new relic if inventory isn't full.
 	var inventory_full: bool = false
 	if stats.relic_max > 0:
 		var current_count: int = 0
-		for r: RelicData in $Inventory.relics:
-			current_count += $Inventory.relics[r]
+		for r: RelicData in $RunInventory.relics:
+			current_count += $RunInventory.relics[r]
 		inventory_full = current_count >= stats.relic_max
 
 	var new_relic_slots: int = 1 if not inventory_full else 0
-	# If no owned relics can upgrade, use all slots for new relics.
 	if upgradeable.is_empty():
 		new_relic_slots = SLOT_COUNT if not inventory_full else 0
 
-	# Distribute new-relic slots randomly across the 3 positions.
-	var slot_types: Array = []  # true = new relic, false = upgrade
-	for _i in range(SLOT_COUNT):
-		slot_types.append(false)
-	var new_relic_positions: Array = range(SLOT_COUNT)
-	new_relic_positions.shuffle()
+	var slot_types: Array = []
+	for _i in range(SLOT_COUNT): slot_types.append(false)
+	var positions: Array = range(SLOT_COUNT)
+	positions.shuffle()
 	for i in range(mini(new_relic_slots, SLOT_COUNT)):
-		slot_types[new_relic_positions[i]] = true
+		slot_types[positions[i]] = true
 
-	# ── 3. Fill slots ────────────────────────────────────────────────────────
-	var choices: Array         = []
-	var upgrade_cursor: int    = 0
-	var used_relics: Array     = []
+	var choices: Array = []
+	var upgrade_cursor: int = 0
+	var used_relics: Array = []
 
 	for slot in range(SLOT_COUNT):
 		var rarity: int = UpgradeRarityTable.roll(stats.luck)
 		if slot_types[slot]:
-			var u: UpgradeAddRelic = UpgradeAddRelic.build(self, rarity)
-			if u != null:
-				choices.append(u)
+			var tiers: Array = UpgradeAddRelic.build(self, rarity)
+			if not tiers.is_empty():
+				choices.append(tiers)
 				continue
-			# Fall through to upgrade slot if pool is exhausted.
 
-		# Upgrade slot.
 		while upgrade_cursor < upgradeable.size():
 			var r: RelicData = upgradeable[upgrade_cursor]
 			upgrade_cursor += 1
 			if r in used_relics:
 				continue
-			var u: RelicLevelUpUpgrade = RelicLevelUpUpgrade.build(r, rarity, $Inventory.get_metals())
-			if u != null:
-				choices.append(u)
+			var tiers: Array = RelicLevelUpUpgrade.build(r, rarity, $RunInventory)
+			if not tiers.is_empty():
+				choices.append(tiers)
 				used_relics.append(r)
 				break
 
@@ -753,8 +602,6 @@ func _tick_dev_input() -> void:
 		WaveManager.dev_trigger_swarm()
 	if Input.is_action_just_pressed("dev_mode"):
 		EnemyManager.debug_force_visible = not EnemyManager.debug_force_visible
-	if Input.is_action_just_pressed("interact") and _nearby_forge != null:
-		_try_open_forge()
 	if Input.is_action_just_pressed("zoom_in"):
 		%Camera2D.zoom *= 2
 	if Input.is_action_just_pressed("zoom_out"):

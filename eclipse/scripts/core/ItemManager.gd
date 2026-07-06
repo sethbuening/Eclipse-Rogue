@@ -1,21 +1,26 @@
 # item_manager.gd
 extends Node
 
-var dropped_items: Array[Node]     = []
-var player:        CharacterBody2D = null
-var game:          Node2D
+var dropped_items:   Array[Node]     = []
+var player:          CharacterBody2D = null
+var game:            Node2D
 var tilemap_manager: Node
 
 var magnet_radius: float = 48.0
 
 @export var dropped_item_scene: PackedScene = preload("res://scenes/DroppedItem.tscn")
 
-# ── relic/metal pool ──────────────────────────────────────────────────────────
+# ── pools ─────────────────────────────────────────────────────────────────────
 var _relic_pool: Array[RelicData] = []
+
+## Util.tile enum value → ItemData (for ore tile drops)
+var _tile_item_map: Dictionary = {}
+## StringName id → ItemData
+var _item_id_map:   Dictionary = {}
 
 func _ready() -> void:
 	_load_relic_pool()
-	_load_metal_pool()
+	_load_item_pool()
 
 func _load_relic_pool() -> void:
 	var resources: Array[Resource] = Util.load_resources("res://data/relics/")
@@ -25,55 +30,54 @@ func _load_relic_pool() -> void:
 	_relic_pool.shuffle()
 	print("[ItemManager] Loaded %d relics into pool" % _relic_pool.size())
 
-var _metal_map: Dictionary = {}     # Util.tile → MetalData
-var _metal_id_map: Dictionary = {}  # String (MetalData.id) → MetalData
-
-func _load_metal_pool() -> void:
-	var resources: Array[Resource] = Util.load_resources("res://data/metals/")
+func _load_item_pool() -> void:
+	var resources: Array[Resource] = Util.load_resources("res://data/items/")
 	for res in resources:
-		if res is MetalData and res.tile_type != null:
-			_metal_map[res.tile_type] = res
-			if res.id != "":
-				_metal_id_map[res.id] = res
+		if res is ItemData:
+			var it := res as ItemData
+			_item_id_map[it.id] = it
+			# ItemData can optionally export a tile_type: StringName
+			# matching a Util.tile value so the tilemap knows what to drop.
+			if it.get("tile_type") != null and it.tile_type != &"":
+				_tile_item_map[it.tile_type] = it
+	print("[ItemManager] Loaded %d items" % _item_id_map.size())
 
-## Returns the MetalData with [id] (matches AbilityData.ore_type), or null.
-func get_metal_by_id(id: String) -> MetalData:
-	return _metal_id_map.get(id, null)
+func get_item_by_id(id: StringName) -> ItemData:
+	return _item_id_map.get(id, null)
 
-## Returns all loaded metals.
-func get_all_metals() -> Array[MetalData]:
-	var out: Array[MetalData] = []
-	for m: MetalData in _metal_id_map.values():
-		out.append(m)
-	return out
+func get_item_for_tile(tile_type) -> ItemData:
+	return _tile_item_map.get(tile_type, null)
+
+func get_all_items() -> Array:
+	return _item_id_map.values()
 
 # ── spawning ──────────────────────────────────────────────────────────────────
 
 func spawn_xp(world_pos: Vector2, count: int = 1) -> void:
 	for i in count:
-		_spawn_item(world_pos, DroppedItem.DropType.XP, null)
+		_spawn(world_pos, DroppedItem.DropType.XP, null)
 
-func spawn_metal_drop(world_pos: Vector2, metal: MetalData) -> void:
-	_spawn_item(world_pos, DroppedItem.DropType.METAL, metal)
+func spawn_item_drop(world_pos: Vector2, item: ItemData) -> void:
+	_spawn(world_pos, DroppedItem.DropType.ITEM, item)
 
-func _spawn_item(world_pos: Vector2, type: DroppedItem.DropType, metal: MetalData) -> void:
+func _spawn(world_pos: Vector2, type: DroppedItem.DropType, item: ItemData) -> void:
 	if dropped_item_scene == null:
 		return
-	var half_tile: float = tilemap_manager.TILE_SIZE.x / 2.0
-	var item: DroppedItem = dropped_item_scene.instantiate()
-	item.drop_type = type
-	item.metal     = metal
-	item.vel = Vector2(
+	var half_tile: float   = tilemap_manager.TILE_SIZE.x / 2.0
+	var d: DroppedItem     = dropped_item_scene.instantiate()
+	d.drop_type = type
+	d.item      = item
+	d.vel = Vector2(
 		(randf_range(-50.0, 50.0) + randf_range(-50.0, 50.0)) / 2.0,
 		(randf_range(-60.0, -10.0) + randf_range(-60.0, -10.0)) / 2.0
 	)
-	item.z_vel           = (randf_range(40.0, 120.0) + randf_range(40.0, 120.0)) / 2.0
-	item.pos             = _safe_spawn_pos(world_pos, half_tile, item.RADIUS)
-	add_child(item)
-	item.global_position = item.pos
-	item.reset_physics_interpolation()
-	item.visible         = true
-	dropped_items.append(item)
+	d.z_vel           = (randf_range(40.0, 120.0) + randf_range(40.0, 120.0)) / 2.0
+	d.pos             = _safe_spawn_pos(world_pos, half_tile, d.RADIUS)
+	add_child(d)
+	d.global_position = d.pos
+	d.reset_physics_interpolation()
+	d.visible         = true
+	dropped_items.append(d)
 
 func _safe_spawn_pos(world_pos: Vector2, half_tile: float, radius: float) -> Vector2:
 	for _attempt in range(10):
@@ -91,66 +95,66 @@ func _safe_spawn_pos(world_pos: Vector2, half_tile: float, radius: float) -> Vec
 func _physics_process(delta: float) -> void:
 	if player == null:
 		return
-	for item: Node in dropped_items.duplicate():
-		if not is_instance_valid(item):
-			dropped_items.erase(item)
+	for d: Node in dropped_items.duplicate():
+		if not is_instance_valid(d):
+			dropped_items.erase(d)
 			continue
 
-		if item.collecting == DroppedItem.CollectPhase.ARC:
-			item.tick_arc(player.global_position, delta)
-			item.z_index = tilemap_manager.get_z_for(item.pos)
-			if item.collect_timer >= item.COLLECT_DURATION:
-				_finish_collect(item)
+		if d.collecting == DroppedItem.CollectPhase.ARC:
+			d.tick_arc(player.global_position, delta)
+			d.z_index = tilemap_manager.get_z_for(d.pos)
+			if d.collect_timer >= d.COLLECT_DURATION:
+				_finish_collect(d)
 			continue
 
-		var dist: float = item.pos.distance_to(player.global_position)
+		var dist: float = d.pos.distance_to(player.global_position)
 		if dist < magnet_radius:
-			item.begin_collect(player.global_position)
+			d.begin_collect(player.global_position)
 			continue
 
 		if tilemap_manager != null:
-			var move_dir:  Vector2  = item.vel.normalized() if item.vel.length() > 0.01 else Vector2.ZERO
-			var check_pos: Vector2  = item.pos + move_dir * item.RADIUS + item.vel * delta
+			var move_dir:  Vector2  = d.vel.normalized() if d.vel.length() > 0.01 else Vector2.ZERO
+			var check_pos: Vector2  = d.pos + move_dir * d.RADIUS + d.vel * delta
 			var map_pos:   Vector2i = tilemap_manager.world_to_map(check_pos)
 			if tilemap_manager.tile_exists(map_pos):
 				var tile_center: Vector2 = tilemap_manager.map_to_world(map_pos)
-				var diff:        Vector2 = item.pos - tile_center
+				var diff:        Vector2 = d.pos - tile_center
 				var tile_half:   float   = tilemap_manager.TILE_SIZE.x / 2.0
 				if abs(diff.x) > abs(diff.y):
-					item.vel.x *= -item.BOUNCE
-					item.pos.x  = tile_center.x + (tile_half + item.RADIUS) * sign(diff.x)
+					d.vel.x *= -d.BOUNCE
+					d.pos.x  = tile_center.x + (tile_half + d.RADIUS) * sign(diff.x)
 				else:
-					item.vel.y *= -item.BOUNCE
-					item.pos.y  = tile_center.y + (tile_half + item.RADIUS) * sign(diff.y)
-				if item.z <= 0.0:
-					item.vel *= 0.7
+					d.vel.y *= -d.BOUNCE
+					d.pos.y  = tile_center.y + (tile_half + d.RADIUS) * sign(diff.y)
+				if d.z <= 0.0:
+					d.vel *= 0.7
 			else:
-				item.pos += item.vel * delta
+				d.pos += d.vel * delta
 		else:
-			item.pos += item.vel * delta
-		item.z_vel -= item.GRAVITY * delta
-		item.z     += item.z_vel * delta
-		if item.z < 0.0:
-			item.z     = 0.0
-			item.z_vel = -item.z_vel * item.BOUNCE
-			item.vel  *= 0.8
-		item.global_position = item.pos + Vector2(0, -item.z)
-		item.z_index         = tilemap_manager.get_z_for(item.pos)
+			d.pos += d.vel * delta
+		d.z_vel -= d.GRAVITY * delta
+		d.z     += d.z_vel * delta
+		if d.z < 0.0:
+			d.z     = 0.0
+			d.z_vel = -d.z_vel * d.BOUNCE
+			d.vel  *= 0.8
+		d.global_position = d.pos + Vector2(0, -d.z)
+		d.z_index         = tilemap_manager.get_z_for(d.pos)
 
 # ── collection ────────────────────────────────────────────────────────────────
 
-func _finish_collect(item: Node) -> void:
-	var inventory: Node = player.get_node("Inventory")
-	match item.drop_type:
+func _finish_collect(d: Node) -> void:
+	var run_inv: RunInventory = player.get_node("RunInventory")
+	match d.drop_type:
 		DroppedItem.DropType.XP:
 			player.xp += 1
 			AudioManagerScene.play_xp_collect()
-		DroppedItem.DropType.METAL:
-			if item.metal != null:
-				inventory.add_metal(item.metal, 1)
-				Log("Collected: " + item.metal.display_name)
-	dropped_items.erase(item)
-	item.queue_free()
+		DroppedItem.DropType.ITEM:
+			if d.item != null and run_inv != null:
+				run_inv.add_item(d.item, 1)
+				Log("Collected: " + d.item.display_name)
+	dropped_items.erase(d)
+	d.queue_free()
 
 func Log(msg: Variant) -> void:
 	print("[ItemManager] " + str(msg))

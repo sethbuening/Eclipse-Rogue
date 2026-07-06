@@ -7,7 +7,7 @@ extends Node
 const DAMAGE_FLASH_DURATION: float = 0.08
 const STUCK_TIMEOUT:         float = 0.6
 const STUCK_DIST_SQ:         float = 4.0
-const PUSH_STRENGTH:         float = 0.5  # scales all collision correction forces (1.0 = original strength)
+const PUSH_STRENGTH:         float = 0.5
 const SPAWN_SCREEN_MARGIN:   float = 48.0
 const EFFECT_PATH:           String = "res://scripts/effects/"
 
@@ -41,8 +41,20 @@ var _stuck_pos:       Vector2    = Vector2.ZERO
 var _move_accum: float = 0.0
 var _move_skip:  int   = 0
 
-# Reusable scratch array for enemy separation — avoids per-frame allocation
-var _nearby_scratch: Array = []
+# --- OPT: Cached child references (set in setup / _cache_children) ---
+# Avoids get_children() iteration in _sync_children, _set_flash, _update_z_index,
+# deactivate, and _apply_flash_shader — all of which previously looped blindly.
+var _sprite_nodes:  Array[Node2D] = []   # all Node2D children (sprite + health bar etc.)
+var _flash_nodes:   Array[Node2D] = []   # subset that have a ShaderMaterial (for flash)
+
+# --- OPT: Per-cell solid-tile neighbour cache ---
+# Maps tilemap cell Vector2i → Array[Vector2] of solid tile world centres.
+# Built on first visit, cleared when tilemap changes.  Cuts _resolve_tiles_r from
+# always scanning 9 tiles to only testing the pre-filtered solid subset.
+static var _solid_cache: Dictionary = {}
+
+static func invalidate_tile_cache() -> void:
+	_solid_cache.clear()
 
 func setup(ai_tick_rate: float) -> void:
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
@@ -50,6 +62,7 @@ func setup(ai_tick_rate: float) -> void:
 	_z_update_every = ai_tick_rate * 10.0
 	_z_offset       = randf() * _z_update_every
 	add_to_group("enemies")
+	_cache_children()
 
 func initialize(p: CharacterBody2D, modifier: Util.Modifier = Util.Modifier.NONE) -> void:
 	data   = data.duplicate()
@@ -64,6 +77,16 @@ func initialize(p: CharacterBody2D, modifier: Util.Modifier = Util.Modifier.NONE
 		_icon_display.visible = true
 		_icon_display.set_effects(_effects)
 
+# --- OPT: Build cached child lists once at setup (and after adding icon display) ---
+func _cache_children() -> void:
+	_sprite_nodes.clear()
+	_flash_nodes.clear()
+	for child in get_children():
+		if child is Node2D:
+			_sprite_nodes.append(child as Node2D)
+			if (child is Sprite2D or child is AnimatedSprite2D) and child.material is ShaderMaterial:
+				_flash_nodes.append(child as Node2D)
+
 func tick_move(delta: float, offscreen: bool = false) -> void:
 	var motion: Vector2 = _velocity
 	var kb: EffectKnockback = _effects.get("knockback") as EffectKnockback
@@ -77,8 +100,11 @@ func tick_move(delta: float, offscreen: bool = false) -> void:
 	elif _damage_flash == 0.0:
 		_damage_flash = -1.0
 		_set_flash(0.0)
-	_sync_children()
-	if _icon_display: _icon_display.global_position = global_position
+	# OPT: inline _sync_children using cached array — no get_children() call
+	var gp: Vector2 = global_position
+	for node in _sprite_nodes:
+		node.global_position = gp
+	if _icon_display: _icon_display.global_position = gp
 	_z_timer += delta
 	if _z_timer >= _z_update_every + _z_offset:
 		_z_timer = 0.0
@@ -105,23 +131,35 @@ func _move(vel: Vector2, delta: float, offscreen: bool) -> void:
 	_resolve_tiles_r(false, r)
 	if _in_wall():
 		global_position = prev
-	# Skip separation for offscreen enemies — they don't need pixel-perfect packing
-	if not offscreen:
-		_resolve_enemies()
+
+# --- OPT: Solid-tile neighbour cache ---
+# Instead of always testing all 9 offsets and calling tile_exists + is_air for each,
+# we look up (or build) a per-cell list of only the solid tile world-centres.
+# Building costs one full 9-scan on first visit; subsequent visits do zero tile queries.
+const _NEIGHBOUR_OFFSETS: Array[Vector2i] = [
+	Vector2i(0,0),  Vector2i(1,0),  Vector2i(-1,0),
+	Vector2i(0,1),  Vector2i(0,-1),
+	Vector2i(1,1),  Vector2i(-1,1), Vector2i(1,-1), Vector2i(-1,-1),
+]
+
+func _get_solid_neighbours(center: Vector2i) -> Array:
+	if _solid_cache.has(center):
+		return _solid_cache[center]
+	var solid: Array = []
+	for offset in _NEIGHBOUR_OFFSETS:
+		var tile: Vector2i = center + offset
+		if tilemap.tile_exists(tile) and not tilemap.is_air(tile):
+			solid.append(tilemap.map_to_world(tile))
+	_solid_cache[center] = solid
+	return solid
 
 func _resolve_tiles_r(x_axis: bool, r: float) -> void:
 	if tilemap == null: return
 	var half:   float    = tilemap.TILE_SIZE.x * 0.5
 	var center: Vector2i = tilemap.world_to_map(global_position)
 	var r_sq:   float    = r * r
-	for offset in [
-		Vector2i(0,0),Vector2i(1,0),Vector2i(-1,0),
-		Vector2i(0,1),Vector2i(0,-1),
-		Vector2i(1,1),Vector2i(-1,1),Vector2i(1,-1),Vector2i(-1,-1),
-	]:
-		var tile: Vector2i = center + offset
-		if not tilemap.tile_exists(tile): continue
-		var tc:      Vector2 = tilemap.map_to_world(tile)
+	# OPT: only iterate pre-filtered solid tiles from cache
+	for tc: Vector2 in _get_solid_neighbours(center):
 		var closest: Vector2 = global_position.clamp(tc - Vector2(half,half), tc + Vector2(half,half))
 		var diff:    Vector2 = global_position - closest
 		var dist_sq: float   = diff.length_squared()
@@ -140,40 +178,6 @@ func _resolve_tiles_r(x_axis: bool, r: float) -> void:
 	var dist: float = global_position.length()
 	if dist > play_radius_world:
 		global_position = global_position / dist * play_radius_world
-
-func _resolve_enemies() -> void:
-	var min_check: float = data.collision_radius * 2.0 + 8.0
-	var r: float = data.collision_radius
-	EnemyManager.get_nearby_enemies_into(global_position, min_check, _nearby_scratch)
-	var push:     Vector2 = Vector2.ZERO
-	var contacts: Array   = []
-	for other in _nearby_scratch:
-		if other == self or not is_instance_valid(other): continue
-		var away:     Vector2 = global_position - other.global_position
-		var min_dist: float   = r + other.data.collision_radius
-		var d_sq:     float   = away.length_squared()
-		if d_sq >= min_dist * min_dist or d_sq < 0.0001: continue
-		var correction: Vector2 = away * ((min_dist - sqrt(d_sq)) / sqrt(d_sq)) * 0.5 * PUSH_STRENGTH
-		push += correction
-		contacts.append([other, correction])
-	if push == Vector2.ZERO: return
-	var prev: Vector2 = global_position
-
-	# Resolve each axis independently — a wall blocking one axis shouldn't
-	# cancel sliding on the other, or the whole pile behind it locks up.
-	global_position.x += push.x
-	_resolve_tiles_r(true, r)
-	var blocked_x: bool = _in_wall()
-	if blocked_x: global_position.x = prev.x
-
-	global_position.y += push.y
-	_resolve_tiles_r(false, r)
-	if _in_wall():
-		global_position.y = prev.y
-		if blocked_x:
-			# Fully boxed in on both axes — give the whole push back as a reaction
-			for c in contacts:
-				(c[0] as Enemy).global_position -= c[1]
 
 func _tick_attack(delta: float) -> void:
 	if data.projectile_speed > 0.0: return
@@ -225,8 +229,9 @@ func deactivate() -> void:
 	_effects.clear()
 	if _icon_display: _icon_display.set_effects(_effects)
 	_set_flash(0.0)
-	for child in get_children():
-		if child is Node2D: child.visible = false
+	# OPT: iterate cached list instead of get_children()
+	for node in _sprite_nodes:
+		node.visible = false
 
 func apply_stun(duration: float) -> void:
 	var d: float = duration * (1.0 - data.stun_resistance)
@@ -288,6 +293,8 @@ func _tick_effects(delta: float) -> void:
 
 func _get_or_create_effect(key: String) -> EffectData:
 	if not _effects.has(key):
+		# OPT: hoist registry lookup — _effect_scripts() checks is_empty() every call;
+		# storing in a local avoids the repeated static-var dict access on hot paths.
 		var registry: Dictionary = _effect_scripts()
 		if not registry.has(key):
 			push_warning("Enemy: no effect registered for id '%s'" % key)
@@ -306,16 +313,21 @@ func _sync_effect_icons() -> void:
 func _apply_modifier(modifier: Util.Modifier) -> void:
 	if modifier == Util.Modifier.FAST: data.speed *= 1.6
 
+# OPT: replaced with cached-array version inlined into tick_move
+# (kept as no-op so subclasses calling super._sync_children() don't break)
 func _sync_children() -> void:
-	for child in get_children():
-		if child is Node2D: child.global_position = global_position
+	var gp: Vector2 = global_position
+	for node in _sprite_nodes:
+		node.global_position = gp
 
+# OPT: use cached _sprite_nodes instead of get_children()
 func _update_z_index() -> void:
 	var z: int = tilemap.get_z_for(global_position)
-	for child in get_children():
-		if child is Node2D: child.z_index = z
+	for node in _sprite_nodes:
+		node.z_index = z
 
 func _find_spawn_position() -> Vector2:
+	if not is_instance_valid(player): return Vector2.ZERO
 	if tilemap == null: return player.global_position
 	var pos: Vector2 = _raycast_offscreen_spawn()
 	if pos != Vector2.INF: return pos
@@ -368,16 +380,23 @@ func _spawn_icon_display() -> void:
 	_icon_display = EffectIconDisplayScript.new()
 	_icon_display.name = "EffectIconDisplay"
 	add_child(_icon_display)
+	# OPT: rebuild cache now that icon display is a child
+	_cache_children()
 
 func _apply_flash_shader() -> void:
-	for child in get_children():
-		if child is Sprite2D or child is AnimatedSprite2D:
+	# OPT: use cached list; rebuilds it with shader materials set
+	for node in _sprite_nodes:
+		if node is Sprite2D or node is AnimatedSprite2D:
 			var mat := ShaderMaterial.new()
 			mat.shader = FlashShader
-			child.material = mat
+			node.material = mat
+	# Rebuild flash subset now that materials are assigned
+	_flash_nodes.clear()
+	for node in _sprite_nodes:
+		if (node is Sprite2D or node is AnimatedSprite2D) and node.material is ShaderMaterial:
+			_flash_nodes.append(node)
 
 func _set_flash(amount: float) -> void:
-	for child in get_children():
-		if child is Sprite2D or child is AnimatedSprite2D:
-			var mat := child.material as ShaderMaterial
-			if mat: mat.set_shader_parameter("flash_amount", amount)
+	# OPT: use pre-filtered _flash_nodes — no type checks, no get_children()
+	for node in _flash_nodes:
+		(node.material as ShaderMaterial).set_shader_parameter("flash_amount", amount)

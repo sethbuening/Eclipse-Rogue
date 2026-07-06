@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="BiomeData" format=3 uid="uid://bwo3j6bt2m852"]
+
+[ext_resource type="Script" uid="uid://bqgpipt4kov3x" path="res://scripts/data/biome_data.gd" id="1_nt4hl"]
+
+[resource]
+script = ExtResource("1_nt4hl")
+display_name = "Amethyst Thicket"
+tint = Color(0.30385667, 0.23607236, 0.59929633, 1)
+metadata/_custom_type_script = "uid://bqgpipt4kov3x"

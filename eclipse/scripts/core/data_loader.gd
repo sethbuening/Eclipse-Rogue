@@ -407,3 +407,14 @@ func invalidate_cache() -> void:
 	_loaded_abilities = false
 	_loaded_enemies   = false
 	_loaded_relics    = false
+
+func get_all_abilities() -> Array[AbilityData]:
+	_ensure_abilities_loaded()
+	var results: Array[AbilityData] = []
+	for key: String in _ability_map.keys():
+		var a := AbilityData.new()
+		a.id           = key.to_lower().replace(" ", "_")
+		a.display_name = key
+		apply_ability_data(a)
+		results.append(a)
+	return results

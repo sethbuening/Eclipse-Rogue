@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="ClassData" format=3 uid="uid://d0bfgwr7dte5j"]
+
+[ext_resource type="Script" uid="uid://bmjm0acyyy1sj" path="res://scripts/data/class_data.gd" id="1_sjut6"]
+
+[resource]
+script = ExtResource("1_sjut6")
+display_name = "Pyromancer"
+metadata/_custom_type_script = "uid://bmjm0acyyy1sj"

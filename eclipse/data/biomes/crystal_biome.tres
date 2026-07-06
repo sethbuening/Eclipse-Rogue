@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="BiomeData" format=3 uid="uid://bvw8tpjhxmfy2"]
+
+[ext_resource type="Script" uid="uid://bqgpipt4kov3x" path="res://scripts/data/biome_data.gd" id="1_tnky2"]
+
+[resource]
+script = ExtResource("1_tnky2")
+display_name = "Crystalline Caves"
+tint = Color(0.60419637, 0.49205226, 0.80706334, 1)
+metadata/_custom_type_script = "uid://bqgpipt4kov3x"

@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="ClassData" format=3 uid="uid://dhnnmuw581t2e"]
+
+[ext_resource type="Script" uid="uid://bmjm0acyyy1sj" path="res://scripts/data/class_data.gd" id="1_esxig"]
+
+[resource]
+script = ExtResource("1_esxig")
+display_name = "Driller"
+metadata/_custom_type_script = "uid://bmjm0acyyy1sj"
