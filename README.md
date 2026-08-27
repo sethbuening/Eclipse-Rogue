@@ -3,9 +3,10 @@ Though the game is 2D, it emulates 3D somewhat through both the perspective and 
 This project was my first attempt at creating a roguelite.
 
 The player can fight enemies through the automatic activation of their orbs.
-Each orb can contain any number of abilities, and orbs can be combined at forges on the map.
-When forging two orbs together, they won't be available to be used in the forging battle that occurs.
+Each orb can contain any number of abilities.
 
-Metal can also be used at forges across the map.
-Forging solely metal with no orbs will generate a new orb with an ability based on the metal type.
-Forging metal with orb(s) will apply the orb merging if there is more than one orb, and then the metal will apply stat bonuses to the orb's abilities based on the metal type.
+Killing enough enemies will eventually cause the player to level up.
+The player may be given the opportunity to either add an ability onto an orb, or just to upgrade a current ability on an orb.
+
+Mined resources can then be used to increase the power of upgrades on leveling up.
+The player may save their resources and just take a base upgrade, or they might spend as much as possible to maximize the stat improvement provided by that upgrade.
